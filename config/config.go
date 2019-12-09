@@ -35,6 +35,8 @@ func NewConfig(cfgFile string) (*Config, error) {
 // Config represents the configuration of gopherbin
 type Config struct {
 	APIServer APIServer
+	Database  Database
+	Default   Default
 }
 
 // Validate validates the config
@@ -42,6 +44,23 @@ func (c *Config) Validate() error {
 	if err := c.APIServer.Validate(); err != nil {
 		return errors.Wrap(err, "validating APIServer config")
 	}
+	if err := c.Database.Validate(); err != nil {
+		return errors.Wrap(err, "validating database config")
+	}
+
+	if err := c.Default.Validate(); err != nil {
+		return errors.Wrap(err, "validating the default section")
+	}
+	return nil
+}
+
+// Default defines settings
+type Default struct {
+	RegistrationOpen bool
+}
+
+// Validate validates the default section of the config
+func (d *Default) Validate() error {
 	return nil
 }
 

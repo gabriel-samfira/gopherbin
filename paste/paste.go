@@ -2,8 +2,8 @@ package paste
 
 import (
 	"gopherbin/config"
-	"gopherbin/models"
 	"gopherbin/paste/common"
+	"gopherbin/util"
 	"time"
 
 	"github.com/jinzhu/gorm"
@@ -11,41 +11,41 @@ import (
 	"github.com/pkg/errors"
 )
 
-type paster struct {
+type paste struct {
 	conn *gorm.DB
 }
 
-func (m *paster) Create(owner models.Users, data []byte, expires time.Time, isPublic bool) (paste models.Paste, err error) {
-	return models.Paste{}, nil
+func (m *paste) Create(ownerID string, data []byte, expires time.Time, isPublic bool) (paste common.Paste, err error) {
+	return common.Paste{}, nil
 }
 
-func (m *paster) Delete(id string) error {
+func (m *paste) Get(ownerID string, pasteID string) (paste common.Paste, err error) {
+	return common.Paste{}, nil
+}
+
+func (m *paste) Delete(id string) error {
 	return nil
 }
 
-func (m *paster) ShareWithUser(id string, user string) error {
+func (m *paste) ShareWithUser(id string, user string) error {
 	return nil
 }
 
-func (m *paster) ShareWithTeam(id string, team string) error {
+func (m *paste) ShareWithTeam(id string, team string) error {
 	return nil
 }
 
-func (m *paster) SetPrivacy(id string, private bool) error {
+func (m *paste) SetPrivacy(id string, private bool) error {
 	return nil
 }
 
 // NewPaster returns a SQL backed paste implementation
 func NewPaster(dbCfg config.Database) (common.Paster, error) {
-	dbType, connURI, err := dbCfg.GormParams()
-	if err != nil {
-		return nil, errors.Wrap(err, "getting DB URI string")
-	}
-	db, err := gorm.Open(dbType, connURI)
+	db, err := util.NewDBConn(dbCfg)
 	if err != nil {
 		return nil, errors.Wrap(err, "connecting to database")
 	}
-	return &paster{
+	return &paste{
 		conn: db,
 	}, nil
 }
