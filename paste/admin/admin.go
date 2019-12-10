@@ -77,8 +77,7 @@ func (u *userManager) sqlUserToParams(user models.Users) common.Users {
 }
 
 func (u *userManager) Create(ctx context.Context, user common.Users) (common.Users, error) {
-	isAdmin := auth.IsAdmin(ctx)
-	if u.cfg.RegistrationOpen == false && isAdmin == false {
+	if u.cfg.RegistrationOpen == false && auth.IsAdmin(ctx) == false {
 		return common.Users{}, auth.ErrUnauthorized
 	}
 	newUser, err := u.newUserParamsToSQL(user)
@@ -192,6 +191,14 @@ func (u *userManager) Delete(ctx context.Context, userID int64) error {
 	isAdmin := auth.IsAdmin(ctx)
 	if isAdmin == false {
 		return auth.ErrUnauthorized
+	}
+	usr, err := u.getUser(userID)
+	if err != nil {
+		return errors.Wrap(err, "fetching user from db")
+	}
+	q := u.conn.Delete(&usr)
+	if q.Error != nil {
+		return errors.Wrap(q.Error, "deleting user")
 	}
 	return nil
 }

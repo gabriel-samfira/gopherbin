@@ -16,10 +16,10 @@ type UserManager interface {
 
 // Paster is the interface for pastes
 type Paster interface {
-	Create(ownerID string, data []byte, expires time.Time, isPublic bool) (paste Paste, err error)
-	Get(ownerID string, pasteID string) (paste Paste, err error)
-	Delete(id string) error
-	ShareWithUser(id string, user string) error
-	ShareWithTeam(id string, team string) error
-	SetPrivacy(id string, private bool) error
+	Create(ctx context.Context, data string, expires time.Time, isPublic bool, title string) (paste Paste, err error)
+	Get(ctx context.Context, pasteID string) (paste Paste, err error)
+	Delete(ctx context.Context, pasteID string) error
+	ShareWithUser(ctx context.Context, pasteID string, userID int64) error
+	ShareWithTeam(ctx context.Context, pasteID string, teamID int64) error
+	SetPrivacy(ctx context.Context, pasteID string, private bool) error
 }

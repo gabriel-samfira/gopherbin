@@ -57,6 +57,7 @@ func (c *Config) Validate() error {
 // Default defines settings
 type Default struct {
 	RegistrationOpen bool
+	AllowAnonymous   bool
 }
 
 // Validate validates the default section of the config

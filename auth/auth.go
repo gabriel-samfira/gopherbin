@@ -12,6 +12,7 @@ const (
 	isAdminKey     contextFlags = "is_admin"
 	isSuperUserKey contextFlags = "is_super"
 	userIDFlag     contextFlags = "user_id"
+	isEnabledFlag  contextFlags = "is_enabled"
 )
 
 // PopulateContext sets the appropriate fields in the context, based on
@@ -20,7 +21,23 @@ func PopulateContext(ctx context.Context, user common.Users) context.Context {
 	ctx = SetUserID(ctx, user.ID)
 	ctx = SetAdmin(ctx, user.IsAdmin)
 	ctx = SetSuperUser(ctx, user.IsSuperUser)
+	ctx = SetIsEnabled(ctx, user.Enabled)
 	return ctx
+}
+
+// SetIsEnabled sets a flag indicating if account is enabled
+func SetIsEnabled(ctx context.Context, enabled bool) context.Context {
+	return context.WithValue(ctx, isEnabledFlag, enabled)
+}
+
+// IsEnabled returns the a boolean indicating if the enabled flag is
+// set and is true or false
+func IsEnabled(ctx context.Context) bool {
+	elem := ctx.Value(isEnabledFlag)
+	if elem == nil {
+		return false
+	}
+	return elem.(bool)
 }
 
 // SetAdmin sets the isAdmin flag on the context
@@ -67,4 +84,10 @@ func UserID(ctx context.Context) int64 {
 		return 0
 	}
 	return userID.(int64)
+}
+
+// IsAnonymous indicates whether or not a context belongs to an
+// anonymous user
+func IsAnonymous(ctx context.Context) bool {
+	return UserID(ctx) == 0
 }

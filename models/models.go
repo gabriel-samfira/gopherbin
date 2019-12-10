@@ -4,14 +4,15 @@ import "time"
 
 // Paste represents a pastebin entry in the database
 type Paste struct {
-	ID      string `gorm:"type:varchar(32);primary_key"`
-	Data    []byte `gorm:"type:longblob"`
-	Name    string
-	Owner   Users
-	Expires int64
-	Public  bool
-	Teams   []*Teams `gorm:"many2many:paste_teams;"`
-	Users   []*Users `gorm:"many2many:paste_users;"`
+	ID        string `gorm:"type:varchar(32);primary_key"`
+	Data      []byte `gorm:"type:longblob"`
+	Name      string
+	Owner     Users
+	CreatedAt time.Time
+	Expires   time.Time
+	Public    bool
+	Teams     []*Teams `gorm:"many2many:paste_teams;"`
+	Users     []*Users `gorm:"many2many:paste_users;"`
 }
 
 // Users represents a user entry in the database

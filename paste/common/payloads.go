@@ -33,9 +33,10 @@ type UpdateUserPayload struct {
 
 // Paste holds information about a paste
 type Paste struct {
-	ID      string `json:"id"`
-	Data    string `json:"data"`
-	Name    string `json:"name"`
-	Expires int64  `json:"expires"`
-	Public  bool   `json:"public"`
+	ID        string    `json:"id"`
+	Data      string    `json:"data"`
+	Name      string    `json:"name"`
+	Expires   time.Time `json:"expires"`
+	Public    bool      `json:"public"`
+	CreatedAt time.Time `json:"created_at"`
 }

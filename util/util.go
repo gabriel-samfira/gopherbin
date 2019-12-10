@@ -1,6 +1,7 @@
 package util
 
 import (
+	"crypto/rand"
 	"fmt"
 	"regexp"
 
@@ -13,6 +14,8 @@ import (
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/bcrypt"
 )
+
+const alphanumeric = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 
 // From: https://www.alexedwards.net/blog/validation-snippets-for-go#email-validation
 var rxEmail = regexp.MustCompile("^[a-zA-Z0-9.!#$%&'*+\\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$")
@@ -67,4 +70,18 @@ func HashString(input string) (uint64, error) {
 		return 0, fmt.Errorf("wrote %d, expected %d", added, len(input))
 	}
 	return h.Sum64(), nil
+}
+
+// GetRandomString returns a secure random string
+func GetRandomString(n int) (string, error) {
+	data := make([]byte, n)
+	_, err := rand.Read(data)
+	if err != nil {
+		return "", errors.Wrap(err, "getting random data")
+	}
+	for i, b := range data {
+		data[i] = alphanumeric[b%byte(len(alphanumeric))]
+	}
+
+	return string(data), nil
 }
