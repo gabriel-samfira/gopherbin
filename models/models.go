@@ -41,8 +41,8 @@ type Paste struct {
 	CreatedAt time.Time
 	Expires   time.Time
 	Public    bool
-	Teams     []*Teams `gorm:"many2many:paste_teams;"`
-	Users     []*Users `gorm:"many2many:paste_users;"`
+	Teams     []Teams `gorm:"many2many:paste_teams;"`
+	Users     []Users `gorm:"many2many:paste_users;"`
 }
 
 // Users represents a user entry in the database

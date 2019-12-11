@@ -111,14 +111,18 @@ func (p *paste) getUser(userID int64) (models.Users, error) {
 }
 
 func (p *paste) canAccess(paste models.Paste, user models.Users, anonymous bool) bool {
-	if anonymous == true {
-		if paste.Public == false {
-			return false
-		}
+	if paste.Public == true {
+		return true
 	}
+
+	if anonymous == true {
+		return false
+	}
+
 	if paste.Owner == user.ID {
 		return true
 	}
+
 	for _, usr := range paste.Users {
 		if usr.ID == user.ID {
 			return true
@@ -229,7 +233,15 @@ func (p *paste) ShareWithUser(ctx context.Context, pasteID string, userID int64)
 	return nil
 }
 
+func (p *paste) UnshareWithUser(ctx context.Context, pasteID string, userID int64) error {
+	return nil
+}
+
 func (p *paste) ShareWithTeam(ctx context.Context, pasteID string, teamID int64) error {
+	return nil
+}
+
+func (p *paste) UnshareWithTeam(ctx context.Context, pasteID string, teamID int64) error {
 	return nil
 }
 
