@@ -14,5 +14,5 @@ type Paster interface {
 	Delete(ctx context.Context, pasteID string) error
 	ShareWithUser(ctx context.Context, pasteID string, userID int64) error
 	ShareWithTeam(ctx context.Context, pasteID string, teamID int64) error
-	SetPrivacy(ctx context.Context, pasteID string, private bool) error
+	SetPrivacy(ctx context.Context, pasteID string, public bool) error
 }
