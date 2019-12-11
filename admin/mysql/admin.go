@@ -35,8 +35,8 @@ type userManager struct {
 	cfg  config.Default
 }
 
-func (u *userManager) newUserParamsToSQL(user params.Users) (models.Users, error) {
-	if err := util.ValidateNewUser(user); err != nil {
+func (u *userManager) newUserParamsToSQL(user params.NewUserParams) (models.Users, error) {
+	if err := user.Validate(); err != nil {
 		return models.Users{}, errors.Wrap(err, "validating user info")
 	}
 	// When creating a new user only 3 fields are ever used:
@@ -77,7 +77,7 @@ func (u *userManager) sqlUserToParams(user models.Users) params.Users {
 	}
 }
 
-func (u *userManager) Create(ctx context.Context, user params.Users) (params.Users, error) {
+func (u *userManager) Create(ctx context.Context, user params.NewUserParams) (params.Users, error) {
 	if u.cfg.RegistrationOpen == false && auth.IsAdmin(ctx) == false {
 		return params.Users{}, auth.ErrUnauthorized
 	}
@@ -99,6 +99,18 @@ func (u *userManager) Create(ctx context.Context, user params.Users) (params.Use
 		return params.Users{}, errors.Wrap(err, "creating new user")
 	}
 	return u.sqlUserToParams(tmpUser), nil
+}
+
+func (u *userManager) Get(ctx context.Context, userID int64) (params.Users, error) {
+	user := auth.UserID(ctx)
+	if user != userID && auth.IsAdmin(ctx) == false {
+		return params.Users{}, auth.ErrUnauthorized
+	}
+	modelUser, err := u.getUser(userID)
+	if err != nil {
+		return params.Users{}, errors.Wrap(err, "fetching user form DB")
+	}
+	return u.sqlUserToParams(modelUser), nil
 }
 
 func (u *userManager) Update(ctx context.Context, userID int64, update params.UpdateUserPayload) (params.Users, error) {

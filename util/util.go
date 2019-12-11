@@ -3,22 +3,16 @@ package util
 import (
 	"crypto/rand"
 	"fmt"
-	"regexp"
 
 	"gopherbin/config"
-	"gopherbin/params"
 
 	"github.com/cespare/xxhash"
 	"github.com/jinzhu/gorm"
-	zxcvbn "github.com/nbutton23/zxcvbn-go"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/bcrypt"
 )
 
 const alphanumeric = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-
-// From: https://www.alexedwards.net/blog/validation-snippets-for-go#email-validation
-var rxEmail = regexp.MustCompile("^[a-zA-Z0-9.!#$%&'*+\\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$")
 
 // NewDBConn returns a new gorm db connection, given the config
 func NewDBConn(dbCfg config.Database) (conn *gorm.DB, err error) {
@@ -31,24 +25,6 @@ func NewDBConn(dbCfg config.Database) (conn *gorm.DB, err error) {
 		return nil, errors.Wrap(err, "connecting to database")
 	}
 	return db, nil
-}
-
-// ValidateNewUser validates the object in order to determine
-// if the minimum required fields have proper values (email
-// is valid, password is of a decent strength etc).
-func ValidateNewUser(user params.Users) error {
-	passwordStenght := zxcvbn.PasswordStrength(user.Password, nil)
-	if passwordStenght.Score < 4 {
-		return fmt.Errorf("the password is too weak, please use a stronger password")
-	}
-	if len(user.Email) > 254 || !rxEmail.MatchString(user.Email) {
-		return fmt.Errorf("invalid email address %s", user.Email)
-	}
-
-	if len(user.FullName) == 0 {
-		return fmt.Errorf("full name may not be empty")
-	}
-	return nil
 }
 
 // PaswsordToBcrypt returns a bcrypt hash of the specified password using the default cost
