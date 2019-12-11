@@ -5,6 +5,7 @@ import (
 	"gopherbin/auth"
 	"gopherbin/config"
 	"gopherbin/models"
+	"gopherbin/params"
 	"gopherbin/paste/common"
 	"gopherbin/util"
 	"time"
@@ -13,6 +14,50 @@ import (
 
 	"github.com/pkg/errors"
 )
+
+/*
+func (c *Collector) MigrateDatabase() error {
+	db, err := c.GetDBConnection()
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	if err := db.Debug().AutoMigrate(
+		&models.Block{},
+		&models.Tx{},
+		&models.Output{},
+		&models.Address{},
+	).Error; err != nil {
+		return err
+	}
+
+	if err := db.Debug().Model(&models.Tx{}).AddForeignKey(
+		"blk_id", "blocks(height)",
+		"CASCADE", "CASCADE").Error; err != nil {
+
+		return err
+	}
+	if err := db.Debug().Model(&models.Output{}).AddForeignKey(
+		"included_in_tx", "txes(tx_id)",
+		"CASCADE", "CASCADE").Error; err != nil {
+
+		return err
+	}
+	if err := db.Debug().Model(&models.Output{}).AddForeignKey(
+		"spent_with_tx", "txes(tx_id)",
+		"SET NULL", "CASCADE").Error; err != nil {
+
+		return err
+	}
+	if err := db.Debug().Model(&models.Output{}).AddForeignKey(
+		"spent_with_block", "blocks(height)",
+		"SET NULL", "CASCADE").Error; err != nil {
+
+		return err
+	}
+	return nil
+}
+*/
 
 // NewPaster returns a SQL backed paste implementation
 func NewPaster(dbCfg config.Database, cfg config.Default) (common.Paster, error) {
@@ -31,6 +76,29 @@ type paste struct {
 	cfg  config.Default
 }
 
+func (p *paste) migrateDB() error {
+	if err := p.conn.Debug().AutoMigrate(
+		&models.Users{},
+		&models.Paste{},
+		&models.Teams{},
+	).Error; err != nil {
+		return err
+	}
+	if err := p.conn.Debug().Model(&models.Paste{}).AddForeignKey(
+		"owner", "users(id)",
+		"CASCADE", "CASCADE").Error; err != nil {
+
+		return err
+	}
+	if err := p.conn.Debug().Model(&models.Teams{}).AddForeignKey(
+		"owner", "users(id)",
+		"CASCADE", "CASCADE").Error; err != nil {
+
+		return err
+	}
+	return nil
+}
+
 func (p *paste) getUser(userID int64) (models.Users, error) {
 	// TODO: abstract this into a common interface
 	var tmpUser models.Users
@@ -44,7 +112,7 @@ func (p *paste) getUser(userID int64) (models.Users, error) {
 	return tmpUser, nil
 }
 
-func (p *paste) getPaste(pasteID string, userID int64) (models.Paste, error) {
+func (p *paste) getPaste(pasteID string, user models.Users) (models.Paste, error) {
 	// TODO: get teams for userID
 	var tmpPaste models.Paste
 	// q := p.conn.First(&tmpPaste)
@@ -57,8 +125,8 @@ func (p *paste) getPaste(pasteID string, userID int64) (models.Paste, error) {
 	return tmpPaste, nil
 }
 
-func (p *paste) sqlToCommonPaste(modelPaste models.Paste) common.Paste {
-	return common.Paste{
+func (p *paste) sqlToCommonPaste(modelPaste models.Paste) params.Paste {
+	return params.Paste{
 		ID:        modelPaste.ID,
 		Data:      string(modelPaste.Data),
 		Name:      modelPaste.Name,
@@ -68,22 +136,22 @@ func (p *paste) sqlToCommonPaste(modelPaste models.Paste) common.Paste {
 	}
 }
 
-func (p *paste) Create(ctx context.Context, data string, expires time.Time, isPublic bool, title string) (paste common.Paste, err error) {
+func (p *paste) Create(ctx context.Context, data string, expires time.Time, isPublic bool, title string) (paste params.Paste, err error) {
 	pasteID, err := util.GetRandomString(24)
 	if err != nil {
-		return common.Paste{}, errors.Wrap(err, "getting random string")
+		return params.Paste{}, errors.Wrap(err, "getting random string")
 	}
 	if auth.IsAnonymous(ctx) || auth.IsEnabled(ctx) == false {
-		return common.Paste{}, auth.ErrUnauthorized
+		return params.Paste{}, auth.ErrUnauthorized
 	}
 	userID := auth.UserID(ctx)
 	user, err := p.getUser(userID)
 	if err != nil {
-		return common.Paste{}, errors.Wrap(err, "fetching user")
+		return params.Paste{}, errors.Wrap(err, "fetching user")
 	}
 	newPaste := models.Paste{
 		ID:        pasteID,
-		Owner:     user,
+		Owner:     user.ID,
 		CreatedAt: time.Now(),
 		Data:      []byte(data),
 		Public:    isPublic,
@@ -91,13 +159,13 @@ func (p *paste) Create(ctx context.Context, data string, expires time.Time, isPu
 	}
 	q := p.conn.Create(&newPaste)
 	if q.Error != nil {
-		return common.Paste{}, errors.Wrap(q.Error, "creating paste")
+		return params.Paste{}, errors.Wrap(q.Error, "creating paste")
 	}
 	return p.sqlToCommonPaste(newPaste), nil
 }
 
-func (p *paste) Get(ctx context.Context, pasteID string) (paste common.Paste, err error) {
-	return common.Paste{}, nil
+func (p *paste) Get(ctx context.Context, pasteID string) (paste params.Paste, err error) {
+	return params.Paste{}, nil
 }
 
 func (p *paste) Delete(ctx context.Context, pasteID string) error {

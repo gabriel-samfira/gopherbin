@@ -6,7 +6,7 @@ import (
 	"regexp"
 
 	"gopherbin/config"
-	"gopherbin/paste/common"
+	"gopherbin/params"
 
 	"github.com/cespare/xxhash"
 	"github.com/jinzhu/gorm"
@@ -36,7 +36,7 @@ func NewDBConn(dbCfg config.Database) (conn *gorm.DB, err error) {
 // ValidateNewUser validates the object in order to determine
 // if the minimum required fields have proper values (email
 // is valid, password is of a decent strength etc).
-func ValidateNewUser(user common.Users) error {
+func ValidateNewUser(user params.Users) error {
 	passwordStenght := zxcvbn.PasswordStrength(user.Password, nil)
 	if passwordStenght.Score < 4 {
 		return fmt.Errorf("the password is too weak, please use a stronger password")

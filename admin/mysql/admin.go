@@ -1,14 +1,15 @@
-package admin
+package mysql
 
 import (
 	"context"
 	"fmt"
 	"time"
 
+	"gopherbin/admin/common"
 	"gopherbin/auth"
 	"gopherbin/config"
 	"gopherbin/models"
-	"gopherbin/paste/common"
+	"gopherbin/params"
 	"gopherbin/util"
 
 	"github.com/jinzhu/gorm"
@@ -34,7 +35,7 @@ type userManager struct {
 	cfg  config.Default
 }
 
-func (u *userManager) newUserParamsToSQL(user common.Users) (models.Users, error) {
+func (u *userManager) newUserParamsToSQL(user params.Users) (models.Users, error) {
 	if err := util.ValidateNewUser(user); err != nil {
 		return models.Users{}, errors.Wrap(err, "validating user info")
 	}
@@ -63,8 +64,8 @@ func (u *userManager) newUserParamsToSQL(user common.Users) (models.Users, error
 	return newUser, nil
 }
 
-func (u *userManager) sqlUserToParams(user models.Users) common.Users {
-	return common.Users{
+func (u *userManager) sqlUserToParams(user models.Users) params.Users {
+	return params.Users{
 		ID:          user.ID,
 		FullName:    user.FullName,
 		Email:       user.Email,
@@ -76,49 +77,49 @@ func (u *userManager) sqlUserToParams(user models.Users) common.Users {
 	}
 }
 
-func (u *userManager) Create(ctx context.Context, user common.Users) (common.Users, error) {
+func (u *userManager) Create(ctx context.Context, user params.Users) (params.Users, error) {
 	if u.cfg.RegistrationOpen == false && auth.IsAdmin(ctx) == false {
-		return common.Users{}, auth.ErrUnauthorized
+		return params.Users{}, auth.ErrUnauthorized
 	}
 	newUser, err := u.newUserParamsToSQL(user)
 	if err != nil {
-		return common.Users{}, errors.Wrap(err, "fetching user object")
+		return params.Users{}, errors.Wrap(err, "fetching user object")
 	}
 	tmpUser, err := u.getUser(newUser.ID)
 	if err != nil && err != auth.ErrNotFound {
-		return common.Users{}, errors.Wrap(err, "fetching user")
+		return params.Users{}, errors.Wrap(err, "fetching user")
 	}
 
 	if err != auth.ErrNotFound {
-		return common.Users{}, fmt.Errorf("the email address %s is already in use", newUser.Email)
+		return params.Users{}, fmt.Errorf("the email address %s is already in use", newUser.Email)
 	}
 
 	err = u.conn.Create(&newUser).Error
 	if err != nil {
-		return common.Users{}, errors.Wrap(err, "creating new user")
+		return params.Users{}, errors.Wrap(err, "creating new user")
 	}
 	return u.sqlUserToParams(tmpUser), nil
 }
 
-func (u *userManager) Update(ctx context.Context, userID int64, update common.UpdateUserPayload) (common.Users, error) {
+func (u *userManager) Update(ctx context.Context, userID int64, update params.UpdateUserPayload) (params.Users, error) {
 	tmpUser, err := u.getUser(userID)
 	if err != nil {
-		return common.Users{}, errors.Wrap(err, "fetching user")
+		return params.Users{}, errors.Wrap(err, "fetching user")
 	}
 	isAdmin := auth.IsAdmin(ctx)
 	isSuper := auth.IsSuperUser(ctx)
 	user := auth.UserID(ctx)
 	if user == 0 {
-		return common.Users{}, auth.ErrUnauthorized
+		return params.Users{}, auth.ErrUnauthorized
 	}
 	// Only superusers may create administrators
 	if update.IsAdmin != nil && isSuper == false {
-		return common.Users{}, auth.ErrUnauthorized
+		return params.Users{}, auth.ErrUnauthorized
 	}
 	// A user may update their own info, or an admin may
 	// update another user's info.
 	if userID != user && isAdmin == false {
-		return common.Users{}, auth.ErrUnauthorized
+		return params.Users{}, auth.ErrUnauthorized
 	}
 
 	if update.IsAdmin != nil {
@@ -128,20 +129,20 @@ func (u *userManager) Update(ctx context.Context, userID int64, update common.Up
 	if update.Password != nil {
 		hashed, err := util.PaswsordToBcrypt(*update.Password)
 		if err != nil {
-			return common.Users{}, errors.Wrap(err, "updating password")
+			return params.Users{}, errors.Wrap(err, "updating password")
 		}
 		tmpUser.Password = hashed
 	}
 
 	if update.FullName != nil {
 		if len(*update.FullName) == 0 {
-			return common.Users{}, fmt.Errorf("name may not be empty")
+			return params.Users{}, fmt.Errorf("name may not be empty")
 		}
 		tmpUser.FullName = *update.FullName
 	}
 	q := u.conn.Save(&tmpUser)
 	if q.Error != nil {
-		return common.Users{}, errors.Wrap(q.Error, "saving user to database")
+		return params.Users{}, errors.Wrap(q.Error, "saving user to database")
 	}
 	return u.sqlUserToParams(tmpUser), nil
 }

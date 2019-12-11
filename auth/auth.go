@@ -3,7 +3,7 @@ package auth
 import (
 	"context"
 
-	"gopherbin/paste/common"
+	"gopherbin/params"
 )
 
 type contextFlags string
@@ -17,7 +17,7 @@ const (
 
 // PopulateContext sets the appropriate fields in the context, based on
 // the user object
-func PopulateContext(ctx context.Context, user common.Users) context.Context {
+func PopulateContext(ctx context.Context, user params.Users) context.Context {
 	ctx = SetUserID(ctx, user.ID)
 	ctx = SetAdmin(ctx, user.IsAdmin)
 	ctx = SetSuperUser(ctx, user.IsSuperUser)

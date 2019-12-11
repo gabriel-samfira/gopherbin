@@ -7,7 +7,7 @@ type Paste struct {
 	ID        string `gorm:"type:varchar(32);primary_key"`
 	Data      []byte `gorm:"type:longblob"`
 	Name      string
-	Owner     Users
+	Owner     int64
 	CreatedAt time.Time
 	Expires   time.Time
 	Public    bool
@@ -33,6 +33,6 @@ type Users struct {
 type Teams struct {
 	ID      int64  `gorm:"primary_key"`
 	Name    string `gorm:"type:varchar(32)"`
-	Owner   Users
+	Owner   int64
 	Members []*Users `gorm:"many2many:team_users;"`
 }

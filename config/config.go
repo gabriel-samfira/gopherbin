@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
-	"os"
-	"path/filepath"
 
 	"github.com/BurntSushi/toml"
 	"github.com/pkg/errors"
@@ -16,8 +14,6 @@ import (
 const (
 	// MySQLBackend represents the MySQL DB backend
 	MySQLBackend = "mysql"
-	// SQLiteBackend represents the Sqlite3 DB backend
-	SQLiteBackend = "sqlite3"
 )
 
 // NewConfig returns a new Config
@@ -67,9 +63,8 @@ func (d *Default) Validate() error {
 
 // Database is the database config entry
 type Database struct {
-	SQLBackend string `toml:"backend"`
-	SQLite     SQLite `toml:"sqlite"`
-	MySQL      MySQL  `toml:"mysql"`
+	DbBackend string `toml:"backend"`
+	MySQL     MySQL  `toml:"mysql"`
 }
 
 // GormParams returns the database type and connection URI
@@ -77,38 +72,31 @@ func (d *Database) GormParams() (dbType string, uri string, err error) {
 	if err := d.Validate(); err != nil {
 		return "", "", errors.Wrap(err, "validating database config")
 	}
-	dbType = d.SQLBackend
+	dbType = d.DbBackend
 	switch dbType {
 	case MySQLBackend:
 		uri, err = d.MySQL.ConnectionString()
 		if err != nil {
 			return "", "", errors.Wrap(err, "validating mysql config")
 		}
-	case SQLiteBackend:
-		uri, err = d.SQLite.ConnectionString()
-		if err != nil {
-			return "", "", errors.Wrap(err, "validating sqlite3 config")
-		}
+	default:
+		return "", "", fmt.Errorf("invalid database backend: %s", dbType)
 	}
 	return
 }
 
 // Validate validates the database config entry
 func (d *Database) Validate() error {
-	if d.SQLBackend == "" {
+	if d.DbBackend == "" {
 		return fmt.Errorf("Invalid databse configuration: backend is required")
 	}
-	switch d.SQLBackend {
+	switch d.DbBackend {
 	case MySQLBackend:
 		if err := d.MySQL.Validate(); err != nil {
 			return errors.Wrap(err, "validating mysql config")
 		}
-	case SQLiteBackend:
-		if err := d.SQLite.Validate(); err != nil {
-			return errors.Wrap(err, "validating sqlite3 config")
-		}
 	default:
-		return fmt.Errorf("Invalid database backend: %s", d.SQLBackend)
+		return fmt.Errorf("Invalid database backend: %s", d.DbBackend)
 	}
 	return nil
 }
@@ -142,33 +130,6 @@ func (m *MySQL) ConnectionString() (string, error) {
 		m.Hostname, m.DatabaseName,
 	)
 	return connString, nil
-}
-
-// SQLite is the SQLite3 backend
-type SQLite struct {
-	DBFile string `toml:"db_file"`
-}
-
-// ConnectionString returns a gorm compatible connection string
-func (s *SQLite) ConnectionString() (string, error) {
-	if err := s.Validate(); err != nil {
-		return "", err
-	}
-
-	return s.DBFile, nil
-}
-
-// Validate validates the SQLite config section
-func (s *SQLite) Validate() error {
-	absPath, err := filepath.Abs(s.DBFile)
-	if err != nil {
-		return errors.Wrap(err, "getting dirname")
-	}
-	parent := filepath.Dir(absPath)
-	if _, err := os.Stat(parent); err != nil {
-		return errors.Wrap(err, "fetching info about dirname")
-	}
-	return nil
 }
 
 // TLSConfig is the API server TLS config
