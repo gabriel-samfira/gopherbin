@@ -8,12 +8,14 @@ import (
 	"gopherbin/admin/common"
 	"gopherbin/auth"
 	"gopherbin/config"
+	gErrors "gopherbin/errors"
 	"gopherbin/models"
 	"gopherbin/params"
 	"gopherbin/util"
 
 	"github.com/jinzhu/gorm"
 	"github.com/pkg/errors"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // NewUserManager returns a new *UserManager
@@ -77,20 +79,39 @@ func (u *userManager) sqlUserToParams(user models.Users) params.Users {
 	}
 }
 
+func (u *userManager) Authenticate(ctx context.Context, info params.PasswordLoginParams) (context.Context, error) {
+	userID := info.ID()
+	if userID == 0 {
+		return ctx, fmt.Errorf("missing username")
+	}
+	modelUser, err := u.getUser(userID)
+	if err != nil {
+		return ctx, err
+	}
+	if modelUser.Password == "" {
+		return ctx, gErrors.ErrUnauthorized
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(modelUser.Password), []byte(info.Password)); err != nil {
+		return ctx, gErrors.ErrUnauthorized
+	}
+	userParams := u.sqlUserToParams(modelUser)
+	return auth.PopulateContext(ctx, userParams), nil
+}
+
 func (u *userManager) Create(ctx context.Context, user params.NewUserParams) (params.Users, error) {
 	if u.cfg.RegistrationOpen == false && auth.IsAdmin(ctx) == false {
-		return params.Users{}, auth.ErrUnauthorized
+		return params.Users{}, gErrors.ErrUnauthorized
 	}
 	newUser, err := u.newUserParamsToSQL(user)
 	if err != nil {
 		return params.Users{}, errors.Wrap(err, "fetching user object")
 	}
 	tmpUser, err := u.getUser(newUser.ID)
-	if err != nil && err != auth.ErrNotFound {
+	if err != nil && err != gErrors.ErrNotFound {
 		return params.Users{}, errors.Wrap(err, "fetching user")
 	}
 
-	if err != auth.ErrNotFound {
+	if err != gErrors.ErrNotFound {
 		return params.Users{}, fmt.Errorf("the email address %s is already in use", newUser.Email)
 	}
 
@@ -104,7 +125,7 @@ func (u *userManager) Create(ctx context.Context, user params.NewUserParams) (pa
 func (u *userManager) Get(ctx context.Context, userID int64) (params.Users, error) {
 	user := auth.UserID(ctx)
 	if user != userID && auth.IsAdmin(ctx) == false {
-		return params.Users{}, auth.ErrUnauthorized
+		return params.Users{}, gErrors.ErrUnauthorized
 	}
 	modelUser, err := u.getUser(userID)
 	if err != nil {
@@ -122,16 +143,16 @@ func (u *userManager) Update(ctx context.Context, userID int64, update params.Up
 	isSuper := auth.IsSuperUser(ctx)
 	user := auth.UserID(ctx)
 	if user == 0 {
-		return params.Users{}, auth.ErrUnauthorized
+		return params.Users{}, gErrors.ErrUnauthorized
 	}
 	// Only superusers may create administrators
 	if update.IsAdmin != nil && isSuper == false {
-		return params.Users{}, auth.ErrUnauthorized
+		return params.Users{}, gErrors.ErrUnauthorized
 	}
 	// A user may update their own info, or an admin may
 	// update another user's info.
 	if userID != user && isAdmin == false {
-		return params.Users{}, auth.ErrUnauthorized
+		return params.Users{}, gErrors.ErrUnauthorized
 	}
 
 	if update.IsAdmin != nil {
@@ -164,7 +185,7 @@ func (u *userManager) getUser(userID int64) (models.Users, error) {
 	q := u.conn.First(&tmpUser)
 	if q.Error != nil {
 		if q.RecordNotFound() {
-			return models.Users{}, auth.ErrNotFound
+			return models.Users{}, gErrors.ErrNotFound
 		}
 		return models.Users{}, errors.Wrap(q.Error, "fetching user from database")
 	}
@@ -187,7 +208,7 @@ func (u *userManager) setEnabledFlag(userID int64, enabled bool) error {
 func (u *userManager) Enable(ctx context.Context, userID int64) error {
 	isAdmin := auth.IsAdmin(ctx)
 	if isAdmin == false {
-		return auth.ErrUnauthorized
+		return gErrors.ErrUnauthorized
 	}
 	return u.setEnabledFlag(userID, true)
 }
@@ -195,7 +216,7 @@ func (u *userManager) Enable(ctx context.Context, userID int64) error {
 func (u *userManager) Disable(ctx context.Context, userID int64) error {
 	isAdmin := auth.IsAdmin(ctx)
 	if isAdmin == false {
-		return auth.ErrUnauthorized
+		return gErrors.ErrUnauthorized
 	}
 	return u.setEnabledFlag(userID, false)
 }
@@ -203,7 +224,7 @@ func (u *userManager) Disable(ctx context.Context, userID int64) error {
 func (u *userManager) Delete(ctx context.Context, userID int64) error {
 	isAdmin := auth.IsAdmin(ctx)
 	if isAdmin == false {
-		return auth.ErrUnauthorized
+		return gErrors.ErrUnauthorized
 	}
 	usr, err := u.getUser(userID)
 	if err != nil {

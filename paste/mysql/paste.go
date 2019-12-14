@@ -4,6 +4,7 @@ import (
 	"context"
 	"gopherbin/auth"
 	"gopherbin/config"
+	gErrors "gopherbin/errors"
 	"gopherbin/models"
 	"gopherbin/params"
 	"gopherbin/paste/common"
@@ -103,7 +104,7 @@ func (p *paste) getUser(userID int64) (models.Users, error) {
 	q := p.conn.Preload("Teams").Preload("CreatedTeams").First(&tmpUser)
 	if q.Error != nil {
 		if q.RecordNotFound() {
-			return models.Users{}, auth.ErrNotFound
+			return models.Users{}, gErrors.ErrNotFound
 		}
 		return models.Users{}, errors.Wrap(q.Error, "fetching user from database")
 	}
@@ -144,12 +145,12 @@ func (p *paste) getPaste(pasteID string, user models.Users, anonymous bool) (mod
 	q := p.conn.Preload("Teams").Preload("Users").First(&tmpPaste, pasteID)
 	if q.Error != nil {
 		if q.RecordNotFound() {
-			return models.Paste{}, auth.ErrNotFound
+			return models.Paste{}, gErrors.ErrNotFound
 		}
 		return models.Paste{}, errors.Wrap(q.Error, "fetching paste from database")
 	}
 	if canAccess := p.canAccess(tmpPaste, user, anonymous); !canAccess {
-		return models.Paste{}, auth.ErrUnauthorized
+		return models.Paste{}, gErrors.ErrUnauthorized
 	}
 	return tmpPaste, nil
 }
@@ -171,7 +172,7 @@ func (p *paste) Create(ctx context.Context, data string, expires time.Time, isPu
 		return params.Paste{}, errors.Wrap(err, "getting random string")
 	}
 	if auth.IsAnonymous(ctx) || auth.IsEnabled(ctx) == false {
-		return params.Paste{}, auth.ErrUnauthorized
+		return params.Paste{}, gErrors.ErrUnauthorized
 	}
 	userID := auth.UserID(ctx)
 	user, err := p.getUser(userID)
