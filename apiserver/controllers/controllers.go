@@ -133,11 +133,17 @@ func (p *PasteController) LogoutHandler(w http.ResponseWriter, r *http.Request) 
 
 // IndexHandler handles the index
 func (p *PasteController) IndexHandler(w http.ResponseWriter, r *http.Request) {
-	// session, err := p.session.Get(r, "session_token")
-	// if err != nil {
-	// 	w.WriteHeader(http.StatusInternalServerError)
-	// 	return
-	// }
+	session, err := p.session.Get(r, "session_token")
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	_, ok := session.Values["user_id"]
+	if !ok {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
 	s, err := templateBox.FindString("index.html")
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
