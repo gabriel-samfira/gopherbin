@@ -15,4 +15,5 @@ type UserManager interface {
 	Disable(ctx context.Context, userID int64) error
 	Delete(ctx context.Context, userID int64) error
 	Authenticate(ctx context.Context, info params.PasswordLoginParams) (context.Context, error)
+	HasSuperUser() bool
 }

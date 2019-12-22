@@ -37,6 +37,15 @@ type userManager struct {
 	cfg  config.Default
 }
 
+func (u *userManager) HasSuperUser() bool {
+	var tmpUser models.Users
+	q := u.conn.Where("is_super_user = ?", true).First(&tmpUser)
+	if q.Error != nil || tmpUser.ID == 0 {
+		return false
+	}
+	return true
+}
+
 func (u *userManager) newUserParamsToSQL(user params.NewUserParams) (models.Users, error) {
 	if err := user.Validate(); err != nil {
 		return models.Users{}, errors.Wrap(err, "validating user info")

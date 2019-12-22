@@ -1,9 +1,11 @@
 package controllers
 
 import (
+	"context"
 	"gopherbin/params"
 	"html/template"
 	"net/http"
+	"strings"
 
 	adminCommon "gopherbin/admin/common"
 	"gopherbin/auth"
@@ -15,8 +17,82 @@ import (
 	"github.com/gorilla/sessions"
 )
 
-var templateBox = packr.NewBox("../templates/html")
-var assetsBox = packr.NewBox("../templates/assets")
+const (
+	sessTokenName = "session_token"
+)
+
+var templateBox = packr.NewBox("../../templates/html")
+
+// NewSessionAuthMiddleware returns a new session based auth middleware
+func NewSessionAuthMiddleware(public []string, sess sessions.Store, manager adminCommon.UserManager) (auth.Middleware, error) {
+	return &authenticationMiddleware{
+		publicPaths: public,
+		session:     sess,
+		manager:     manager,
+	}, nil
+}
+
+type authenticationMiddleware struct {
+	publicPaths []string
+	session     sessions.Store
+	manager     adminCommon.UserManager
+}
+
+func (amw *authenticationMiddleware) isPublic(path string) bool {
+	for _, val := range amw.publicPaths {
+		if strings.HasPrefix(path, val) == true {
+			return true
+		}
+	}
+	return false
+}
+
+func (amw *authenticationMiddleware) sessionToContext(ctx context.Context, sess *sessions.Session) (context.Context, error) {
+	if sess == nil {
+		return ctx, gErrors.ErrUnauthorized
+	}
+	userID, ok := sess.Values["user_id"]
+	if !ok {
+		return ctx, gErrors.ErrUnauthorized
+	}
+	ctx = auth.SetUserID(ctx, userID.(int64))
+	userInfo, err := amw.manager.Get(ctx, userID.(int64))
+	if err != nil {
+		return ctx, err
+	}
+	return auth.PopulateContext(ctx, userInfo), nil
+}
+
+// Middleware function, which will be called for each request
+func (amw *authenticationMiddleware) Middleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if amw.isPublic(r.URL.Path) == true {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		if amw.manager.HasSuperUser() == false {
+			http.Redirect(w, r, "/firstrun", http.StatusSeeOther)
+			return
+		}
+
+		sess, err := amw.session.Get(r, sessTokenName)
+		if err != nil {
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			return
+		}
+		ctx, err := amw.sessionToContext(r.Context(), sess)
+		if err != nil {
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			return
+		}
+		if auth.IsEnabled(ctx) == false {
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			return
+		}
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
 
 // NewPasteController returns a new *PasteController
 func NewPasteController(paster common.Paster, session sessions.Store, admin adminCommon.UserManager) *PasteController {
@@ -37,7 +113,7 @@ type PasteController struct {
 
 // RegisterHandler handles registration of a new user
 func (p *PasteController) RegisterHandler(w http.ResponseWriter, r *http.Request) {
-	session, _ := p.session.Get(r, "session_token")
+	session, _ := p.session.Get(r, sessTokenName)
 	_, ok := session.Values["user_id"]
 	if ok {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
@@ -49,7 +125,7 @@ func (p *PasteController) RegisterHandler(w http.ResponseWriter, r *http.Request
 
 // LoginHandler handles application login requests
 func (p *PasteController) LoginHandler(w http.ResponseWriter, r *http.Request) {
-	session, err := p.session.Get(r, "session_token")
+	session, err := p.session.Get(r, sessTokenName)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -122,7 +198,7 @@ func (p *PasteController) LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 // LogoutHandler handles application logout requests
 func (p *PasteController) LogoutHandler(w http.ResponseWriter, r *http.Request) {
-	session, err := p.session.Get(r, "session_token")
+	session, err := p.session.Get(r, sessTokenName)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -133,15 +209,24 @@ func (p *PasteController) LogoutHandler(w http.ResponseWriter, r *http.Request) 
 
 // IndexHandler handles the index
 func (p *PasteController) IndexHandler(w http.ResponseWriter, r *http.Request) {
-	session, err := p.session.Get(r, "session_token")
+	session, err := p.session.Get(r, sessTokenName)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	_, ok := session.Values["user_id"]
+	userID, ok := session.Values["user_id"]
 	if !ok {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
+	}
+	ctx := auth.SetUserID(r.Context(), userID.(int64))
+
+	userInfo, err := p.manager.Get(ctx, userID.(int64))
+	if err != nil {
+		if err == gErrors.ErrUnauthorized || err == gErrors.ErrNotFound {
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			return
+		}
 	}
 
 	s, err := templateBox.FindString("index.html")
@@ -156,7 +241,7 @@ func (p *PasteController) IndexHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case "GET":
-		t.Execute(w, nil)
+		t.Execute(w, userInfo)
 		return
 	case "POST":
 	}
