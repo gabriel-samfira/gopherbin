@@ -20,6 +20,7 @@ import (
 	"github.com/gobuffalo/packr/v2"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/sessions"
+	"github.com/pkg/errors"
 )
 
 var log = loggo.GetLogger("gopherbin.apiserver.controllers")
@@ -129,6 +130,9 @@ func NewPasteController(paster common.Paster, session sessions.Store, admin admi
 		paster:  paster,
 		session: session,
 		manager: admin,
+		funcMap: template.FuncMap{
+			"dict": dict,
+		},
 	}
 }
 
@@ -138,6 +142,7 @@ type PasteController struct {
 	paster  common.Paster
 	session sessions.Store
 	manager adminCommon.UserManager
+	funcMap template.FuncMap
 }
 
 // RegisterHandler handles registration of a new user
@@ -150,6 +155,27 @@ func (p *PasteController) RegisterHandler(w http.ResponseWriter, r *http.Request
 	}
 	// user := &common.NewUser{}
 	// json.NewDecoder(r.Body).Decode(user)
+}
+
+// FirstRunHandler handles the index
+func (p *PasteController) FirstRunHandler(w http.ResponseWriter, r *http.Request) {
+	if p.manager.HasSuperUser() {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+	s, err := templateBox.FindString("firstrun.html")
+	if err != nil {
+		log.Errorf("%v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	t, err := template.New("firstrun").Parse(s)
+	if err != nil {
+		log.Errorf("%v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	t.Execute(w, nil)
 }
 
 // LoginHandler handles application login requests
@@ -249,44 +275,106 @@ type indexRet struct {
 	Errors    map[string]string
 }
 
+type pasteRet struct {
+	UserInfo params.Users
+	Paste    params.Paste
+	Error    string
+}
+
 // PasteViewHandler displays a paste
 func (p *PasteController) PasteViewHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	userInfo, err := p.manager.Get(ctx, auth.UserID(ctx))
+	if err != nil {
+		if err == gErrors.ErrUnauthorized || err == gErrors.ErrNotFound {
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			return
+		}
+	}
+	t, err := p.getTemplateWithHelpers("paste")
+	if err != nil {
+		log.Errorf("%v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	// s, err := templateBox.FindString("paste.html")
+	// if err != nil {
+	// 	log.Errorf("%v", err)
+	// 	w.WriteHeader(http.StatusInternalServerError)
+	// 	return
+	// }
+	// t, err := template.New("paste").Parse(s)
+	// if err != nil {
+	// 	log.Errorf("%v", err)
+	// 	w.WriteHeader(http.StatusInternalServerError)
+	// 	return
+	// }
+
 	vars := mux.Vars(r)
 	pasteID, ok := vars["pasteID"]
 	if !ok {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-
+	ret := pasteRet{
+		UserInfo: userInfo,
+	}
 	pasteInfo, err := p.paster.Get(ctx, pasteID)
 	if err != nil {
 		log.Errorf("%v", err)
-		switch err {
+		switch errors.Cause(err) {
 		case gErrors.ErrNotFound:
 			w.WriteHeader(http.StatusNotFound)
+			ret.Error = "Not Found"
+			t.Execute(w, ret)
 		case gErrors.ErrUnauthorized:
 			w.WriteHeader(http.StatusUnauthorized)
+			ret.Error = "Not Authorized"
+			t.Execute(w, ret)
 		default:
 			w.WriteHeader(http.StatusInternalServerError)
+			ret.Error = "Server error. Check back later."
+			t.Execute(w, ret)
 		}
 		return
 	}
-
-	s, err := templateBox.FindString("paste.html")
-	if err != nil {
-		log.Errorf("%v", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	t, err := template.New("paste").Parse(s)
-	if err != nil {
-		log.Errorf("%v", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	t.Execute(w, pasteInfo)
+	ret.Paste = pasteInfo
+	t.Execute(w, ret)
 	return
+}
+
+func (p *PasteController) getTemplateWithHelpers(name string) (*template.Template, error) {
+	withExt := fmt.Sprintf("%s.html", name)
+	s, err := templateBox.FindString(withExt)
+	if err != nil {
+		return nil, err
+	}
+
+	nav, err := templateBox.FindString("navbar.html")
+	if err != nil {
+		return nil, err
+	}
+
+	head, err := templateBox.FindString("header.html")
+	if err != nil {
+		return nil, err
+	}
+
+	withHead, err := template.New("header").Funcs(p.funcMap).Parse(head)
+	if err != nil {
+		return nil, err
+	}
+	tplWithNav, err := withHead.New("navbar").Funcs(p.funcMap).Parse(nav)
+	if err != nil {
+		return nil, err
+	}
+
+	t, err := tplWithNav.New(name).Funcs(p.funcMap).Parse(s)
+	if err != nil {
+		return nil, err
+	}
+	return t, nil
 }
 
 // IndexHandler handles the index
@@ -304,18 +392,14 @@ func (p *PasteController) IndexHandler(w http.ResponseWriter, r *http.Request) {
 		Languages: LanguageMappings,
 		Errors:    map[string]string{},
 	}
-	s, err := templateBox.FindString("index.html")
+
+	t, err := p.getTemplateWithHelpers("index")
 	if err != nil {
 		log.Errorf("%v", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	t, err := template.New("index").Parse(s)
-	if err != nil {
-		log.Errorf("%v", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
+
 	switch r.Method {
 	case "GET":
 		t.Execute(w, tplCtx)
@@ -363,7 +447,7 @@ func (p *PasteController) IndexHandler(w http.ResponseWriter, r *http.Request) {
 		// Create(ctx context.Context, data, title, language string, expires time.Time, isPublic bool) (paste params.Paste, err error)
 		pasteInfo, err := p.paster.Create(ctx, data, title, lang, pasteExpiration, false)
 		if err != nil {
-			switch err {
+			switch errors.Cause(err) {
 			case gErrors.ErrNotFound:
 				w.WriteHeader(http.StatusNotFound)
 			case gErrors.ErrUnauthorized:
@@ -376,25 +460,4 @@ func (p *PasteController) IndexHandler(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, fmt.Sprintf("/p/%s", pasteInfo.ID), http.StatusFound)
 		return
 	}
-}
-
-// FirstRunHandler handles the index
-func (p *PasteController) FirstRunHandler(w http.ResponseWriter, r *http.Request) {
-	if p.manager.HasSuperUser() {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
-		return
-	}
-	s, err := templateBox.FindString("firstrun.html")
-	if err != nil {
-		log.Errorf("%v", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	t, err := template.New("firstrun").Parse(s)
-	if err != nil {
-		log.Errorf("%v", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	t.Execute(w, nil)
 }

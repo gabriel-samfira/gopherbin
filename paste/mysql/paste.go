@@ -221,6 +221,10 @@ func (p *paste) Get(ctx context.Context, pasteID string) (paste params.Paste, er
 	return p.sqlToCommonPaste(pst), nil
 }
 
+func (p *paste) List(ctx context.Context) ([]params.Paste, error) {
+	return nil, nil
+}
+
 func (p *paste) Delete(ctx context.Context, pasteID string) error {
 	pst, err := p.get(ctx, pasteID)
 	if err != nil {

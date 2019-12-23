@@ -64,7 +64,7 @@ type Store struct {
 }
 
 type gormSession struct {
-	ID        string `sql:"unique_index;size:62"`
+	ID        string `sql:"unique_index"`
 	Data      string `sql:"type:text"`
 	CreatedAt time.Time
 	UpdatedAt time.Time
@@ -101,7 +101,7 @@ func NewOptions(db *gorm.DB, opts Options, keyPairs ...[]byte) *Store {
 	}
 
 	if !st.opts.SkipCreateTable {
-		st.db.Debug().AutoMigrate(&gormSession{tableName: st.opts.TableName})
+		st.db.AutoMigrate(&gormSession{tableName: st.opts.TableName})
 	}
 
 	return st
