@@ -52,8 +52,8 @@ func (c *Config) Validate() error {
 
 // Default defines settings
 type Default struct {
-	RegistrationOpen bool
-	AllowAnonymous   bool
+	RegistrationOpen bool `toml:"registration_open"`
+	AllowAnonymous   bool `toml:"allow_anonymous"`
 }
 
 // Validate validates the default section of the config
@@ -182,10 +182,11 @@ func (t *TLSConfig) Validate() error {
 // APIServer holds configuration for the API server
 // worker
 type APIServer struct {
-	Bind      string
-	Port      int
-	UseTLS    bool
-	TLSConfig TLSConfig `toml:"tls"`
+	Bind          string
+	Port          int
+	UseTLS        bool
+	SessionSecret string
+	TLSConfig     TLSConfig `toml:"tls"`
 }
 
 // Validate validates the API server config
@@ -204,6 +205,9 @@ func (a *APIServer) Validate() error {
 		// IP address specified in this setting will raise an error
 		// when we try to bind to it.
 		return fmt.Errorf("invalid IP address")
+	}
+	if a.SessionSecret == "" {
+		return fmt.Errorf("invalid session secret")
 	}
 	return nil
 }

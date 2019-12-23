@@ -11,7 +11,7 @@ import (
 	"gopherbin/apiserver/controllers"
 )
 
-var assetsBox = packr.NewBox("../../templates/assets")
+var assetsBox = packr.New("assets", "../../templates/assets")
 
 // GetRouter returns a new paste router
 func GetRouter(han *controllers.PasteController) (*mux.Router, error) {

@@ -21,7 +21,7 @@ const (
 	sessTokenName = "session_token"
 )
 
-var templateBox = packr.NewBox("../../templates/html")
+var templateBox = packr.New("templates", "../../templates/html")
 
 // NewSessionAuthMiddleware returns a new session based auth middleware
 func NewSessionAuthMiddleware(public []string, sess sessions.Store, manager adminCommon.UserManager) (auth.Middleware, error) {
@@ -130,8 +130,8 @@ func (p *PasteController) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	_, ok := session.Values["user_id"]
-	if ok {
+	ctx := r.Context()
+	if auth.IsAnonymous(ctx) == false {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
@@ -176,7 +176,7 @@ func (p *PasteController) LoginHandler(w http.ResponseWriter, r *http.Request) {
 			Password: passwd,
 		}
 
-		ctx, err := p.manager.Authenticate(r.Context(), loginParams)
+		ctx, err := p.manager.Authenticate(ctx, loginParams)
 		if err != nil {
 			if err == gErrors.ErrUnauthorized {
 				lm.Errors["Authentication"] = "Invalid username or password"

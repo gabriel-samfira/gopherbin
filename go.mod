@@ -12,6 +12,7 @@ require (
 	github.com/gorilla/mux v1.6.2
 	github.com/gorilla/sessions v1.2.0
 	github.com/jinzhu/gorm v1.9.11
+	github.com/juju/loggo v0.0.0-20190526231331-6e530bcce5d8
 	github.com/nbutton23/zxcvbn-go v0.0.0-20180912185939-ae427f1e4c1d
 	github.com/pkg/errors v0.8.0
 	github.com/rogpeppe/go-internal v1.5.1 // indirect
