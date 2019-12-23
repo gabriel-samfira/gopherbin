@@ -1,0 +1,74 @@
+# github.com/BurntSushi/toml v0.3.1
+github.com/BurntSushi/toml
+# github.com/cespare/xxhash v1.1.0
+github.com/cespare/xxhash
+# github.com/go-sql-driver/mysql v1.4.1
+github.com/go-sql-driver/mysql
+# github.com/gobuffalo/envy v1.8.1
+github.com/gobuffalo/envy
+# github.com/gobuffalo/logger v1.0.3
+github.com/gobuffalo/logger
+# github.com/gobuffalo/packd v0.3.0
+github.com/gobuffalo/packd
+github.com/gobuffalo/packd/internal/takeon/github.com/markbates/errx
+# github.com/gobuffalo/packr/v2 v2.7.1
+github.com/gobuffalo/packr/v2
+github.com/gobuffalo/packr/v2/file
+github.com/gobuffalo/packr/v2/file/resolver
+github.com/gobuffalo/packr/v2/file/resolver/encoding/hex
+github.com/gobuffalo/packr/v2/internal/takeon/github.com/karrick/godirwalk
+github.com/gobuffalo/packr/v2/internal/takeon/github.com/markbates/errx
+github.com/gobuffalo/packr/v2/internal/takeon/github.com/markbates/oncer
+github.com/gobuffalo/packr/v2/internal/takeon/github.com/markbates/safe
+github.com/gobuffalo/packr/v2/jam/parser
+github.com/gobuffalo/packr/v2/plog
+# github.com/gorilla/context v1.1.1
+github.com/gorilla/context
+# github.com/gorilla/handlers v1.4.2
+github.com/gorilla/handlers
+# github.com/gorilla/mux v1.6.2
+github.com/gorilla/mux
+# github.com/gorilla/securecookie v1.1.1
+github.com/gorilla/securecookie
+# github.com/gorilla/sessions v1.2.0
+github.com/gorilla/sessions
+# github.com/jinzhu/gorm v1.9.11
+github.com/jinzhu/gorm
+github.com/jinzhu/gorm/dialects/mysql
+# github.com/jinzhu/inflection v1.0.0
+github.com/jinzhu/inflection
+# github.com/joho/godotenv v1.3.0
+github.com/joho/godotenv
+# github.com/juju/loggo v0.0.0-20190526231331-6e530bcce5d8
+github.com/juju/loggo
+# github.com/konsorten/go-windows-terminal-sequences v1.0.2
+github.com/konsorten/go-windows-terminal-sequences
+# github.com/nbutton23/zxcvbn-go v0.0.0-20180912185939-ae427f1e4c1d
+github.com/nbutton23/zxcvbn-go
+github.com/nbutton23/zxcvbn-go/adjacency
+github.com/nbutton23/zxcvbn-go/data
+github.com/nbutton23/zxcvbn-go/entropy
+github.com/nbutton23/zxcvbn-go/frequency
+github.com/nbutton23/zxcvbn-go/match
+github.com/nbutton23/zxcvbn-go/matching
+github.com/nbutton23/zxcvbn-go/scoring
+github.com/nbutton23/zxcvbn-go/utils/math
+# github.com/pkg/errors v0.8.0
+github.com/pkg/errors
+# github.com/rogpeppe/go-internal v1.5.1
+github.com/rogpeppe/go-internal/modfile
+github.com/rogpeppe/go-internal/module
+github.com/rogpeppe/go-internal/semver
+# github.com/sirupsen/logrus v1.4.2
+github.com/sirupsen/logrus
+# github.com/wader/gormstore v0.0.0-20190904144442-d36772af4310
+github.com/wader/gormstore
+# golang.org/x/crypto v0.0.0-20191219195013-becbf705a915
+golang.org/x/crypto/bcrypt
+golang.org/x/crypto/blowfish
+golang.org/x/crypto/ssh/terminal
+# golang.org/x/sys v0.0.0-20191220220014-0732a990476f
+golang.org/x/sys/unix
+golang.org/x/sys/windows
+# google.golang.org/appengine v1.4.0
+google.golang.org/appengine/cloudsql

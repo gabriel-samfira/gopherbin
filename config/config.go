@@ -185,7 +185,7 @@ type APIServer struct {
 	Bind          string
 	Port          int
 	UseTLS        bool
-	SessionSecret string
+	SessionSecret string    `toml:"session_secret"`
 	TLSConfig     TLSConfig `toml:"tls"`
 }
 

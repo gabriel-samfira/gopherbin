@@ -9,6 +9,7 @@ import (
 // UserManager defines an interface for user management
 type UserManager interface {
 	Create(ctx context.Context, user params.NewUserParams) (params.Users, error)
+	CreateSuperUser(user params.NewUserParams) (params.Users, error)
 	Get(ctx context.Context, userID int64) (params.Users, error)
 	Update(ctx context.Context, userID int64, update params.UpdateUserPayload) (params.Users, error)
 	Enable(ctx context.Context, userID int64) error

@@ -36,10 +36,11 @@ type PasteUsers struct {
 type Paste struct {
 	ID        string `gorm:"type:varchar(32);primary_key"`
 	Data      []byte `gorm:"type:longblob"`
+	Language  string `gorm:"type:varchar(64)"`
 	Name      string
 	Owner     int64
 	CreatedAt time.Time
-	Expires   time.Time
+	Expires   *time.Time
 	Public    bool
 	Teams     []Teams `gorm:"many2many:paste_teams;"`
 	Users     []Users `gorm:"many2many:paste_users;"`

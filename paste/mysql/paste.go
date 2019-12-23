@@ -94,7 +94,6 @@ func (p *paste) migrateDB() error {
 
 		return errors.Wrap(err, "creating foreign key")
 	}
-
 	return nil
 }
 
@@ -142,7 +141,7 @@ func (p *paste) canAccess(paste models.Paste, user models.Users, anonymous bool)
 
 func (p *paste) getPaste(pasteID string, user models.Users, anonymous bool) (models.Paste, error) {
 	var tmpPaste models.Paste
-	q := p.conn.Preload("Teams").Preload("Users").First(&tmpPaste, pasteID)
+	q := p.conn.Preload("Teams").Preload("Users").Where("id = ?", pasteID).First(&tmpPaste)
 	if q.Error != nil {
 		if q.RecordNotFound() {
 			return models.Paste{}, gErrors.ErrNotFound
@@ -156,17 +155,21 @@ func (p *paste) getPaste(pasteID string, user models.Users, anonymous bool) (mod
 }
 
 func (p *paste) sqlToCommonPaste(modelPaste models.Paste) params.Paste {
-	return params.Paste{
+	paste := params.Paste{
 		ID:        modelPaste.ID,
 		Data:      string(modelPaste.Data),
+		Language:  modelPaste.Language,
 		Name:      modelPaste.Name,
-		Expires:   modelPaste.Expires,
 		Public:    modelPaste.Public,
 		CreatedAt: modelPaste.CreatedAt,
 	}
+	if modelPaste.Expires != nil {
+		paste.Expires = *modelPaste.Expires
+	}
+	return paste
 }
 
-func (p *paste) Create(ctx context.Context, data string, expires time.Time, isPublic bool, title string) (paste params.Paste, err error) {
+func (p *paste) Create(ctx context.Context, data, title, language string, expires *time.Time, isPublic bool) (paste params.Paste, err error) {
 	pasteID, err := util.GetRandomString(24)
 	if err != nil {
 		return params.Paste{}, errors.Wrap(err, "getting random string")
@@ -179,11 +182,14 @@ func (p *paste) Create(ctx context.Context, data string, expires time.Time, isPu
 	if err != nil {
 		return params.Paste{}, errors.Wrap(err, "fetching user")
 	}
+
 	newPaste := models.Paste{
 		ID:        pasteID,
 		Owner:     user.ID,
 		CreatedAt: time.Now(),
 		Data:      []byte(data),
+		Expires:   expires,
+		Language:  language,
 		Public:    isPublic,
 		Name:      title,
 	}

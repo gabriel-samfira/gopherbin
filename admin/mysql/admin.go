@@ -115,7 +115,7 @@ func (u *userManager) Create(ctx context.Context, user params.NewUserParams) (pa
 	if err != nil {
 		return params.Users{}, errors.Wrap(err, "fetching user object")
 	}
-	tmpUser, err := u.getUser(newUser.ID)
+	_, err = u.getUser(newUser.ID)
 	if err != nil && err != gErrors.ErrNotFound {
 		return params.Users{}, errors.Wrap(err, "fetching user")
 	}
@@ -128,7 +128,28 @@ func (u *userManager) Create(ctx context.Context, user params.NewUserParams) (pa
 	if err != nil {
 		return params.Users{}, errors.Wrap(err, "creating new user")
 	}
-	return u.sqlUserToParams(tmpUser), nil
+	return u.sqlUserToParams(newUser), nil
+}
+
+// CreateSuperUser creates a new super user. This function should never be called
+// from an API handler.
+func (u *userManager) CreateSuperUser(user params.NewUserParams) (params.Users, error) {
+	if u.HasSuperUser() {
+		return params.Users{}, fmt.Errorf("super user already exists")
+	}
+	newUser, err := u.newUserParamsToSQL(user)
+	if err != nil {
+		return params.Users{}, errors.Wrap(err, "fetching user object")
+	}
+	newUser.IsSuperUser = true
+	newUser.IsAdmin = true
+	newUser.Enabled = true
+
+	err = u.conn.Create(&newUser).Error
+	if err != nil {
+		return params.Users{}, errors.Wrap(err, "creating new user")
+	}
+	return u.sqlUserToParams(newUser), nil
 }
 
 func (u *userManager) Get(ctx context.Context, userID int64) (params.Users, error) {

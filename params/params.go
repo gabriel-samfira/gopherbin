@@ -72,6 +72,7 @@ type UpdateUserPayload struct {
 type Paste struct {
 	ID        string    `json:"id"`
 	Data      string    `json:"data"`
+	Language  string    `json:"language"`
 	Name      string    `json:"name"`
 	Expires   time.Time `json:"expires"`
 	Public    bool      `json:"public"`

@@ -72,11 +72,25 @@ func GetAPIServer(cfg *config.Config) (*APIServer, error) {
 
 	sessQuit := make(chan struct{})
 	sess, err := initSessionStor(cfg, sessQuit)
+
 	if err != nil {
 		return nil, errors.Wrap(err, "initializing session store")
 	}
 	pasteHandler := controllers.NewPasteController(paster, sess, userMgr)
-	router, err := routers.GetRouter(pasteHandler)
+	publicURL := []string{
+		"/login",
+		"/logout",
+	}
+	staticAssets := []string{
+		"/static",
+		"/firstrun",
+	}
+	authMiddleware, err := controllers.NewSessionAuthMiddleware(publicURL, staticAssets, sess, userMgr)
+	if err != nil {
+		return nil, errors.Wrap(err, "initializing auth middleware")
+	}
+
+	router, err := routers.GetRouter(pasteHandler, authMiddleware)
 	if err != nil {
 		return nil, errors.Wrap(err, "getting router")
 	}

@@ -9,7 +9,7 @@ import (
 
 // Paster is the interface for pastes
 type Paster interface {
-	Create(ctx context.Context, data string, expires time.Time, isPublic bool, title string) (paste params.Paste, err error)
+	Create(ctx context.Context, data, title, language string, expires *time.Time, isPublic bool) (paste params.Paste, err error)
 	Get(ctx context.Context, pasteID string) (paste params.Paste, err error)
 	Delete(ctx context.Context, pasteID string) error
 	ShareWithUser(ctx context.Context, pasteID string, userID int64) error
