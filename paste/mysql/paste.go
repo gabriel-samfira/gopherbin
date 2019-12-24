@@ -100,7 +100,7 @@ func (p *paste) migrateDB() error {
 func (p *paste) getUser(userID int64) (models.Users, error) {
 	// TODO: abstract this into a common interface
 	var tmpUser models.Users
-	q := p.conn.Preload("Teams").Preload("CreatedTeams").First(&tmpUser)
+	q := p.conn.Debug().Preload("Teams").Preload("CreatedTeams").Where("id = ?", userID).First(&tmpUser)
 	if q.Error != nil {
 		if q.RecordNotFound() {
 			return models.Users{}, gErrors.ErrNotFound
@@ -141,7 +141,9 @@ func (p *paste) canAccess(paste models.Paste, user models.Users, anonymous bool)
 
 func (p *paste) getPaste(pasteID string, user models.Users, anonymous bool) (models.Paste, error) {
 	var tmpPaste models.Paste
-	q := p.conn.Preload("Teams").Preload("Users").Where("id = ?", pasteID).First(&tmpPaste)
+	now := time.Now()
+	q := p.conn.Debug().Preload("Teams").Preload("Users").Where(
+		"id = ? and (expires is NULL or expires > ?)", pasteID, now).First(&tmpPaste)
 	if q.Error != nil {
 		if q.RecordNotFound() {
 			return models.Paste{}, gErrors.ErrNotFound

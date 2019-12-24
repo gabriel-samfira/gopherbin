@@ -298,19 +298,6 @@ func (p *PasteController) PasteViewHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// s, err := templateBox.FindString("paste.html")
-	// if err != nil {
-	// 	log.Errorf("%v", err)
-	// 	w.WriteHeader(http.StatusInternalServerError)
-	// 	return
-	// }
-	// t, err := template.New("paste").Parse(s)
-	// if err != nil {
-	// 	log.Errorf("%v", err)
-	// 	w.WriteHeader(http.StatusInternalServerError)
-	// 	return
-	// }
-
 	vars := mux.Vars(r)
 	pasteID, ok := vars["pasteID"]
 	if !ok {
