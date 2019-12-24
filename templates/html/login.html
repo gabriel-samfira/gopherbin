@@ -15,7 +15,7 @@
             <div class="col-4">
                 <div class="card">
                     <div class="card-body">
-						<form role="form" action="/login" method="POST">
+						<form role="form" method="POST">
 							{{ with .Errors.Authentication }}
         					<p class="error">{{ . }}</p>
         					{{ end }}

@@ -3,7 +3,7 @@
 {{template "header"}}
 <body>
     {{template "navbar" dict "UserInfo" .UserInfo }}
-	<div class="container pt-xl-5">
+	<div class="container-fluid pt-xl-5">
         {{ if .Error }}
         <h2>{{ .Error }}</h2>
         {{else}}
@@ -12,7 +12,7 @@
             {{if .Paste.Language}}
             <code class="{{.Paste.Language}} overflow-wrap">{{.Paste.Data}}</code>
             {{else}}
-            <code>{{.Paste.Data}}</code>
+            <code class="overflow-wrap">{{.Paste.Data}}</code>
             {{end}}
         </pre>
         {{end}}

@@ -92,11 +92,11 @@ func (amw *authenticationMiddleware) Middleware(next http.Handler) http.Handler 
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
 			return
 		}
-
+		loginWithNext := fmt.Sprintf("/login?next=%s", r.URL.Path)
 		ctx, err := amw.sessionToContext(r.Context(), sess)
 		if err != nil {
 			log.Errorf("failed to convert session to ctx: %v", err)
-			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			http.Redirect(w, r, loginWithNext, http.StatusSeeOther)
 			return
 		}
 
@@ -117,7 +117,7 @@ func (amw *authenticationMiddleware) Middleware(next http.Handler) http.Handler 
 
 		if auth.IsEnabled(ctx) == false {
 			log.Errorf("User is not enabled")
-			http.Redirect(w, r.WithContext(ctx), "/login", http.StatusSeeOther)
+			http.Redirect(w, r.WithContext(ctx), loginWithNext, http.StatusSeeOther)
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(ctx))
@@ -185,6 +185,7 @@ func (p *PasteController) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusFound)
 		return
 	}
+	next := r.URL.Query().Get("next")
 
 	s, err := templateBox.FindString("login.html")
 	if err != nil {
@@ -251,7 +252,12 @@ func (p *PasteController) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		session.Values["authenticated"] = true
 		session.Values["user_id"] = auth.UserID(ctx)
 		session.Save(r, w)
-		http.Redirect(w, r, "/", http.StatusFound)
+		if next != "" {
+			http.Redirect(w, r, next, http.StatusFound)
+		} else {
+			http.Redirect(w, r, "/", http.StatusFound)
+		}
+		return
 	}
 
 }

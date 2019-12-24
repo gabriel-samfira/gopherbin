@@ -143,7 +143,7 @@ func (p *paste) getPaste(pasteID string, user models.Users, anonymous bool) (mod
 	var tmpPaste models.Paste
 	now := time.Now()
 	q := p.conn.Debug().Preload("Teams").Preload("Users").Where(
-		"id = ? and (expires is NULL or expires > ?)", pasteID, now).First(&tmpPaste)
+		"id = ? and (expires is NULL or expires >= ?)", pasteID, now).First(&tmpPaste)
 	if q.Error != nil {
 		if q.RecordNotFound() {
 			return models.Paste{}, gErrors.ErrNotFound

@@ -13,7 +13,9 @@
         <script src="/static/js/highlightjs-line-numbers.min.js"></script>
         <script>
             hljs.initHighlightingOnLoad();
-            hljs.initLineNumbersOnLoad();
+            hljs.initLineNumbersOnLoad({
+                singleLine: true
+            });
             $.fn.selectpicker.Constructor.BootstrapVersion = '4';
         </script>
         <style>
