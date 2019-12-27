@@ -64,7 +64,7 @@ type Store struct {
 }
 
 type gormSession struct {
-	ID        string `sql:"unique_index"`
+	ID        string `sql:"unique_index;size:32"`
 	Data      string `sql:"type:text"`
 	CreatedAt time.Time
 	UpdatedAt time.Time
@@ -126,7 +126,7 @@ func (st *Store) New(r *http.Request, name string) (*sessions.Session, error) {
 			return session, nil
 		}
 		s := &gormSession{tableName: st.opts.TableName}
-		if err := st.db.Where("id = ? AND expires_at > ?", session.ID, gorm.NowFunc()).First(s).Error; err != nil {
+		if err := st.db.Debug().Where("id = ? AND expires_at > ?", session.ID, gorm.NowFunc()).First(s).Error; err != nil {
 			return session, nil
 		}
 		if err := securecookie.DecodeMulti(session.Name(), s.Data, &session.Values, st.Codecs...); err != nil {
@@ -142,7 +142,6 @@ func (st *Store) New(r *http.Request, name string) (*sessions.Session, error) {
 // Save session and set cookie header
 func (st *Store) Save(r *http.Request, w http.ResponseWriter, session *sessions.Session) error {
 	s, _ := context.Get(r, contextKey(session.Name())).(*gormSession)
-
 	// delete if max age is < 0
 	if session.Options.MaxAge < 0 {
 		if s != nil {
@@ -165,7 +164,7 @@ func (st *Store) Save(r *http.Request, w http.ResponseWriter, session *sessions.
 		// generate random session ID key suitable for storage in the db
 		session.ID = strings.TrimRight(
 			base32.StdEncoding.EncodeToString(
-				securecookie.GenerateRandomKey(sessionIDLen)), "=")
+				securecookie.GenerateRandomKey(sessionIDLen)), "=")[:sessionIDLen]
 		s = &gormSession{
 			ID:        session.ID,
 			Data:      data,

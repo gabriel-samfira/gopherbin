@@ -203,6 +203,7 @@ func (u *userManager) Update(ctx context.Context, userID int64, update params.Up
 		}
 		tmpUser.FullName = *update.FullName
 	}
+	tmpUser.UpdatedAt = time.Now()
 	q := u.conn.Save(&tmpUser)
 	if q.Error != nil {
 		return params.Users{}, errors.Wrap(q.Error, "saving user to database")
@@ -228,6 +229,7 @@ func (u *userManager) setEnabledFlag(userID int64, enabled bool) error {
 		return errors.Wrap(err, "fetching user from db")
 	}
 	usr.Enabled = enabled
+	usr.UpdatedAt = time.Now()
 	err = u.conn.Save(&usr).Error
 	if err != nil {
 		return errors.Wrap(err, "saving user to database")

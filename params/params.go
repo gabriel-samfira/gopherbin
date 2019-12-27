@@ -70,13 +70,21 @@ type UpdateUserPayload struct {
 
 // Paste holds information about a paste
 type Paste struct {
-	ID        string    `json:"id"`
+	ID        int64     `json:"id"`
+	PasteID   string    `json:"paste_id"`
 	Data      string    `json:"data"`
 	Language  string    `json:"language"`
 	Name      string    `json:"name"`
 	Expires   time.Time `json:"expires"`
 	Public    bool      `json:"public"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+// PasteListResult holds results for a paste list request
+type PasteListResult struct {
+	Total  int64   `json:"total"`
+	Page   int64   `json:"page"`
+	Pastes []Paste `json:"pastes"`
 }
 
 // PasswordLoginParams holds information used during

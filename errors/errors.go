@@ -9,4 +9,6 @@ var (
 	// ErrNotFound is returned if an object is not found in
 	// the database.
 	ErrNotFound = fmt.Errorf("not found")
+	// ErrInvalidSession is returned when a session is invalid
+	ErrInvalidSession = fmt.Errorf("invalid session")
 )

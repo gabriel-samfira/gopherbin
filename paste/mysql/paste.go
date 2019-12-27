@@ -143,7 +143,7 @@ func (p *paste) getPaste(pasteID string, user models.Users, anonymous bool) (mod
 	var tmpPaste models.Paste
 	now := time.Now()
 	q := p.conn.Debug().Preload("Teams").Preload("Users").Where(
-		"id = ? and (expires is NULL or expires >= ?)", pasteID, now).First(&tmpPaste)
+		"paste_id = ? and (expires is NULL or expires >= ?)", pasteID, now).First(&tmpPaste)
 	if q.Error != nil {
 		if q.RecordNotFound() {
 			return models.Paste{}, gErrors.ErrNotFound
@@ -159,6 +159,7 @@ func (p *paste) getPaste(pasteID string, user models.Users, anonymous bool) (mod
 func (p *paste) sqlToCommonPaste(modelPaste models.Paste) params.Paste {
 	paste := params.Paste{
 		ID:        modelPaste.ID,
+		PasteID:   modelPaste.PasteID,
 		Data:      string(modelPaste.Data),
 		Language:  modelPaste.Language,
 		Name:      modelPaste.Name,
@@ -186,7 +187,7 @@ func (p *paste) Create(ctx context.Context, data, title, language string, expire
 	}
 
 	newPaste := models.Paste{
-		ID:        pasteID,
+		PasteID:   pasteID,
 		Owner:     user.ID,
 		CreatedAt: time.Now(),
 		Data:      []byte(data),
@@ -223,16 +224,12 @@ func (p *paste) Get(ctx context.Context, pasteID string) (paste params.Paste, er
 	return p.sqlToCommonPaste(pst), nil
 }
 
-func (p *paste) List(ctx context.Context) ([]params.Paste, error) {
-	return nil, nil
-}
-
 func (p *paste) Delete(ctx context.Context, pasteID string) error {
 	pst, err := p.get(ctx, pasteID)
 	if err != nil {
 		return errors.Wrap(err, "fetching paste")
 	}
-	if pst.ID == "" {
+	if pst.PasteID == "" {
 		return nil
 	}
 	q := p.conn.Delete(&pst)
@@ -240,6 +237,49 @@ func (p *paste) Delete(ctx context.Context, pasteID string) error {
 		return errors.Wrap(q.Error, "deleting paste")
 	}
 	return nil
+}
+
+func (p *paste) List(ctx context.Context, page int64, results int64) (paste params.PasteListResult, err error) {
+	userID := auth.UserID(ctx)
+	user, err := p.getUser(userID)
+	if err != nil {
+		return params.PasteListResult{}, errors.Wrap(err, "fetching user from DB")
+	}
+	if page == 0 {
+		page = 1
+	}
+	if results == 0 {
+		results = 1
+	}
+	var pasteResults []models.Paste
+	var cnt int64
+	now := time.Now()
+	startFrom := (page - 1) * results
+	q := p.conn.Debug().Select("id, paste_id, language, name, owner, created_at, expires, public").Where(
+		"owner = ? and (expires is NULL or expires >= ?)",
+		user.ID, now).Order("id desc")
+
+	cntQ := q.Count(&cnt)
+	if cntQ.Error != nil {
+		return params.PasteListResult{}, errors.Wrap(cntQ.Error, "counting results")
+	}
+
+	resQ := q.Offset(startFrom).Limit(results).Find(&pasteResults)
+	if resQ.Error != nil {
+		if resQ.RecordNotFound() {
+			return params.PasteListResult{}, gErrors.ErrNotFound
+		}
+		return params.PasteListResult{}, errors.Wrap(q.Error, "fetching pastes from database")
+	}
+	asParams := make([]params.Paste, len(pasteResults))
+	for idx, val := range pasteResults {
+		asParams[idx] = p.sqlToCommonPaste(val)
+	}
+	return params.PasteListResult{
+		Pastes: asParams,
+		Total:  cnt,
+		Page:   page,
+	}, nil
 }
 
 func (p *paste) ShareWithUser(ctx context.Context, pasteID string, userID int64) error {

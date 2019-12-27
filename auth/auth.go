@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"time"
 
 	"gopherbin/params"
 )
@@ -11,8 +12,12 @@ type contextFlags string
 const (
 	isAdminKey     contextFlags = "is_admin"
 	isSuperUserKey contextFlags = "is_super"
-	userIDFlag     contextFlags = "user_id"
-	isEnabledFlag  contextFlags = "is_enabled"
+	// UpdatedAtFlag sets the timestamp when the user was
+	// updated in the context
+	UpdatedAtFlag contextFlags = "updated_at"
+	// UserIDFlag is the User ID flag we set in the context
+	UserIDFlag    contextFlags = "user_id"
+	isEnabledFlag contextFlags = "is_enabled"
 )
 
 // PopulateContext sets the appropriate fields in the context, based on
@@ -22,7 +27,22 @@ func PopulateContext(ctx context.Context, user params.Users) context.Context {
 	ctx = SetAdmin(ctx, user.IsAdmin)
 	ctx = SetSuperUser(ctx, user.IsSuperUser)
 	ctx = SetIsEnabled(ctx, user.Enabled)
+	ctx = SetUpdatedAt(ctx, user.UpdatedAt)
 	return ctx
+}
+
+// SetUpdatedAt sets the update stamp for a user in the context
+func SetUpdatedAt(ctx context.Context, tm time.Time) context.Context {
+	return context.WithValue(ctx, UpdatedAtFlag, tm.String())
+}
+
+// UpdatedAt retrieves the updated_at flag
+func UpdatedAt(ctx context.Context) string {
+	updated := ctx.Value(UpdatedAtFlag)
+	if updated == nil {
+		return ""
+	}
+	return updated.(string)
 }
 
 // SetIsEnabled sets a flag indicating if account is enabled
@@ -74,12 +94,12 @@ func IsSuperUser(ctx context.Context) bool {
 
 // SetUserID sets the userID in the context
 func SetUserID(ctx context.Context, userID int64) context.Context {
-	return context.WithValue(ctx, userIDFlag, userID)
+	return context.WithValue(ctx, UserIDFlag, userID)
 }
 
 // UserID returns the userID from the context
 func UserID(ctx context.Context) int64 {
-	userID := ctx.Value(userIDFlag)
+	userID := ctx.Value(UserIDFlag)
 	if userID == nil {
 		return 0
 	}

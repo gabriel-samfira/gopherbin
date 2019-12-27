@@ -75,10 +75,14 @@ func (amw *authenticationMiddleware) sessionToContext(ctx context.Context, sess 
 		// Anonymous
 		return ctx, nil
 	}
+	rev, _ := sess.Values["updated_at"]
 	ctx = auth.SetUserID(ctx, userID.(int64))
 	userInfo, err := amw.manager.Get(ctx, userID.(int64))
 	if err != nil {
 		return ctx, err
+	}
+	if rev != userInfo.UpdatedAt.String() {
+		return ctx, gErrors.ErrInvalidSession
 	}
 	return auth.PopulateContext(ctx, userInfo), nil
 }
@@ -86,6 +90,21 @@ func (amw *authenticationMiddleware) sessionToContext(ctx context.Context, sess 
 // Middleware function, which will be called for each request
 func (amw *authenticationMiddleware) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if amw.isStatic(r.URL.Path) == true {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		if amw.manager.HasSuperUser() == false {
+			http.Redirect(w, r, "/firstrun", http.StatusSeeOther)
+			return
+		}
+
+		if amw.isPublic(r.URL.Path) == true {
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		sess, err := amw.session.Get(r, sessTokenName)
 		if err != nil {
 			log.Errorf("failed to get session: %v", err)
@@ -95,23 +114,12 @@ func (amw *authenticationMiddleware) Middleware(next http.Handler) http.Handler 
 		loginWithNext := fmt.Sprintf("/login?next=%s", r.URL.Path)
 		ctx, err := amw.sessionToContext(r.Context(), sess)
 		if err != nil {
+			if err == gErrors.ErrInvalidSession {
+				sess.Options.MaxAge = -1
+				sess.Save(r, w)
+			}
 			log.Errorf("failed to convert session to ctx: %v", err)
 			http.Redirect(w, r, loginWithNext, http.StatusSeeOther)
-			return
-		}
-
-		if amw.isStatic(r.URL.Path) == true {
-			next.ServeHTTP(w, r.WithContext(ctx))
-			return
-		}
-
-		if amw.manager.HasSuperUser() == false {
-			http.Redirect(w, r.WithContext(ctx), "/firstrun", http.StatusSeeOther)
-			return
-		}
-
-		if amw.isPublic(r.URL.Path) == true {
-			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
 
@@ -251,6 +259,10 @@ func (p *PasteController) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		session.Values["authenticated"] = true
 		session.Values["user_id"] = auth.UserID(ctx)
+		// session.Values["user_id"] = auth.UserID(ctx)
+		// session.Values["updated_at"] = auth.UpdatedAt(ctx)
+		session.Values["updated_at"] = auth.UpdatedAt(ctx)
+		session.Options.MaxAge = 31536000
 		session.Save(r, w)
 		if next != "" {
 			http.Redirect(w, r, next, http.StatusFound)
@@ -271,7 +283,10 @@ func (p *PasteController) LogoutHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	session.Options.MaxAge = -1
-	session.Save(r, w)
+	err = session.Save(r, w)
+	if err != nil {
+		log.Errorf("%v", err)
+	}
 	http.Redirect(w, r, "/login", http.StatusFound)
 }
 
@@ -450,7 +465,7 @@ func (p *PasteController) IndexHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
-		http.Redirect(w, r, fmt.Sprintf("/p/%s", pasteInfo.ID), http.StatusFound)
+		http.Redirect(w, r, fmt.Sprintf("/p/%s", pasteInfo.PasteID), http.StatusFound)
 		return
 	}
 }
