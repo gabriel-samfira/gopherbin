@@ -18,7 +18,7 @@ import (
 
 var log = loggo.GetLogger("gopherbin.cmd")
 var usage = `Available subcommands:
-%s init
+%s create-superuser
 %s run
 `
 
@@ -88,7 +88,7 @@ func runAPIServer(cfgFile string) {
 }
 
 func main() {
-	firstRunCmd := flag.NewFlagSet("init", flag.ExitOnError)
+	firstRunCmd := flag.NewFlagSet("create-superuser", flag.ExitOnError)
 	runCmd := flag.NewFlagSet("run", flag.ExitOnError)
 
 	firstRunCmdCfgFile := firstRunCmd.String("config", "", "gopherbin config file")
@@ -104,7 +104,7 @@ func main() {
 	}
 
 	switch os.Args[1] {
-	case "init":
+	case "create-superuser":
 		firstRunCmd.Parse(os.Args[2:])
 		if *firstRunCmdCfgFile == "" || *firstRunCmdEmail == "" || *firstRunCmdPassword == "" || *firstRunCmdFullName == "" {
 			firstRunCmd.PrintDefaults()
