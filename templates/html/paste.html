@@ -7,7 +7,7 @@
         {{ if .Error }}
         <h2>{{ .Error }}</h2>
         {{else}}
-        <h2> {{.Paste.Name }} </h2>
+        <h2> {{.Paste.Name }} {{if .Paste.Public}}(Public){{end}}</h2>
         <pre>
             {{if .Paste.Language}}
             <code class="{{.Paste.Language}} overflow-wrap">{{.Paste.Data}}</code>

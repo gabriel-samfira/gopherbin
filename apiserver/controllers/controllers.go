@@ -6,6 +6,7 @@ import (
 	"gopherbin/params"
 	"html/template"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -120,6 +121,11 @@ func (amw *authenticationMiddleware) Middleware(next http.Handler) http.Handler 
 			}
 			log.Errorf("failed to convert session to ctx: %v", err)
 			http.Redirect(w, r, loginWithNext, http.StatusSeeOther)
+			return
+		}
+
+		if auth.IsAnonymous(ctx) {
+			http.Redirect(w, r.WithContext(ctx), loginWithNext, http.StatusSeeOther)
 			return
 		}
 
@@ -385,6 +391,75 @@ func (p *PasteController) getTemplateWithHelpers(name string) (*template.Templat
 	return t, nil
 }
 
+type listView struct {
+	UserInfo params.Users
+	Pastes   params.PasteListResult
+}
+
+// PasteListHandler handles the list of pastes
+func (p *PasteController) PasteListHandler(w http.ResponseWriter, r *http.Request) {
+	t, err := p.getTemplateWithHelpers("paste_list")
+	if err != nil {
+		log.Errorf("%v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	ctx := r.Context()
+	userInfo, err := p.manager.Get(ctx, auth.UserID(ctx))
+	if err != nil {
+		if err == gErrors.ErrUnauthorized || err == gErrors.ErrNotFound {
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			return
+		}
+	}
+	page := r.URL.Query().Get("page")
+	pageInt, _ := strconv.ParseInt(page, 10, 64)
+	// TODO: make this user defined
+	var maxResults int64 = 50
+	res, err := p.paster.List(ctx, pageInt, maxResults)
+	if err != nil {
+		switch errors.Cause(err) {
+		case gErrors.ErrNotFound:
+			w.WriteHeader(http.StatusNotFound)
+		case gErrors.ErrUnauthorized:
+			w.WriteHeader(http.StatusUnauthorized)
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		return
+	}
+	retCtx := listView{
+		UserInfo: userInfo,
+		Pastes:   res,
+	}
+	t.Execute(w, retCtx)
+	return
+}
+
+// DeletePasteHandler deletes a paste
+func (p *PasteController) DeletePasteHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	vars := mux.Vars(r)
+	pasteID, ok := vars["pasteID"]
+	if !ok {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	if err := p.paster.Delete(ctx, pasteID); err != nil {
+		switch errors.Cause(err) {
+		case gErrors.ErrNotFound:
+			w.WriteHeader(http.StatusNotFound)
+		case gErrors.ErrUnauthorized:
+			w.WriteHeader(http.StatusUnauthorized)
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
 // IndexHandler handles the index
 func (p *PasteController) IndexHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -424,6 +499,12 @@ func (p *PasteController) IndexHandler(w http.ResponseWriter, r *http.Request) {
 		date := r.Form.Get("date")
 		lang := r.Form.Get("language")
 
+		publicOpt := r.Form.Get("public")
+		var public bool
+		if publicOpt == "on" {
+			public = true
+		}
+
 		var pasteExpiration *time.Time
 		if date != "" {
 			parsedTime, err := time.Parse("01/02/2006", date)
@@ -443,7 +524,7 @@ func (p *PasteController) IndexHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if lang != "" {
-			if _, ok := LanguageMappings[lang]; ok {
+			if !hasLanguage(lang) {
 				lang = ""
 			}
 		}
@@ -453,7 +534,7 @@ func (p *PasteController) IndexHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// Create(ctx context.Context, data, title, language string, expires time.Time, isPublic bool) (paste params.Paste, err error)
-		pasteInfo, err := p.paster.Create(ctx, data, title, lang, pasteExpiration, false)
+		pasteInfo, err := p.paster.Create(ctx, data, title, lang, pasteExpiration, public)
 		if err != nil {
 			switch errors.Cause(err) {
 			case gErrors.ErrNotFound:

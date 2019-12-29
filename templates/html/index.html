@@ -20,8 +20,10 @@
                     <div class="col-sm-3 form-group">
                         <input class="form-control" id="datepicker" name="date" placeholder="Expires" type="text" value="" readonly/>
                         <script>
+                            today = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
                             $('#datepicker').datepicker({
-                                uiLibrary: 'bootstrap4'
+                                uiLibrary: 'bootstrap4',
+                                minDate: today
                             });
                         </script>
                     </div>
@@ -37,6 +39,11 @@
                         </select>
                     </div>
                 </div>
+
+                <div class="custom-control custom-checkbox">
+                    <input type="checkbox" class="custom-control-input form-control" id="makePublic" name="public">
+                    <label class="custom-control-label" for="makePublic">Public</label>
+                </div>
            
                 <div class="row">
                     {{ with .Errors.DataError }}
@@ -48,7 +55,7 @@
                 </div>
 
                 <div class="row">
-                    <div class="form-group">
+                    <div class="form-check">
                         <div class="col-sm-2">
                             <button type="submit" class="btn btn-default">Paste!</button>
                         </div>

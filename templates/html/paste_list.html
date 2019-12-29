@@ -1,0 +1,64 @@
+<html>
+    {{template "header"}}
+    <body>
+        {{template "navbar" dict "UserInfo" .UserInfo }}
+        <div class="container-fluid">
+            <div class="table-responsive-sm">
+                {{if .Pastes.Pastes}}
+                <ul class="pagination"></ul>
+                <table class="table" style="width:100%">
+                    <thead>
+                        <tr>
+                            <th scope="col">Paste Name</th>
+                            <th scope="col">Syntax</th>
+                            <th scope="col" class="d-none d-sm-table-cell">Created</th>
+                            <th scope="col" class="d-none d-sm-table-cell">Expires</th>
+                            <th scope="col">Public</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{ range $idx, $elem := .Pastes.Pastes }}
+                        <tr id="{{$elem.PasteID}}">
+                            <td><a href="/p/{{$elem.PasteID}}">{{$elem.Name}}</a></td>
+                            <td>{{$elem.Language}}</td>
+                            <td class="d-none d-sm-table-cell">{{$elem.FormattedCreatedAt}}</td>
+                            <td class="d-none d-sm-table-cell">{{ if not (eq $elem.FormattedExpires "01-Jan-0001") }}{{ $elem.FormattedExpires}}{{end}}</td>
+                            <td>{{ if $elem.Public }}Yes{{else}}No{{end}}</td>
+                            <td><button class="btn btn-danger dlt_btn" type='button' row-id='{{$elem.PasteID}}'>Delete</button></td>
+                        </tr>
+                        {{ end }}
+                    </tbody>
+                </table>
+                <ul class="pagination"></ul>
+                {{else}}
+                You don't have any pastes. <a href="/">Create one</a>
+                {{end}}
+            </div>
+        </div>
+        <script type="text/javascript">
+            $(document).ready(function () { 
+                $(".dlt_btn").click(function(){
+                    let rowId = $(this).attr('row-id'); //Pull the attribute from your button
+                    let tr =  $(this).parent().parent(); //Define the TR itself
+                    $.ajax({
+                        url: "/p/" + rowId + "/delete",
+                        type: 'DELETE',
+                        success: function(result) 
+                        {
+                            location.reload();
+                        }
+                    });
+                });
+            });
+            let totalPages = "{{ .Pastes.TotalPages }}";
+            $('.pagination').twbsPagination({
+                    totalPages: totalPages,
+                    hideOnlyOnePage: true,
+                    visiblePages: 5,
+                    pageVariable: 'page',
+                    href: true
+                });
+        </script>        
+    </body>
+</html>

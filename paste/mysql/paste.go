@@ -9,6 +9,7 @@ import (
 	"gopherbin/params"
 	"gopherbin/paste/common"
 	"gopherbin/util"
+	"math"
 	"time"
 
 	"github.com/jinzhu/gorm"
@@ -100,7 +101,7 @@ func (p *paste) migrateDB() error {
 func (p *paste) getUser(userID int64) (models.Users, error) {
 	// TODO: abstract this into a common interface
 	var tmpUser models.Users
-	q := p.conn.Debug().Preload("Teams").Preload("CreatedTeams").Where("id = ?", userID).First(&tmpUser)
+	q := p.conn.Preload("Teams").Preload("CreatedTeams").Where("id = ?", userID).First(&tmpUser)
 	if q.Error != nil {
 		if q.RecordNotFound() {
 			return models.Users{}, gErrors.ErrNotFound
@@ -142,7 +143,7 @@ func (p *paste) canAccess(paste models.Paste, user models.Users, anonymous bool)
 func (p *paste) getPaste(pasteID string, user models.Users, anonymous bool) (models.Paste, error) {
 	var tmpPaste models.Paste
 	now := time.Now()
-	q := p.conn.Debug().Preload("Teams").Preload("Users").Where(
+	q := p.conn.Preload("Teams").Preload("Users").Where(
 		"paste_id = ? and (expires is NULL or expires >= ?)", pasteID, now).First(&tmpPaste)
 	if q.Error != nil {
 		if q.RecordNotFound() {
@@ -255,11 +256,11 @@ func (p *paste) List(ctx context.Context, page int64, results int64) (paste para
 	var cnt int64
 	now := time.Now()
 	startFrom := (page - 1) * results
-	q := p.conn.Debug().Select("id, paste_id, language, name, owner, created_at, expires, public").Where(
+	q := p.conn.Select("id, paste_id, language, name, owner, created_at, expires, public").Where(
 		"owner = ? and (expires is NULL or expires >= ?)",
 		user.ID, now).Order("id desc")
 
-	cntQ := q.Count(&cnt)
+	cntQ := q.Debug().Model(&models.Paste{}).Count(&cnt)
 	if cntQ.Error != nil {
 		return params.PasteListResult{}, errors.Wrap(cntQ.Error, "counting results")
 	}
@@ -275,10 +276,15 @@ func (p *paste) List(ctx context.Context, page int64, results int64) (paste para
 	for idx, val := range pasteResults {
 		asParams[idx] = p.sqlToCommonPaste(val)
 	}
+	totalPages := int64(math.Ceil(float64(cnt) / float64(results)))
+	if totalPages == 0 {
+		totalPages = 1
+	}
 	return params.PasteListResult{
-		Pastes: asParams,
-		Total:  cnt,
-		Page:   page,
+		Pastes:     asParams,
+		Total:      cnt,
+		TotalPages: totalPages,
+		Page:       page,
 	}, nil
 }
 

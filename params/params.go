@@ -80,11 +80,20 @@ type Paste struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+func (p Paste) FormattedCreatedAt() string {
+	return p.CreatedAt.Format("02-Jan-2006")
+}
+
+func (p Paste) FormattedExpires() string {
+	return p.Expires.Format("02-Jan-2006")
+}
+
 // PasteListResult holds results for a paste list request
 type PasteListResult struct {
-	Total  int64   `json:"total"`
-	Page   int64   `json:"page"`
-	Pastes []Paste `json:"pastes"`
+	Total      int64   `json:"total"`
+	TotalPages int64   `json:"total_pages"`
+	Page       int64   `json:"page"`
+	Pastes     []Paste `json:"pastes"`
 }
 
 // PasswordLoginParams holds information used during
