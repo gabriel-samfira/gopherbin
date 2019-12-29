@@ -14,11 +14,10 @@ import (
 	"gopherbin/auth"
 	gErrors "gopherbin/errors"
 	"gopherbin/paste/common"
+	"gopherbin/templates"
 
 	"github.com/juju/loggo"
 
-	// "github.com/wader/gormstore"
-	"github.com/gobuffalo/packr/v2"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/sessions"
 	"github.com/pkg/errors"
@@ -29,8 +28,6 @@ var log = loggo.GetLogger("gopherbin.apiserver.controllers")
 const (
 	sessTokenName = "session_token"
 )
-
-var templateBox = packr.New("templates", "../../templates/html")
 
 // NewSessionAuthMiddleware returns a new session based auth middleware
 func NewSessionAuthMiddleware(public []string, assetURLs []string, sess sessions.Store, manager adminCommon.UserManager) (auth.Middleware, error) {
@@ -177,7 +174,7 @@ func (p *PasteController) FirstRunHandler(w http.ResponseWriter, r *http.Request
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
-	s, err := templateBox.FindString("firstrun.html")
+	s, err := templates.TemplateBox.FindString("firstrun.html")
 	if err != nil {
 		log.Errorf("%v", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -201,7 +198,7 @@ func (p *PasteController) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	next := r.URL.Query().Get("next")
 
-	s, err := templateBox.FindString("login.html")
+	s, err := templates.TemplateBox.FindString("login.html")
 	if err != nil {
 		log.Errorf("%v", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -360,17 +357,17 @@ func (p *PasteController) PasteViewHandler(w http.ResponseWriter, r *http.Reques
 
 func (p *PasteController) getTemplateWithHelpers(name string) (*template.Template, error) {
 	withExt := fmt.Sprintf("%s.html", name)
-	s, err := templateBox.FindString(withExt)
+	s, err := templates.TemplateBox.FindString(withExt)
 	if err != nil {
 		return nil, err
 	}
 
-	nav, err := templateBox.FindString("navbar.html")
+	nav, err := templates.TemplateBox.FindString("navbar.html")
 	if err != nil {
 		return nil, err
 	}
 
-	head, err := templateBox.FindString("header.html")
+	head, err := templates.TemplateBox.FindString("header.html")
 	if err != nil {
 		return nil, err
 	}
