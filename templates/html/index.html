@@ -10,7 +10,7 @@
                             <p class="error">{{ . }}</p>
                         {{ end }}
                         <div class="col-sm-12 form-group">
-                            <input type="text" name="title" class="form-control" placeholder="Title">
+                            <input type="text" value="{{.Values.title}}" name="title" class="form-control" placeholder="Title">
                         </div>
                     </div>
 
@@ -19,7 +19,7 @@
                             <p class="error">{{ . }}</p>
                         {{ end }}
                         <div class="col-sm-3 form-group">
-                            <input class="form-control" id="datepicker" name="date" placeholder="Expires" type="text" value="" readonly/>
+                            <input class="form-control" id="datepicker" name="date" placeholder="Expires" type="text" value="{{.Values.date}}" readonly/>
                             <script>
                                 today = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
                                 $('#datepicker').datepicker({
@@ -35,7 +35,11 @@
                             <select class="selectpicker" name="language" data-live-search="true">
                                 <option selected value>Select syntax</option>
                                 {{range $name, $value := .Languages }}
-                                <option value={{$value}}>{{$name}}</option>
+                                {{ if eq (index $.Values "language") $value }}
+                                    <option value={{$value}} selected>{{$name}}</option>
+                                {{else}}
+                                    <option value={{$value}}>{{$name}}</option>
+                                {{end}}
                                 {{end}}
                             </select>
                         </div>
@@ -44,7 +48,7 @@
                     <div class="row">
                         <div class="col-sm-3 form-group">
                             <div class="custom-control custom-checkbox">
-                                <input type="checkbox" class="custom-control-input form-control" id="makePublic" name="public">
+                                <input {{ if eq (index .Values "public")  "on" }}checked{{ end }} type="checkbox" class="custom-control-input form-control" id="makePublic" name="public">
                                 <label class="custom-control-label" for="makePublic">Public</label>
                             </div>
                         </div>
@@ -55,7 +59,7 @@
                             <p class="error">{{ . }}</p>
                         {{ end }}
                         <div class="col-sm-12 form-group">
-                            <textarea class="form-control tab-enabled" name="data" rows="10" placeholder="Contents"></textarea>
+                            <textarea class="form-control tab-enabled" name="data" rows="10" placeholder="Contents">{{.Values.data}}</textarea>
                         </div>
                     </div>
 

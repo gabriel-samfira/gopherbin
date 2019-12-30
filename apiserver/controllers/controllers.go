@@ -312,6 +312,7 @@ type indexRet struct {
 	UserInfo  params.Users
 	Languages map[string]string
 	Errors    map[string]string
+	Values    map[string]string
 }
 
 type pasteRet struct {
@@ -537,6 +538,7 @@ func (p *PasteController) IndexHandler(w http.ResponseWriter, r *http.Request) {
 		UserInfo:  userInfo,
 		Languages: LanguageMappings,
 		Errors:    map[string]string{},
+		Values:    map[string]string{},
 	}
 
 	t, err := p.getTemplateWithHelpers("index")
@@ -561,8 +563,14 @@ func (p *PasteController) IndexHandler(w http.ResponseWriter, r *http.Request) {
 		title := r.Form.Get("title")
 		date := r.Form.Get("date")
 		lang := r.Form.Get("language")
-
 		publicOpt := r.Form.Get("public")
+
+		tplCtx.Values["data"] = data
+		tplCtx.Values["title"] = title
+		tplCtx.Values["date"] = date
+		tplCtx.Values["language"] = lang
+		tplCtx.Values["public"] = publicOpt
+
 		var public bool
 		if publicOpt == "on" {
 			public = true
