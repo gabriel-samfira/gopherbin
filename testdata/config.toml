@@ -1,0 +1,25 @@
+[default]
+registration_open = false
+allow_anonymous = false
+
+[apiserver]
+bind = "0.0.0.0"
+port = 9997
+use_tls = false
+# Use a decently secure secret. Obviously this needs to be changed :-).
+session_secret = "beerdesOwshitvobkeshyijuchepavbiejCefJubemrirjOnJeutyucHalHushbo"
+
+#    [apiserver.tls]
+#    certificate = "/path/to/cert.pem"
+#    key = "/path/to/key.pem"
+#    ca_certificate = "/path/to/ca_cert.pem"
+
+[database]
+backend = "mysql"
+
+    [database.mysql]
+    username = "pasteuser"
+    # This obviously also needs to be changed :-)
+    password = "superSecretPassword"
+    hostname = "192.168.100.10"
+    database = "pastedb"
