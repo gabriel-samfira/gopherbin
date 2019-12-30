@@ -134,9 +134,9 @@ func (m *MySQL) ConnectionString() (string, error) {
 
 // TLSConfig is the API server TLS config
 type TLSConfig struct {
-	CRT    string
-	Key    string
-	CACert string
+	CRT    string `toml:"certificate"`
+	Key    string `toml:"key"`
+	CACert string `toml:"ca_certificate"`
 }
 
 // TLSConfig returns a new TLSConfig suitable for use in the
