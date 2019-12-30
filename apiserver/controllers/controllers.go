@@ -15,6 +15,7 @@ import (
 	gErrors "gopherbin/errors"
 	"gopherbin/paste/common"
 	"gopherbin/templates"
+	"gopherbin/util"
 
 	"github.com/juju/loggo"
 
@@ -393,6 +394,57 @@ type listView struct {
 	Pastes   params.PasteListResult
 }
 
+type userListView struct {
+	UserInfo params.Users
+	Users    params.UserListResult
+}
+
+// UserListHandler handles the list of pastes
+func (p *PasteController) UserListHandler(w http.ResponseWriter, r *http.Request) {
+	t, err := p.getTemplateWithHelpers("user_list")
+	if err != nil {
+		log.Errorf("%v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	ctx := r.Context()
+	if auth.IsSuperUser(ctx) == false && auth.IsAdmin(ctx) == false {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte("Unauthorized"))
+		return
+	}
+	userInfo, err := p.manager.Get(ctx, auth.UserID(ctx))
+	if err != nil {
+		if err == gErrors.ErrUnauthorized || err == gErrors.ErrNotFound {
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			return
+		}
+	}
+	page := r.URL.Query().Get("page")
+	pageInt, _ := strconv.ParseInt(page, 10, 64)
+	// TODO: make this user defined
+	var maxResults int64 = 50
+	res, err := p.manager.List(ctx, pageInt, maxResults)
+	if err != nil {
+		switch errors.Cause(err) {
+		case gErrors.ErrNotFound:
+			w.WriteHeader(http.StatusNotFound)
+		case gErrors.ErrUnauthorized:
+			w.WriteHeader(http.StatusUnauthorized)
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		return
+	}
+	retCtx := userListView{
+		UserInfo: userInfo,
+		Users:    res,
+	}
+	t.Execute(w, retCtx)
+	return
+}
+
 // PasteListHandler handles the list of pastes
 func (p *PasteController) PasteListHandler(w http.ResponseWriter, r *http.Request) {
 	t, err := p.getTemplateWithHelpers("paste_list")
@@ -544,6 +596,111 @@ func (p *PasteController) IndexHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		http.Redirect(w, r, fmt.Sprintf("/p/%s", pasteInfo.PasteID), http.StatusFound)
+		return
+	}
+}
+
+type newUserRet struct {
+	UserInfo params.Users
+	Errors   map[string]string
+}
+
+// NewUserHandler creates a new user
+func (p *PasteController) NewUserHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	if auth.IsSuperUser(ctx) == false && auth.IsAdmin(ctx) == false {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte("Unauthorized"))
+		return
+	}
+
+	userInfo, err := p.manager.Get(ctx, auth.UserID(ctx))
+	if err != nil {
+		if err == gErrors.ErrUnauthorized || err == gErrors.ErrNotFound {
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			return
+		}
+	}
+	tplCtx := newUserRet{
+		UserInfo: userInfo,
+		Errors:   map[string]string{},
+	}
+
+	t, err := p.getTemplateWithHelpers("new_user")
+	if err != nil {
+		log.Errorf("%v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	switch r.Method {
+	case "GET":
+		t.Execute(w, tplCtx)
+		return
+	case "POST":
+		err = r.ParseForm()
+		if err != nil {
+			log.Errorf("%v", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		email := r.Form.Get("email")
+		fullname := r.Form.Get("fullname")
+		password := r.Form.Get("password")
+		password2 := r.Form.Get("password2")
+		makeAdminOpt := r.Form.Get("makeadmin")
+		enabledOpt := r.Form.Get("enabled")
+
+		var makeAdmin bool
+		var enabled bool
+		if makeAdminOpt == "on" && auth.IsSuperUser(ctx) {
+			makeAdmin = true
+		}
+
+		if enabledOpt == "on" {
+			enabled = true
+		}
+
+		if fullname == "" || len(fullname) > 254 {
+			tplCtx.Errors["FullNameError"] = "Full name must be between 1 and 254 characters"
+		}
+
+		if email == "" || !util.IsValidEmail(email) {
+			tplCtx.Errors["EmailError"] = "invalid email"
+		}
+
+		if password == "" || password != password2 {
+			tplCtx.Errors["PasswordError"] = "password must not be empty and must match"
+		}
+
+		newUserParams := params.NewUserParams{
+			Email:    email,
+			FullName: fullname,
+			IsAdmin:  makeAdmin,
+			Password: password,
+			Enabled:  enabled,
+		}
+		_, err = p.manager.Create(ctx, newUserParams)
+		if err != nil {
+			switch errors.Cause(err) {
+			case gErrors.ErrNotFound:
+				w.WriteHeader(http.StatusNotFound)
+			case gErrors.ErrUnauthorized:
+				w.WriteHeader(http.StatusUnauthorized)
+				tplCtx.Errors["UnauthorizedError"] = "You are not authorized to perform this operation"
+			case gErrors.ErrDuplicateUser:
+				w.WriteHeader(http.StatusBadRequest)
+				tplCtx.Errors["EmailError"] = "User already exists"
+			default:
+				w.WriteHeader(http.StatusInternalServerError)
+			}
+			if len(tplCtx.Errors) > 0 {
+				w.WriteHeader(http.StatusBadRequest)
+				t.Execute(w, tplCtx)
+				return
+			}
+		}
+		http.Redirect(w, r, "/admin/users", http.StatusFound)
 		return
 	}
 }

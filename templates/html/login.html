@@ -2,18 +2,19 @@
 <html lang="en" >
 
 <head>
-  	<meta charset="UTF-8">
-  	<title>Login</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  	<title>Gopherbin login</title>
   	<link href="/static/css/bootstrap.min.css" rel="stylesheet" id="bootstrap-css">
 	<script src="/static/js/bootstrap.min.js"></script>
 	<script src="/static/js/jquery.min.js"></script>
 </head>
 
 <body>
-	<div class="container">
+	<div class="container-fluid">
         <div class="row justify-content-center align-items-center" style="height:100vh">
-            <div class="col-4">
-                <div class="card">
+            <div class="col-8-sm">
+                <div class="card mb-8">
                     <div class="card-body">
 						<form role="form" method="POST">
 							{{ with .Errors.Authentication }}

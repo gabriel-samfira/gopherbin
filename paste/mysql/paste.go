@@ -270,7 +270,7 @@ func (p *paste) List(ctx context.Context, page int64, results int64) (paste para
 		if resQ.RecordNotFound() {
 			return params.PasteListResult{}, gErrors.ErrNotFound
 		}
-		return params.PasteListResult{}, errors.Wrap(q.Error, "fetching pastes from database")
+		return params.PasteListResult{}, errors.Wrap(resQ.Error, "fetching pastes from database")
 	}
 	asParams := make([]params.Paste, len(pasteResults))
 	for idx, val := range pasteResults {
@@ -281,10 +281,10 @@ func (p *paste) List(ctx context.Context, page int64, results int64) (paste para
 		totalPages = 1
 	}
 	return params.PasteListResult{
-		Pastes:     asParams,
-		Total:      cnt,
+		Pastes: asParams,
+		// Total:      cnt,
 		TotalPages: totalPages,
-		Page:       page,
+		// Page:       page,
 	}, nil
 }
 

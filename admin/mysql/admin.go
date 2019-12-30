@@ -3,6 +3,7 @@ package mysql
 import (
 	"context"
 	"fmt"
+	"math"
 	"time"
 
 	"gopherbin/admin/common"
@@ -68,9 +69,9 @@ func (u *userManager) newUserParamsToSQL(user params.NewUserParams) (models.User
 		FullName:    user.FullName,
 		Password:    hashedPassword,
 		CreatedAt:   time.Now(),
-		IsAdmin:     false,
+		IsAdmin:     user.IsAdmin,
 		IsSuperUser: false,
-		Enabled:     false,
+		Enabled:     user.Enabled,
 	}
 	return newUser, nil
 }
@@ -111,17 +112,23 @@ func (u *userManager) Create(ctx context.Context, user params.NewUserParams) (pa
 	if u.cfg.RegistrationOpen == false && auth.IsAdmin(ctx) == false {
 		return params.Users{}, gErrors.ErrUnauthorized
 	}
+
+	if user.IsAdmin != false && !auth.IsSuperUser(ctx) {
+		return params.Users{}, gErrors.ErrUnauthorized
+	}
+
 	newUser, err := u.newUserParamsToSQL(user)
 	if err != nil {
 		return params.Users{}, errors.Wrap(err, "fetching user object")
 	}
-	_, err = u.getUser(newUser.ID)
-	if err != nil && err != gErrors.ErrNotFound {
-		return params.Users{}, errors.Wrap(err, "fetching user")
-	}
-
-	if err != gErrors.ErrNotFound {
-		return params.Users{}, fmt.Errorf("the email address %s is already in use", newUser.Email)
+	usr, err := u.getUser(newUser.ID)
+	if err != nil {
+		if err != gErrors.ErrNotFound {
+			return params.Users{}, errors.Wrap(err, "fetching user")
+		}
+	} else {
+		fmt.Println(usr)
+		return params.Users{}, gErrors.ErrDuplicateUser
 	}
 
 	err = u.conn.Create(&newUser).Error
@@ -162,6 +169,48 @@ func (u *userManager) Get(ctx context.Context, userID int64) (params.Users, erro
 		return params.Users{}, errors.Wrap(err, "fetching user form DB")
 	}
 	return u.sqlUserToParams(modelUser), nil
+}
+
+func (u *userManager) List(ctx context.Context, page int64, results int64) (paste params.UserListResult, err error) {
+	if auth.IsAdmin(ctx) == false {
+		return params.UserListResult{}, gErrors.ErrUnauthorized
+	}
+
+	if page == 0 {
+		page = 1
+	}
+	if results == 0 {
+		results = 1
+	}
+
+	var userResults []models.Users
+	var cnt int64
+	startFrom := (page - 1) * results
+
+	cntQ := u.conn.Debug().Model(&models.Users{}).Count(&cnt)
+	if cntQ.Error != nil {
+		return params.UserListResult{}, errors.Wrap(cntQ.Error, "counting results")
+	}
+
+	resQ := u.conn.Offset(startFrom).Limit(results).Find(&userResults)
+	if resQ.Error != nil {
+		if resQ.RecordNotFound() {
+			return params.UserListResult{}, gErrors.ErrNotFound
+		}
+		return params.UserListResult{}, errors.Wrap(resQ.Error, "fetching pastes from database")
+	}
+	asParams := make([]params.Users, len(userResults))
+	for idx, val := range userResults {
+		asParams[idx] = u.sqlUserToParams(val)
+	}
+	totalPages := int64(math.Ceil(float64(cnt) / float64(results)))
+	if totalPages == 0 {
+		totalPages = 1
+	}
+	return params.UserListResult{
+		TotalPages: totalPages,
+		Users:      asParams,
+	}, nil
 }
 
 func (u *userManager) Update(ctx context.Context, userID int64, update params.UpdateUserPayload) (params.Users, error) {
@@ -213,7 +262,7 @@ func (u *userManager) Update(ctx context.Context, userID int64, update params.Up
 
 func (u *userManager) getUser(userID int64) (models.Users, error) {
 	var tmpUser models.Users
-	q := u.conn.First(&tmpUser)
+	q := u.conn.Where("id = ?", userID).First(&tmpUser)
 	if q.Error != nil {
 		if q.RecordNotFound() {
 			return models.Users{}, gErrors.ErrNotFound

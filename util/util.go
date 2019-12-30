@@ -3,6 +3,7 @@ package util
 import (
 	"crypto/rand"
 	"fmt"
+	"regexp"
 
 	"gopherbin/config"
 
@@ -13,6 +14,17 @@ import (
 )
 
 const alphanumeric = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+
+// From: https://www.alexedwards.net/blog/validation-snippets-for-go#email-validation
+var rxEmail = regexp.MustCompile("^[a-zA-Z0-9.!#$%&'*+\\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$")
+
+// IsValidEmail returs a bool indicating if an email is valid
+func IsValidEmail(email string) bool {
+	if len(email) > 254 || !rxEmail.MatchString(email) {
+		return false
+	}
+	return true
+}
 
 // NewDBConn returns a new gorm db connection, given the config
 func NewDBConn(dbCfg config.Database) (conn *gorm.DB, err error) {

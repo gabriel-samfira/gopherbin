@@ -11,4 +11,7 @@ var (
 	ErrNotFound = fmt.Errorf("not found")
 	// ErrInvalidSession is returned when a session is invalid
 	ErrInvalidSession = fmt.Errorf("invalid session")
+	// ErrDuplicateUser is returned when creating a user, if the
+	// user already exists.
+	ErrDuplicateUser = fmt.Errorf("duplicate user")
 )

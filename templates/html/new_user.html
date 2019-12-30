@@ -1,0 +1,73 @@
+<html>
+    {{template "header"}}
+    <body>
+        {{template "navbar" dict "UserInfo" .UserInfo }}
+        <div class="container-fluid">
+            <div class="col-sm-12">
+                <form role="form" method="POST" autocomplete="off">
+                    <div class="row">
+                        {{ with .Errors.EmailError }}
+                            <p class="error">{{ . }}</p>
+                        {{ end }}
+                        <div class="col-sm-12 form-group">
+                            <input type="text" name="email" class="form-control" placeholder="Email">
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        {{ with .Errors.FullNameError }}
+                            <p class="error">{{ . }}</p>
+                        {{ end }}
+                        <div class="col-sm-12 form-group">
+                            <input type="text" name="fullname" class="form-control" placeholder="Full Name">
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        {{ with .Errors.PasswordError }}
+                            <p class="error">{{ . }}</p>
+                        {{ end }}
+                        <div class="col-sm-12 form-group">
+                            <input type="password" name="password" class="form-control" placeholder="Password">
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        {{ with .Errors.PasswordError2 }}
+                            <p class="error">{{ . }}</p>
+                        {{ end }}
+                        <div class="col-sm-12 form-group">
+                            <input type="password" name="password2" class="form-control" placeholder="Password again">
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-sm-3 form-group">
+                            <div class="custom-control custom-checkbox">
+                                <input type="checkbox" class="custom-control-input form-control" id="enabled" name="enabled">
+                                <label class="custom-control-label" for="enabled">Enabled</label>
+                            </div>
+                        </div>
+                    </div>
+                    {{if .UserInfo.IsSuperUser}}
+                    <div class="row">
+                        <div class="col-sm-3 form-group">
+                            <div class="custom-control custom-checkbox">
+                                <input type="checkbox" class="custom-control-input form-control" id="makeAdmin" name="makeadmin">
+                                <label class="custom-control-label" for="makeAdmin">Admin</label>
+                            </div>
+                        </div>
+                    </div>
+                    {{end}}
+
+                    <div class="row">
+                        <div class="form-group">
+                            <div class="col-sm-2">
+                                <button type="submit" class="btn btn-primary">Create</button>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </body>
+</html>

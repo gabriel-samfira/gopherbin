@@ -2,16 +2,12 @@ package params
 
 import (
 	"fmt"
-	"regexp"
 	"time"
 
 	"gopherbin/util"
 
 	zxcvbn "github.com/nbutton23/zxcvbn-go"
 )
-
-// From: https://www.alexedwards.net/blog/validation-snippets-for-go#email-validation
-var rxEmail = regexp.MustCompile("^[a-zA-Z0-9.!#$%&'*+\\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$")
 
 // Teams holds information about a team
 type Teams struct {
@@ -34,12 +30,32 @@ type Users struct {
 	IsSuperUser bool      `json:"is_superuser"`
 }
 
+// FormattedCreatedAt returns a DD-MM-YY formatted createdAt
+// date
+func (u Users) FormattedCreatedAt() string {
+	return u.CreatedAt.Format("02-Jan-2006")
+}
+
+// FormattedUpdatedAt returns a DD-MM-YY formatted expiration
+// date
+func (u Users) FormattedUpdatedAt() string {
+	return u.UpdatedAt.Format("02-Jan-2006")
+}
+
+// UserListResult holds results for a user list request
+type UserListResult struct {
+	TotalPages int64   `json:"total_pages"`
+	Users      []Users `json:"users"`
+}
+
 // NewUserParams holds the needed information to create
 // a new user
 type NewUserParams struct {
 	Email    string `json:"email"`
 	FullName string `json:"full_name"`
 	Password string `json:"password"`
+	IsAdmin  bool   `json:"is_admin"`
+	Enabled  bool   `json:"enabled"`
 }
 
 // Validate validates the object in order to determine
@@ -50,7 +66,7 @@ func (u NewUserParams) Validate() error {
 	if passwordStenght.Score < 4 {
 		return fmt.Errorf("the password is too weak, please use a stronger password")
 	}
-	if len(u.Email) > 254 || !rxEmail.MatchString(u.Email) {
+	if !util.IsValidEmail(u.Email) {
 		return fmt.Errorf("invalid email address %s", u.Email)
 	}
 
@@ -80,20 +96,24 @@ type Paste struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// FormattedCreatedAt returns a DD-MM-YY formatted createdAt
+// date
 func (p Paste) FormattedCreatedAt() string {
 	return p.CreatedAt.Format("02-Jan-2006")
 }
 
+// FormattedExpires returns a DD-MM-YY formatted expiration
+// date
 func (p Paste) FormattedExpires() string {
 	return p.Expires.Format("02-Jan-2006")
 }
 
 // PasteListResult holds results for a paste list request
 type PasteListResult struct {
-	Total      int64   `json:"total"`
-	TotalPages int64   `json:"total_pages"`
-	Page       int64   `json:"page"`
-	Pastes     []Paste `json:"pastes"`
+	// Total      int64   `json:"total"`
+	TotalPages int64 `json:"total_pages"`
+	// Page       int64   `json:"page"`
+	Pastes []Paste `json:"pastes"`
 }
 
 // PasswordLoginParams holds information used during

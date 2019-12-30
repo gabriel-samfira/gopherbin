@@ -48,6 +48,8 @@ func GetRouter(han *controllers.PasteController, authMiddleware auth.Middleware)
 	router.Handle("/{p:p\\/?}", gorillaHandlers.LoggingHandler(os.Stdout, http.HandlerFunc(han.PasteListHandler))).Methods("GET")
 	router.Handle("/p/{pasteID}", gorillaHandlers.LoggingHandler(os.Stdout, http.HandlerFunc(han.PasteViewHandler))).Methods("GET")
 	router.Handle("/p/{pasteID}/{delete:delete\\/?}", gorillaHandlers.LoggingHandler(os.Stdout, http.HandlerFunc(han.DeletePasteHandler))).Methods("DELETE")
+	router.Handle("/admin/{users:users\\/?}", gorillaHandlers.LoggingHandler(os.Stdout, http.HandlerFunc(han.UserListHandler))).Methods("GET")
+	router.Handle("/admin/{new-user:new-user\\/?}", gorillaHandlers.LoggingHandler(os.Stdout, http.HandlerFunc(han.NewUserHandler))).Methods("GET", "POST")
 
 	router.Use(authMiddleware.Middleware)
 	return router, nil
