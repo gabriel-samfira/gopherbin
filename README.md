@@ -1,6 +1,6 @@
 # Gopherbin
 
-Welcome to Gopherbin. This project offers a simple password protected, paste-like service, that you can self host.
+Welcome to Gopherbin. This project offers a simple password protected, paste-like service, that you can self host. This is an initial release, so expect bugs.
 
 ## Building
 
