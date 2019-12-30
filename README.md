@@ -4,7 +4,7 @@ Welcome to Gopherbin. This project offers a simple password protected, paste-lik
 
 ## Building
 
-You will need Go version ```1.13```.
+You will need at least Go version ```1.13```.
 
 Gopherbin uses [packr2](https://github.com/gobuffalo/packr/tree/master/v2) to bundle static files within the final binary. One of the beauties of Go is the fact that you get a single binary that you can simply distribite and run, without any dependencies. This should be true even with web applications that need to serve up static files.
 
@@ -30,7 +30,25 @@ packr2
 Build the binary:
 
 ```bash
-go build -o /tmp/gopherbin -mod vendor ../cmd/gopherbin/gopherbin.go
+# Build for GNU/Linux
+GOOS=linux go build -o /tmp/gopherbin -mod vendor ../cmd/gopherbin/gopherbin.go
+
+# Or if you prefer Windows
+GOOS=windows go build -o /tmp/gopherbin.exe -mod vendor ../cmd/gopherbin/gopherbin.go
+
+# Or to build for a Mac
+GOOS=darwin go build -o /tmp/gopherbin -mod vendor ../cmd/gopherbin/gopherbin.go
+
+```
+
+## Creating a database
+
+Gopherbin uses a MySQL/MariaDB database. Install either one of these two, using your prefered method/howto, then create a database that Gopherbin can use:
+
+```sql
+create database pastedb;
+grant all on pastedb.* to 'pasteuser'@'%' identified by 'superSecretPassword';
+flush privileges;
 ```
 
 ## Configuration
@@ -64,16 +82,6 @@ backend = "mysql"
     password = "superSecretPassword"
     hostname = "192.168.100.10"
     database = "pastedb"
-```
-
-## Creating a database
-
-Gopherbin uses a MySQL/MariaDB database. Install either one of these two, using your prefered method/howto, then create a database that Gopherbin can use:
-
-```sql
-create database pastedb;
-grant all on pastedb.* to 'pasteuser'@'%' identified by 'superSecretPassword';
-flush privileges;
 ```
 
 ## First run
