@@ -7,7 +7,8 @@
         {{ if .Error }}
         <h2>{{ .Error }}</h2>
         {{else}}
-        <h2> {{.Paste.Name }} {{if .Paste.Public}}(Public){{end}} {{ if .Paste.Encrypted }}Encrypted{{end}}</h2>
+        <h2> {{.Paste.Name }}</h2>
+        <p>Created by <strong>{{.UserInfo.FullName}}</strong></p>
         {{ if .Paste.Encrypted }}
         <div class="form-group" id="unlock">
             <p>You need a passphrase to decrypt this content</p>
