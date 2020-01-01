@@ -46,6 +46,10 @@
                 var decBytes =  aesCtr.decrypt(textBytes);
                 var decryptedText = aesjs.utils.utf8.fromBytes(decBytes);
 
+                var preContainer = $('pre[name="paste-data"]');
+                if (preContainer.length) {
+                    preContainer.remove()
+                }
                 $('.container-fluid').append('<pre name="paste-data" style="display:none;"><code class="overflow-wrap">' + decryptedText + '</code></pre>');
                 $prePaste = $('pre[name="paste-data"]');
 
