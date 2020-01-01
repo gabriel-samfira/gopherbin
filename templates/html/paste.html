@@ -7,7 +7,18 @@
         {{ if .Error }}
         <h2>{{ .Error }}</h2>
         {{else}}
-        <h2> {{.Paste.Name }} {{if .Paste.Public}}(Public){{end}}</h2>
+        <h2> {{.Paste.Name }} {{if .Paste.Public}}(Public){{end}} {{ if .Paste.Encrypted }}Encrypted{{end}}</h2>
+        {{ if .Paste.Encrypted }}
+        <div class="form-group" id="unlock">
+            <p>You need a passphrase to decrypt this content</p>
+            <input type="password" name="passphrase">
+            <p class="error" name="pass-error" style="display:none;"></p>
+            <button type="button" name="decrypt" class="btn btn-primary">Decrypt</button>
+        </div>
+        {{end}}
+        {{if .Paste.Encrypted}}
+        <textarea name="encrypted-paste" style="display:none">{{.Paste.Data}}</textarea>
+        {{else}}
         <pre>
             {{if .Paste.Language}}
             <code class="{{.Paste.Language}} overflow-wrap">{{.Paste.Data}}</code>
@@ -16,7 +27,39 @@
             {{end}}
         </pre>
         {{end}}
+        {{end}}
     </div>
+    <script>
+        $(function () {
+            $('button[name="decrypt"]').on('click', function () {
+                var $passphrase = $('input[name="passphrase"]');
+                var hash = sha256.create();
+                hash.update($passphrase.val());
+                var key = hash.array();
+
+                var $pasteEnc = $('textarea[name="encrypted-paste"]');
+                var encText = $pasteEnc.val();
+
+                var aesCtr = new aesjs.ModeOfOperation.ctr(key);
+                var textBytes = aesjs.utils.hex.toBytes(encText);
+
+                var decBytes =  aesCtr.decrypt(textBytes);
+                var decryptedText = aesjs.utils.utf8.fromBytes(decBytes);
+
+                $('.container-fluid').append('<pre name="paste-data" style="display:none;"><code class="overflow-wrap">' + decryptedText + '</code></pre>');
+                $prePaste = $('pre[name="paste-data"]');
+
+                document.querySelectorAll('pre code').forEach((block) => {
+                    hljs.highlightBlock(block);
+                });
+
+                $('code.hljs').each(function(i, block) {
+                    hljs.lineNumbersBlock(block, {singleLine: true});
+                });
+                $prePaste.fadeIn();
+            });
+        });
+    </script>
 </body>
 
 </html>

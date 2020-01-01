@@ -564,16 +564,23 @@ func (p *PasteController) IndexHandler(w http.ResponseWriter, r *http.Request) {
 		date := r.Form.Get("date")
 		lang := r.Form.Get("language")
 		publicOpt := r.Form.Get("public")
+		encryptedOpt := r.Form.Get("encrypt")
 
 		tplCtx.Values["data"] = data
 		tplCtx.Values["title"] = title
 		tplCtx.Values["date"] = date
 		tplCtx.Values["language"] = lang
 		tplCtx.Values["public"] = publicOpt
+		tplCtx.Values["encrypt"] = encryptedOpt
 
 		var public bool
+		var encrypted bool
 		if publicOpt == "on" {
 			public = true
+		}
+
+		if encryptedOpt == "on" {
+			encrypted = true
 		}
 
 		var pasteExpiration *time.Time
@@ -605,7 +612,7 @@ func (p *PasteController) IndexHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// Create(ctx context.Context, data, title, language string, expires time.Time, isPublic bool) (paste params.Paste, err error)
-		pasteInfo, err := p.paster.Create(ctx, data, title, lang, pasteExpiration, public)
+		pasteInfo, err := p.paster.Create(ctx, data, title, lang, pasteExpiration, public, encrypted)
 		if err != nil {
 			switch errors.Cause(err) {
 			case gErrors.ErrNotFound:

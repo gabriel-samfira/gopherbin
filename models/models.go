@@ -57,6 +57,7 @@ type Paste struct {
 	CreatedAt time.Time
 	Expires   *time.Time `gorm:"index:expires"`
 	Public    bool
+	Encrypted bool
 	Teams     []Teams `gorm:"many2many:paste_teams;"`
 	Users     []Users `gorm:"many2many:paste_users;"`
 }

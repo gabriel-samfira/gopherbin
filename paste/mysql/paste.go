@@ -179,6 +179,7 @@ func (p *paste) sqlToCommonPaste(modelPaste models.Paste) params.Paste {
 		Language:  modelPaste.Language,
 		Name:      modelPaste.Name,
 		Public:    modelPaste.Public,
+		Encrypted: modelPaste.Encrypted,
 		CreatedAt: modelPaste.CreatedAt,
 	}
 	if modelPaste.Expires != nil {
@@ -187,7 +188,7 @@ func (p *paste) sqlToCommonPaste(modelPaste models.Paste) params.Paste {
 	return paste
 }
 
-func (p *paste) Create(ctx context.Context, data, title, language string, expires *time.Time, isPublic bool) (paste params.Paste, err error) {
+func (p *paste) Create(ctx context.Context, data, title, language string, expires *time.Time, isPublic, encrypted bool) (paste params.Paste, err error) {
 	pasteID, err := util.GetRandomString(24)
 	if err != nil {
 		return params.Paste{}, errors.Wrap(err, "getting random string")
@@ -209,6 +210,7 @@ func (p *paste) Create(ctx context.Context, data, title, language string, expire
 		Expires:   expires,
 		Language:  language,
 		Public:    isPublic,
+		Encrypted: encrypted,
 		Name:      title,
 	}
 	q := p.conn.Create(&newPaste)

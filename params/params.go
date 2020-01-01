@@ -108,6 +108,7 @@ type Paste struct {
 	Expires   time.Time `json:"expires"`
 	Public    bool      `json:"public"`
 	CreatedAt time.Time `json:"created_at"`
+	Encrypted bool      `json:"encrypted"`
 }
 
 // FormattedCreatedAt returns a DD-MM-YY formatted createdAt
