@@ -86,6 +86,12 @@ backend = "mysql"
 
 ## First run
 
+Simply run the Gopherbin service. Gopherbin will create the database tables automatically:
+
+```bash
+/tmp/gopherbin run -config /tmp/config.toml
+```
+
 Before you can use Gopherbin, you need to create the super user. This user is the admin of the system, which can create new users and regular admins. Gopherbin will not allow anyone to log in if this user is missing. The super user can create regular administrators, that can in turn create regular users.
 
 Anyway, let's get to it:
@@ -96,12 +102,6 @@ Anyway, let's get to it:
     -email example@example.com \
     -fullName "John Doe" \
     -password SuperSecretPassword
-```
-
-Then you can simply run the Gopherbin service:
-
-```bash
-/tmp/gopherbin run -config /tmp/config.toml
 ```
 
 If you're running on your local machine, you should be able to access Gopherbin at:
