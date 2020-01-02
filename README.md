@@ -4,9 +4,11 @@ Welcome to Gopherbin. This project offers a simple password protected, paste-lik
 
 ## Building
 
+### Using Go
+
 You will need at least Go version ```1.13```.
 
-Gopherbin uses [packr2](https://github.com/gobuffalo/packr/tree/master/v2) to bundle static files within the final binary. One of the beauties of Go is the fact that you get a single binary that you can simply distribite and run, without any dependencies. This should be true even with web applications that need to serve up static files.
+Gopherbin uses [packr2](https://github.com/gobuffalo/packr/tree/master/v2) to bundle static files within the final binary. One of the beauties of Go is the fact that you get a single binary that you can simply distribute and run, without any dependencies. This should be true even with web applications that need to serve up static files.
 
 Install ```packr2```:
 
@@ -41,9 +43,24 @@ GOOS=darwin go build -o /tmp/gopherbin -mod vendor ../cmd/gopherbin/gopherbin.go
 
 ```
 
+### Using docker and make
+
+It runs on a system where docker is installed and have command `make`
+
+```sh
+# to view help using just make or make help
+
+# to build a docker image using
+make build-image
+
+# to build a container run. Accepts container_name and image_name as parameters"
+make start-container
+
+```
+
 ## Creating a database
 
-Gopherbin uses a MySQL/MariaDB database. Install either one of these two, using your prefered method/howto, then create a database that Gopherbin can use:
+Gopherbin uses a MySQL/MariaDB database. Install either one of these two, using your preferred method/how-to, then create a database that Gopherbin can use:
 
 ```sql
 create database pastedb;
