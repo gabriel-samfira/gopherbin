@@ -47,13 +47,17 @@ GOOS=darwin go build -o /tmp/gopherbin -mod vendor ../cmd/gopherbin/gopherbin.go
 
 It runs on a system where docker is installed and have command `make`
 
-```sh
-# to view help using just make or make help
+- easiest way of starting the app is to just use `make app`
 
-# to build a docker image using
+- for a more "granular approach" use:
+
+```sh
+# For a full list of available variables and commands run: make help
+
+# creating docker image
 make build-image
 
-# to build a container run. Accepts container_name and image_name as parameters"
+# start a container using image previously built
 make start-container
 
 ```
@@ -71,7 +75,6 @@ flush privileges;
 ## Configuration
 
 The config is a simple toml.
-
 
 ```toml
 [default]
