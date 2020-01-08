@@ -41,6 +41,21 @@
                     this.selectionEnd = start + 4;
                 }
             });
+
+            var htmlEscapes = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#x27;',
+                '/': '&#x2F;'
+            };
+            var htmlEscaper = /[&<>"'\/]/g;
+            escapeHTML = function(string) {
+                return ('' + string).replace(htmlEscaper, function(match) {
+                    return htmlEscapes[match];
+                });
+            };
         </script>
         <style>
             .navbar {

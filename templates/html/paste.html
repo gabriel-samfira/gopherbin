@@ -51,7 +51,7 @@
                 if (preContainer.length) {
                     preContainer.remove()
                 }
-                $('.container-fluid').append('<pre name="paste-data" style="display:none;"><code class="overflow-wrap">' + decryptedText + '</code></pre>');
+                $('.container-fluid').append('<pre name="paste-data" style="display:none;"><code class="overflow-wrap">' + escapeHTML(decryptedText) + '</code></pre>');
                 $prePaste = $('pre[name="paste-data"]');
 
                 document.querySelectorAll('pre code').forEach((block) => {
