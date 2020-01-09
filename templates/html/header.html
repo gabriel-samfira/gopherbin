@@ -16,10 +16,6 @@
         <script type="text/javascript" src="/static/js/aes-js-e27b99df.js"></script>
         <script type="text/javascript" src="/static/js/js-sha256-0.9.0.js"></script>
         <script>
-            hljs.initHighlightingOnLoad();
-            hljs.initLineNumbersOnLoad({
-                singleLine: true
-            });
             $.fn.selectpicker.Constructor.BootstrapVersion = '4';
 
             // From https://stackoverflow.com/questions/6637341/use-tab-to-indent-in-textarea
@@ -73,6 +69,7 @@
 
             .hljs-ln-code {
                 padding-left: 10px !important;
+                white-space: pre-wrap;
             }
         </style>
 </head>
