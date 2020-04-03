@@ -11,7 +11,7 @@ WORKDIR /go/gopherbin/templates
 # build gopher binary
 RUN packr2
 RUN GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -a -ldflags="-w -s" \
-  -o /tmp/gopherbin -mod vendor ../cmd/gopherbin/gopherbin.go
+  -o /tmp/gopherbin ../cmd/gopherbin/gopherbin.go
 
 # creating a minimal image
 FROM scratch

@@ -24,8 +24,11 @@ import (
 type contextFlags string
 
 const (
-	isAdminKey     contextFlags = "is_admin"
-	isSuperUserKey contextFlags = "is_super"
+	// SessionTokenName is the name of the header value that defines
+	// the session
+	SessionTokenName              = "session_token"
+	isAdminKey       contextFlags = "is_admin"
+	isSuperUserKey   contextFlags = "is_super"
 	// UpdatedAtFlag sets the timestamp when the user was
 	// updated in the context
 	UpdatedAtFlag contextFlags = "updated_at"

@@ -26,7 +26,7 @@ import (
 	"gopherbin/config"
 	"gopherbin/params"
 
-	_ "github.com/jinzhu/gorm/dialects/mysql"
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/juju/loggo"
 )
 

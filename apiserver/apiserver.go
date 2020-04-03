@@ -24,11 +24,14 @@ import (
 	"time"
 
 	"gopherbin/admin"
+	adminCommon "gopherbin/admin/common"
 	"gopherbin/apiserver/controllers"
 	"gopherbin/apiserver/routers"
+	"gopherbin/auth"
 	"gopherbin/config"
 	"gopherbin/util"
 
+	"github.com/gorilla/mux"
 	"github.com/gorilla/sessions"
 	"github.com/pkg/errors"
 	"github.com/wader/gormstore"
@@ -72,6 +75,26 @@ func initSessionStor(cfg *config.Config, quit chan struct{}) (sessions.Store, er
 	return store, nil
 }
 
+func addWebUIRoutes(router *mux.Router) (*mux.Router, error) {
+	return nil, nil
+}
+
+func getAuthMiddleware(sessionStore sessions.Store, userMgr adminCommon.UserManager) (auth.Middleware, error) {
+	publicURL := []string{
+		"/login",
+		"/logout",
+	}
+	staticAssets := []string{
+		"/static",
+		"/firstrun",
+	}
+	authMiddleware, err := auth.NewSessionAuthMiddleware(publicURL, staticAssets, sessionStore, userMgr)
+	if err != nil {
+		return nil, errors.Wrap(err, "initializing auth middleware")
+	}
+	return authMiddleware, nil
+}
+
 // GetAPIServer returns a new API server
 func GetAPIServer(cfg *config.Config) (*APIServer, error) {
 	paster, err := paste.NewPaster(cfg.Database, cfg.Default)
@@ -91,23 +114,22 @@ func GetAPIServer(cfg *config.Config) (*APIServer, error) {
 		return nil, errors.Wrap(err, "initializing session store")
 	}
 	pasteHandler := controllers.NewPasteController(paster, sess, userMgr)
-	publicURL := []string{
-		"/login",
-		"/logout",
-	}
-	staticAssets := []string{
-		"/static",
-		"/firstrun",
-	}
-	authMiddleware, err := controllers.NewSessionAuthMiddleware(publicURL, staticAssets, sess, userMgr)
+	apiHandler := controllers.NewAPIController(paster, userMgr)
+
+	authMiddleware, err := getAuthMiddleware(sess, userMgr)
 	if err != nil {
 		return nil, errors.Wrap(err, "initializing auth middleware")
 	}
 
-	router, err := routers.GetRouter(pasteHandler, authMiddleware)
-	if err != nil {
-		return nil, errors.Wrap(err, "getting router")
+	router := mux.NewRouter()
+	if err := routers.AddWebURLs(router, pasteHandler, authMiddleware); err != nil {
+		return nil, errors.Wrap(err, "setting web ui urls")
 	}
+
+	if err := routers.AddAPIURLs(router, apiHandler, authMiddleware); err != nil {
+		return nil, errors.Wrap(err, "setting API urls")
+	}
+
 	srv := &http.Server{
 		Handler: router,
 	}

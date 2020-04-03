@@ -16,6 +16,7 @@ package mysql
 
 import (
 	"context"
+	"fmt"
 	"gopherbin/auth"
 	"gopherbin/config"
 	gErrors "gopherbin/errors"
@@ -224,7 +225,7 @@ func (p *paste) get(ctx context.Context, pasteID string) (models.Paste, error) {
 	userID := auth.UserID(ctx)
 	user, err := p.getUser(userID)
 	if err != nil {
-		return models.Paste{}, errors.Wrap(err, "fetching user from DB")
+		return models.Paste{}, errors.Wrap(err, fmt.Sprintf("fetching user %v from DB", userID))
 	}
 	pst, err := p.getPaste(pasteID, user, auth.IsAnonymous(ctx))
 	if err != nil {

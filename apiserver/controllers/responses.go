@@ -19,3 +19,9 @@ package controllers
 type ErrorResponse struct {
 	Errors map[string]string
 }
+
+// APIErrorResponse holds information about an error, returned by the API
+type APIErrorResponse struct {
+	Error   string `json:"error"`
+	Details string `json:"details"`
+}
