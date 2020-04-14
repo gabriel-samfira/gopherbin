@@ -23,11 +23,14 @@ import (
 
 	gorillaHandlers "github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
+	"github.com/juju/loggo"
 
 	"gopherbin/apiserver/controllers"
 	"gopherbin/auth"
 	"gopherbin/templates"
 )
+
+var log = loggo.GetLogger("gopherbin.apiserver.routes")
 
 func maxAge(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -54,20 +57,25 @@ func maxAge(h http.Handler) http.Handler {
 func AddWebURLs(router *mux.Router, han *controllers.PasteController, authMiddleware auth.Middleware) error {
 	// This is temporary. The Web UI will pe completely replaced
 	// by a single page application that will leverage the REST API
-	// uiRouter := router.PathPrefix("/").Subrouter()
-	// uiRouter.Use(authMiddleware.Middleware)
-	router.Use(authMiddleware.Middleware)
+	staticRouter := router.PathPrefix("/static").Subrouter()
+	staticRouter.PathPrefix("/").Handler(gorillaHandlers.CombinedLoggingHandler(os.Stdout, http.StripPrefix("/static/", maxAge(http.FileServer(templates.AssetsBox))))).Methods("GET")
 
-	router.PathPrefix("/static/").Handler(http.StripPrefix("/static/", maxAge(http.FileServer(templates.AssetsBox)))).Methods("GET")
-	router.Handle("/{login:login\\/?}", gorillaHandlers.LoggingHandler(os.Stdout, http.HandlerFunc(han.LoginHandler))).Methods("GET", "POST")
-	router.Handle("/{logout:logout\\/?}", gorillaHandlers.LoggingHandler(os.Stdout, http.HandlerFunc(han.LogoutHandler))).Methods("GET")
-	router.Handle("/", gorillaHandlers.LoggingHandler(os.Stdout, http.HandlerFunc(han.IndexHandler))).Methods("GET", "POST")
-	router.Handle("/firstrun", gorillaHandlers.LoggingHandler(os.Stdout, http.HandlerFunc(han.FirstRunHandler))).Methods("GET")
-	router.Handle("/{p:p\\/?}", gorillaHandlers.LoggingHandler(os.Stdout, http.HandlerFunc(han.PasteListHandler))).Methods("GET")
-	router.Handle("/p/{pasteID}", gorillaHandlers.LoggingHandler(os.Stdout, http.HandlerFunc(han.PasteViewHandler))).Methods("GET")
-	router.Handle("/p/{pasteID}/{delete:delete\\/?}", gorillaHandlers.LoggingHandler(os.Stdout, http.HandlerFunc(han.DeletePasteHandler))).Methods("DELETE")
-	router.Handle("/admin/{users:users\\/?}", gorillaHandlers.LoggingHandler(os.Stdout, http.HandlerFunc(han.UserListHandler))).Methods("GET")
-	router.Handle("/admin/{new-user:new-user\\/?}", gorillaHandlers.LoggingHandler(os.Stdout, http.HandlerFunc(han.NewUserHandler))).Methods("GET", "POST")
+	authRouter := router.PathPrefix("/auth").Subrouter()
+	authRouter.Handle("/{login:login\\/?}", gorillaHandlers.CombinedLoggingHandler(os.Stdout, http.HandlerFunc(han.LoginHandler))).Methods("GET", "POST")
+	authRouter.Handle("/{logout:logout\\/?}", gorillaHandlers.CombinedLoggingHandler(os.Stdout, http.HandlerFunc(han.LogoutHandler))).Methods("GET")
+
+	uiRouter := router.PathPrefix("").Subrouter()
+	uiRouter.Use(authMiddleware.Middleware)
+
+	uiRouter.Handle("/{login:login\\/?}", gorillaHandlers.CombinedLoggingHandler(os.Stdout, http.HandlerFunc(han.LoginHandler))).Methods("GET", "POST")
+	uiRouter.Handle("/{logout:logout\\/?}", gorillaHandlers.CombinedLoggingHandler(os.Stdout, http.HandlerFunc(han.LogoutHandler))).Methods("GET")
+	uiRouter.Handle("/", gorillaHandlers.CombinedLoggingHandler(os.Stdout, http.HandlerFunc(han.IndexHandler))).Methods("GET", "POST")
+	uiRouter.Handle("/firstrun", gorillaHandlers.CombinedLoggingHandler(os.Stdout, http.HandlerFunc(han.FirstRunHandler))).Methods("GET")
+	uiRouter.Handle("/{p:p\\/?}", gorillaHandlers.CombinedLoggingHandler(os.Stdout, http.HandlerFunc(han.PasteListHandler))).Methods("GET")
+	uiRouter.Handle("/p/{pasteID}", gorillaHandlers.CombinedLoggingHandler(os.Stdout, http.HandlerFunc(han.PasteViewHandler))).Methods("GET")
+	uiRouter.Handle("/p/{pasteID}/{delete:delete\\/?}", gorillaHandlers.CombinedLoggingHandler(os.Stdout, http.HandlerFunc(han.DeletePasteHandler))).Methods("DELETE")
+	uiRouter.Handle("/admin/{users:users\\/?}", gorillaHandlers.CombinedLoggingHandler(os.Stdout, http.HandlerFunc(han.UserListHandler))).Methods("GET")
+	uiRouter.Handle("/admin/{new-user:new-user\\/?}", gorillaHandlers.CombinedLoggingHandler(os.Stdout, http.HandlerFunc(han.NewUserHandler))).Methods("GET", "POST")
 
 	return nil
 }
@@ -77,29 +85,24 @@ func AddAPIURLs(router *mux.Router, han *controllers.APIController, authMiddlewa
 	apiRouter := router.PathPrefix("/api/v1").Subrouter()
 	apiRouter.Use(authMiddleware.Middleware)
 
-	apiRouter.Handle("/{pasteID}", gorillaHandlers.LoggingHandler(os.Stdout, http.HandlerFunc(han.PasteViewHandler))).Methods("GET")
+	log := gorillaHandlers.CombinedLoggingHandler
+
+	// Duplicate the route to allow fetching a paste, both with and without a traling slash.
+	// StrictSlashes generates an extra request, which I am not willing to add. There is no
+	// good way to match both cases where you have a trailing slash and one where you don't.
+	// It is beyond me why this was never added, but i'd rather duplicate the route then
+	// use StrictSlashes.
+	apiRouter.Handle("/paste/{pasteID}", log(os.Stdout, http.HandlerFunc(han.PasteViewHandler))).Methods("GET")
+	apiRouter.Handle("/paste/{pasteID}/", log(os.Stdout, http.HandlerFunc(han.PasteViewHandler))).Methods("GET")
+	// Delete paste handlers
+	apiRouter.Handle("/paste/{pasteID}", log(os.Stdout, http.HandlerFunc(han.DeletePasteHandler))).Methods("DELETE")
+	apiRouter.Handle("/paste/{pasteID}/", log(os.Stdout, http.HandlerFunc(han.DeletePasteHandler))).Methods("DELETE")
+	// paste list
+	apiRouter.Handle("/{paste:paste\\/?}", log(os.Stdout, http.HandlerFunc(han.PasteListHandler))).Methods("GET")
+
+	// admin routes
+	apiRouter.Handle("/admin/{users:users\\/?}", log(os.Stdout, http.HandlerFunc(han.UserListHandler))).Methods("GET")
+
+	apiRouter.PathPrefix("/").Handler(log(os.Stdout, http.HandlerFunc(han.NotFoundHandler)))
 	return nil
 }
-
-// // GetRouter returns a new paste router
-// func GetRouter(han *controllers.PasteController, authMiddleware auth.Middleware) (*mux.Router, error) {
-// 	router := mux.NewRouter()
-// 	apiRouter := router.PathPrefix("/api/v1").Subrouter()
-
-// 	router.PathPrefix("/static/").Handler(http.StripPrefix("/static/", maxAge(http.FileServer(templates.AssetsBox)))).Methods("GET")
-// 	router.Handle("/{login:login\\/?}", gorillaHandlers.LoggingHandler(os.Stdout, http.HandlerFunc(han.LoginHandler))).Methods("GET", "POST")
-// 	router.Handle("/{logout:logout\\/?}", gorillaHandlers.LoggingHandler(os.Stdout, http.HandlerFunc(han.LogoutHandler))).Methods("GET")
-// 	router.Handle("/", gorillaHandlers.LoggingHandler(os.Stdout, http.HandlerFunc(han.IndexHandler))).Methods("GET", "POST")
-// 	router.Handle("/firstrun", gorillaHandlers.LoggingHandler(os.Stdout, http.HandlerFunc(han.FirstRunHandler))).Methods("GET")
-// 	router.Handle("/{p:p\\/?}", gorillaHandlers.LoggingHandler(os.Stdout, http.HandlerFunc(han.PasteListHandler))).Methods("GET")
-// 	router.Handle("/p/{pasteID}", gorillaHandlers.LoggingHandler(os.Stdout, http.HandlerFunc(han.PasteViewHandler))).Methods("GET")
-// 	router.Handle("/p/{pasteID}/{delete:delete\\/?}", gorillaHandlers.LoggingHandler(os.Stdout, http.HandlerFunc(han.DeletePasteHandler))).Methods("DELETE")
-// 	router.Handle("/admin/{users:users\\/?}", gorillaHandlers.LoggingHandler(os.Stdout, http.HandlerFunc(han.UserListHandler))).Methods("GET")
-// 	router.Handle("/admin/{new-user:new-user\\/?}", gorillaHandlers.LoggingHandler(os.Stdout, http.HandlerFunc(han.NewUserHandler))).Methods("GET", "POST")
-
-// 	// apiRouter.Handle("/{pastes:pastes\\/?}")
-
-// 	router.Use(authMiddleware.Middleware)
-// 	apiRouter.Use(authMiddleware.Middleware)
-// 	return router, nil
-// }

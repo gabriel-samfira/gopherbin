@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strings"
 
 	adminCommon "gopherbin/admin/common"
 	gErrors "gopherbin/errors"
@@ -16,41 +15,19 @@ import (
 var log = loggo.GetLogger("gopherbin.auth")
 
 // NewSessionAuthMiddleware returns a new session based auth middleware
-func NewSessionAuthMiddleware(public []string, assetURLs []string, sess sessions.Store, manager adminCommon.UserManager) (Middleware, error) {
-	return &authenticationMiddleware{
-		publicPaths: public,
-		assetURLs:   assetURLs,
-		session:     sess,
-		manager:     manager,
+func NewSessionAuthMiddleware(sess sessions.Store, manager adminCommon.UserManager) (Middleware, error) {
+	return &sessionAuthMiddleware{
+		session: sess,
+		manager: manager,
 	}, nil
 }
 
-type authenticationMiddleware struct {
-	publicPaths []string
-	assetURLs   []string
-	session     sessions.Store
-	manager     adminCommon.UserManager
+type sessionAuthMiddleware struct {
+	session sessions.Store
+	manager adminCommon.UserManager
 }
 
-func (amw *authenticationMiddleware) isPublic(path string) bool {
-	for _, val := range amw.publicPaths {
-		if strings.HasPrefix(path, val) == true {
-			return true
-		}
-	}
-	return false
-}
-
-func (amw *authenticationMiddleware) isStatic(path string) bool {
-	for _, val := range amw.assetURLs {
-		if strings.HasPrefix(path, val) == true {
-			return true
-		}
-	}
-	return false
-}
-
-func (amw *authenticationMiddleware) sessionToContext(ctx context.Context, sess *sessions.Session) (context.Context, error) {
+func (amw *sessionAuthMiddleware) sessionToContext(ctx context.Context, sess *sessions.Session) (context.Context, error) {
 	if sess == nil {
 		return ctx, gErrors.ErrUnauthorized
 	}
@@ -72,27 +49,19 @@ func (amw *authenticationMiddleware) sessionToContext(ctx context.Context, sess 
 }
 
 // Middleware function, which will be called for each request
-func (amw *authenticationMiddleware) Middleware(next http.Handler) http.Handler {
+func (amw *sessionAuthMiddleware) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if amw.isStatic(r.URL.Path) == true {
-			next.ServeHTTP(w, r)
-			return
-		}
 		if amw.manager.HasSuperUser() == false {
 			http.Redirect(w, r, "/firstrun", http.StatusSeeOther)
-			return
-		}
-		if amw.isPublic(r.URL.Path) == true {
-			next.ServeHTTP(w, r)
 			return
 		}
 		sess, err := amw.session.Get(r, SessionTokenName)
 		if err != nil {
 			log.Errorf("failed to get session: %v", err)
-			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			http.Redirect(w, r, "/auth/login", http.StatusSeeOther)
 			return
 		}
-		loginWithNext := fmt.Sprintf("/login?next=%s", r.URL.Path)
+		loginWithNext := fmt.Sprintf("/auth/login?next=%s", r.URL.Path)
 		ctx, err := amw.sessionToContext(r.Context(), sess)
 		if err != nil {
 			if err == gErrors.ErrInvalidSession {

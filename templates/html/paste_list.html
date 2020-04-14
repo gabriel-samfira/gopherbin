@@ -46,7 +46,7 @@
                             <td><a href="/p/{{$elem.PasteID}}">{{$elem.Name}}</a></td>
                             <td>{{$elem.Language}}</td>
                             <td class="d-none d-sm-table-cell">{{$elem.FormattedCreatedAt}}</td>
-                            <td class="d-none d-sm-table-cell">{{ if not (eq $elem.FormattedExpires "01-Jan-0001") }}{{ $elem.FormattedExpires}}{{end}}</td>
+                            <td class="d-none d-sm-table-cell">{{ $elem.FormattedExpires}}</td>
                             <td>{{ if $elem.Public }}Yes{{else}}No{{end}}</td>
                             <td><button class="btn btn-danger dlt_btn" data-href="/p/{{$elem.PasteID}}/delete" data-name="{{$elem.Name}}" data-toggle="modal" data-target="#confirm-delete">Delete</button></td>
                         </tr>

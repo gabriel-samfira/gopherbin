@@ -31,3 +31,12 @@ func dict(values ...interface{}) (map[string]interface{}, error) {
 	}
 	return dict, nil
 }
+
+func asString(val interface{}) string {
+	asBytes, ok := val.([]byte)
+	if !ok {
+		return ""
+	}
+
+	return string(asBytes)
+}

@@ -45,7 +45,8 @@ func NewPasteController(paster common.Paster, session sessions.Store, admin admi
 		session: session,
 		manager: admin,
 		funcMap: template.FuncMap{
-			"dict": dict,
+			"dict":     dict,
+			"asString": asString,
 		},
 	}
 }
@@ -367,6 +368,7 @@ func (p *PasteController) PasteListHandler(w http.ResponseWriter, r *http.Reques
 		}
 		return
 	}
+
 	retCtx := listView{
 		UserInfo: userInfo,
 		Pastes:   res,

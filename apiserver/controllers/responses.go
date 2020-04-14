@@ -25,3 +25,14 @@ type APIErrorResponse struct {
 	Error   string `json:"error"`
 	Details string `json:"details"`
 }
+
+var (
+	notFoundResponse = APIErrorResponse{
+		Error:   "Not Found",
+		Details: "The resource you are looking for was not found",
+	}
+	unauthorizedResponse = APIErrorResponse{
+		Error:   "Not Authorized",
+		Details: "You do not have the required permissions to access this resource",
+	}
+)

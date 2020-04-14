@@ -135,13 +135,12 @@ func (u *userManager) Create(ctx context.Context, user params.NewUserParams) (pa
 	if err != nil {
 		return params.Users{}, errors.Wrap(err, "fetching user object")
 	}
-	usr, err := u.getUser(newUser.ID)
+	_, err = u.getUser(newUser.ID)
 	if err != nil {
 		if err != gErrors.ErrNotFound {
 			return params.Users{}, errors.Wrap(err, "fetching user")
 		}
 	} else {
-		fmt.Println(usr)
 		return params.Users{}, gErrors.ErrDuplicateUser
 	}
 

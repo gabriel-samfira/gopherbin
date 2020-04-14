@@ -100,15 +100,15 @@ type UpdateUserPayload struct {
 
 // Paste holds information about a paste
 type Paste struct {
-	ID        int64     `json:"id"`
-	PasteID   string    `json:"paste_id"`
-	Data      string    `json:"data"`
-	Language  string    `json:"language"`
-	Name      string    `json:"name"`
-	Expires   time.Time `json:"expires"`
-	Public    bool      `json:"public"`
-	CreatedAt time.Time `json:"created_at"`
-	Encrypted bool      `json:"encrypted"`
+	ID        int64      `json:"id"`
+	PasteID   string     `json:"paste_id"`
+	Data      []byte     `json:"data,omitempty"`
+	Language  string     `json:"language"`
+	Name      string     `json:"name"`
+	Expires   *time.Time `json:"expires,omitempty"`
+	Public    bool       `json:"public"`
+	CreatedAt time.Time  `json:"created_at"`
+	Encrypted bool       `json:"encrypted"`
 }
 
 // FormattedCreatedAt returns a DD-MM-YY formatted createdAt
@@ -120,15 +120,18 @@ func (p Paste) FormattedCreatedAt() string {
 // FormattedExpires returns a DD-MM-YY formatted expiration
 // date
 func (p Paste) FormattedExpires() string {
-	return p.Expires.Format("02-Jan-2006")
+	if p.Expires != nil {
+		return p.Expires.Format("02-Jan-2006")
+	}
+	return ""
 }
 
 // PasteListResult holds results for a paste list request
 type PasteListResult struct {
 	// Total      int64   `json:"total"`
-	TotalPages int64 `json:"total_pages"`
-	// Page       int64   `json:"page"`
-	Pastes []Paste `json:"pastes"`
+	TotalPages int64   `json:"total_pages"`
+	Page       int64   `json:"page"`
+	Pastes     []Paste `json:"pastes"`
 }
 
 // PasswordLoginParams holds information used during

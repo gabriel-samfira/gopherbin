@@ -80,15 +80,7 @@ func addWebUIRoutes(router *mux.Router) (*mux.Router, error) {
 }
 
 func getAuthMiddleware(sessionStore sessions.Store, userMgr adminCommon.UserManager) (auth.Middleware, error) {
-	publicURL := []string{
-		"/login",
-		"/logout",
-	}
-	staticAssets := []string{
-		"/static",
-		"/firstrun",
-	}
-	authMiddleware, err := auth.NewSessionAuthMiddleware(publicURL, staticAssets, sessionStore, userMgr)
+	authMiddleware, err := auth.NewSessionAuthMiddleware(sessionStore, userMgr)
 	if err != nil {
 		return nil, errors.Wrap(err, "initializing auth middleware")
 	}
@@ -122,12 +114,12 @@ func GetAPIServer(cfg *config.Config) (*APIServer, error) {
 	}
 
 	router := mux.NewRouter()
-	if err := routers.AddWebURLs(router, pasteHandler, authMiddleware); err != nil {
-		return nil, errors.Wrap(err, "setting web ui urls")
-	}
-
 	if err := routers.AddAPIURLs(router, apiHandler, authMiddleware); err != nil {
 		return nil, errors.Wrap(err, "setting API urls")
+	}
+
+	if err := routers.AddWebURLs(router, pasteHandler, authMiddleware); err != nil {
+		return nil, errors.Wrap(err, "setting web ui urls")
 	}
 
 	srv := &http.Server{

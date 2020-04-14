@@ -176,16 +176,17 @@ func (p *paste) sqlToCommonPaste(modelPaste models.Paste) params.Paste {
 	paste := params.Paste{
 		ID:        modelPaste.ID,
 		PasteID:   modelPaste.PasteID,
-		Data:      string(modelPaste.Data),
+		Data:      modelPaste.Data,
 		Language:  modelPaste.Language,
 		Name:      modelPaste.Name,
 		Public:    modelPaste.Public,
 		Encrypted: modelPaste.Encrypted,
 		CreatedAt: modelPaste.CreatedAt,
+		Expires:   modelPaste.Expires,
 	}
-	if modelPaste.Expires != nil {
-		paste.Expires = *modelPaste.Expires
-	}
+	// if modelPaste.Expires != nil {
+	// 	paste.Expires = modelPaste.Expires
+	// }
 	return paste
 }
 
@@ -297,11 +298,15 @@ func (p *paste) List(ctx context.Context, page int64, results int64) (paste para
 	if totalPages == 0 {
 		totalPages = 1
 	}
+
+	if totalPages < page {
+		page = totalPages
+	}
 	return params.PasteListResult{
 		Pastes: asParams,
 		// Total:      cnt,
 		TotalPages: totalPages,
-		// Page:       page,
+		Page:       page,
 	}, nil
 }
 
