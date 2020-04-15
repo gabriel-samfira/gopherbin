@@ -16,6 +16,7 @@ package controllers
 
 import (
 	"fmt"
+	"gopherbin/apiserver/responses"
 	"gopherbin/params"
 	"html/template"
 	"net/http"
@@ -97,7 +98,7 @@ func (p *PasteController) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	lm := &ErrorResponse{
+	lm := &responses.ErrorResponse{
 		Errors: map[string]string{},
 	}
 	t, err := template.New("login").Parse(s)

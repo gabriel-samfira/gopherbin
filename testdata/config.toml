@@ -8,6 +8,14 @@ port = 9997
 use_tls = false
 # Use a decently secure secret. Obviously this needs to be changed :-).
 session_secret = "beerdesOwshitvobkeshyijuchepavbiejCefJubemrirjOnJeutyucHalHushbo"
+jwt_secret = "beerdesOwshitvobkeshyijuchepavbiejCefJubemrirjOnJeutyucHalHushbo"
+
+    [apiserver.jwt_auth]
+    # secret used to sign jwt tokens
+    secret = "beerdesOwshitvobkeshyijuchepavbiejCefJubemrirjOnJeutyucHalHushbo"
+    # the duration, a token will be valid for
+    # format is of the form 4m41s
+    time_to_live = "1h"
 
 #    [apiserver.tls]
 #    certificate = "/path/to/cert.pem"

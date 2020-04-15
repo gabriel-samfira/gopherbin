@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"time"
 
+	"gopherbin/errors"
 	"gopherbin/util"
 
 	zxcvbn "github.com/nbutton23/zxcvbn-go"
@@ -152,4 +153,18 @@ func (p PasswordLoginParams) ID() int64 {
 		return 0
 	}
 	return int64(userID)
+}
+
+// Validate checks if the username and password are set
+func (p PasswordLoginParams) Validate() error {
+	if p.Username == "" || p.Password == "" {
+		return errors.ErrUnauthorized
+	}
+	return nil
+}
+
+// JWTResponse holds the JWT token returned as a result of a
+// successful auth
+type JWTResponse struct {
+	Token string `json:"token"`
 }

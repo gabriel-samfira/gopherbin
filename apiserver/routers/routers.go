@@ -82,11 +82,16 @@ func AddWebURLs(router *mux.Router, han *controllers.PasteController, authMiddle
 
 // AddAPIURLs adds REST API urls
 func AddAPIURLs(router *mux.Router, han *controllers.APIController, authMiddleware auth.Middleware) error {
-	apiRouter := router.PathPrefix("/api/v1").Subrouter()
-	apiRouter.Use(authMiddleware.Middleware)
-
 	log := gorillaHandlers.CombinedLoggingHandler
 
+	apiSubRouter := router.PathPrefix("/api/v1").Subrouter()
+	authRouter := apiSubRouter.PathPrefix("/auth").Subrouter()
+
+	// Login
+	authRouter.Handle("/{login:login\\/?}", log(os.Stdout, http.HandlerFunc(han.LoginHandler))).Methods("POST")
+
+	apiRouter := apiSubRouter.PathPrefix("").Subrouter()
+	apiRouter.Use(authMiddleware.Middleware)
 	// Duplicate the route to allow fetching a paste, both with and without a traling slash.
 	// StrictSlashes generates an extra request, which I am not willing to add. There is no
 	// good way to match both cases where you have a trailing slash and one where you don't.
@@ -99,7 +104,8 @@ func AddAPIURLs(router *mux.Router, han *controllers.APIController, authMiddlewa
 	apiRouter.Handle("/paste/{pasteID}/", log(os.Stdout, http.HandlerFunc(han.DeletePasteHandler))).Methods("DELETE")
 	// paste list
 	apiRouter.Handle("/{paste:paste\\/?}", log(os.Stdout, http.HandlerFunc(han.PasteListHandler))).Methods("GET")
-
+	// logout
+	apiRouter.Handle("/{logout:logout\\/?}", log(os.Stdout, http.HandlerFunc(han.LogoutHandler))).Methods("GET")
 	// admin routes
 	apiRouter.Handle("/admin/{users:users\\/?}", log(os.Stdout, http.HandlerFunc(han.UserListHandler))).Methods("GET")
 

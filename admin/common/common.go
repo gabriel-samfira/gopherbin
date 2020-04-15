@@ -32,4 +32,9 @@ type UserManager interface {
 	Authenticate(ctx context.Context, info params.PasswordLoginParams) (context.Context, error)
 	HasSuperUser() bool
 	CreateSuperUser(user params.NewUserParams) (params.Users, error)
+	// ValidateToken will check if the token identified by tokenID has been
+	// blacklisted. This is needed to handle logouts when using JWT...
+	ValidateToken(tokenID string) error
+	// BlacklistToken will invalidate a JWT token
+	BlacklistToken(tokenID string, expiration int64) error
 }

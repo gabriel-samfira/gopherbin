@@ -58,6 +58,7 @@ func (p *paste) migrateDB() error {
 		&models.Users{},
 		&models.Paste{},
 		&models.Teams{},
+		&models.JWTBacklist{},
 	).Error; err != nil {
 		return err
 	}

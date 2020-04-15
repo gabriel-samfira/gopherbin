@@ -285,6 +285,34 @@ func (u *userManager) getUser(userID int64) (models.Users, error) {
 	return tmpUser, nil
 }
 
+func (u *userManager) ValidateToken(tokenID string) error {
+	if tokenID == "" {
+		return gErrors.ErrUnauthorized
+	}
+
+	var token models.JWTBacklist
+	q := u.conn.Where("token_id = ?", tokenID).First(&token)
+	if q.Error != nil {
+		if q.RecordNotFound() {
+			return nil
+		}
+		return errors.Wrap(q.Error, "checking token blacklist")
+	}
+	return gErrors.ErrUnauthorized
+}
+
+func (u *userManager) BlacklistToken(tokenID string, expiration int64) error {
+	token := models.JWTBacklist{
+		TokenID:    tokenID,
+		Expiration: expiration,
+	}
+	err := u.conn.Create(&token).Error
+	if err != nil {
+		return errors.Wrap(err, "updating blacklist")
+	}
+	return nil
+}
+
 func (u *userManager) setEnabledFlag(userID int64, enabled bool) error {
 	usr, err := u.getUser(userID)
 	if err != nil {

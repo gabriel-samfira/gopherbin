@@ -84,3 +84,9 @@ type Teams struct {
 	Owner   int64
 	Members []*Users `gorm:"many2many:team_users;"`
 }
+
+// JWTBacklist is a JWT token blacklist
+type JWTBacklist struct {
+	TokenID    string `gorm:"primary_key;type:varchar(16)"`
+	Expiration int64  `gorm:"index:expire"`
+}

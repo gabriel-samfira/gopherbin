@@ -106,15 +106,20 @@ func GetAPIServer(cfg *config.Config) (*APIServer, error) {
 		return nil, errors.Wrap(err, "initializing session store")
 	}
 	pasteHandler := controllers.NewPasteController(paster, sess, userMgr)
-	apiHandler := controllers.NewAPIController(paster, userMgr)
+	apiHandler := controllers.NewAPIController(paster, userMgr, cfg.APIServer.JWTAuth)
 
 	authMiddleware, err := getAuthMiddleware(sess, userMgr)
 	if err != nil {
 		return nil, errors.Wrap(err, "initializing auth middleware")
 	}
 
+	jwtMiddleware, err := auth.NewjwtMiddleware(userMgr, cfg.APIServer.JWTAuth)
+	if err != nil {
+		return nil, errors.Wrap(err, "initializing jwt middleware")
+	}
+
 	router := mux.NewRouter()
-	if err := routers.AddAPIURLs(router, apiHandler, authMiddleware); err != nil {
+	if err := routers.AddAPIURLs(router, apiHandler, jwtMiddleware); err != nil {
 		return nil, errors.Wrap(err, "setting API urls")
 	}
 

@@ -35,6 +35,7 @@ const (
 	// UserIDFlag is the User ID flag we set in the context
 	UserIDFlag    contextFlags = "user_id"
 	isEnabledFlag contextFlags = "is_enabled"
+	jwtTokenFlag  contextFlags = "jwt_token"
 )
 
 // PopulateContext sets the appropriate fields in the context, based on
@@ -60,6 +61,20 @@ func UpdatedAt(ctx context.Context) string {
 		return ""
 	}
 	return updated.(string)
+}
+
+// SetJWTClaim will set the JWT claim in the context
+func SetJWTClaim(ctx context.Context, claim JWTClaims) context.Context {
+	return context.WithValue(ctx, jwtTokenFlag, claim)
+}
+
+// JWTClaim returns the JWT claim saved in the context
+func JWTClaim(ctx context.Context) JWTClaims {
+	jwtClaim := ctx.Value(jwtTokenFlag)
+	if jwtClaim == nil {
+		return JWTClaims{}
+	}
+	return jwtClaim.(JWTClaims)
 }
 
 // SetIsEnabled sets a flag indicating if account is enabled
@@ -127,4 +142,15 @@ func UserID(ctx context.Context) int64 {
 // anonymous user
 func IsAnonymous(ctx context.Context) bool {
 	return UserID(ctx) == 0
+}
+
+// GetAdminContext will return an admin context. This can be used internally
+// when fetching users.
+func GetAdminContext() context.Context {
+	ctx := context.Background()
+	ctx = SetUserID(ctx, 0)
+	ctx = SetAdmin(ctx, true)
+	ctx = SetSuperUser(ctx, false)
+	ctx = SetIsEnabled(ctx, true)
+	return ctx
 }

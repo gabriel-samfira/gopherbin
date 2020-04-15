@@ -2,22 +2,31 @@ package controllers
 
 import (
 	"encoding/json"
-	adminCommon "gopherbin/admin/common"
-	"gopherbin/auth"
-	gErrors "gopherbin/errors"
-	"gopherbin/paste/common"
+	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
+	adminCommon "gopherbin/admin/common"
+	"gopherbin/apiserver/responses"
+	"gopherbin/auth"
+	"gopherbin/config"
+	gErrors "gopherbin/errors"
+	"gopherbin/params"
+	"gopherbin/paste/common"
+	"gopherbin/util"
+
+	"github.com/dgrijalva/jwt-go"
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 )
 
 // NewAPIController returns a new APIController
-func NewAPIController(paster common.Paster, mgr adminCommon.UserManager) *APIController {
+func NewAPIController(paster common.Paster, mgr adminCommon.UserManager, cfg config.JWTAuth) *APIController {
 	return &APIController{
 		paster:  paster,
 		manager: mgr,
+		cfg:     cfg,
 	}
 }
 
@@ -25,10 +34,11 @@ func NewAPIController(paster common.Paster, mgr adminCommon.UserManager) *APICon
 type APIController struct {
 	paster  common.Paster
 	manager adminCommon.UserManager
+	cfg     config.JWTAuth
 }
 
 func handleError(w http.ResponseWriter, err error) {
-	apiErr := APIErrorResponse{
+	apiErr := responses.APIErrorResponse{
 		Details: err.Error(),
 	}
 	switch errors.Cause(err) {
@@ -44,6 +54,57 @@ func handleError(w http.ResponseWriter, err error) {
 	}
 	json.NewEncoder(w).Encode(apiErr)
 	return
+}
+
+// LoginHandler returns a jwt token
+func (p *APIController) LoginHandler(w http.ResponseWriter, r *http.Request) {
+	var loginInfo params.PasswordLoginParams
+	err := json.NewDecoder(r.Body).Decode(&loginInfo)
+
+	if err := loginInfo.Validate(); err != nil {
+		handleError(w, err)
+		return
+	}
+	ctx := r.Context()
+	ctx, err = p.manager.Authenticate(ctx, loginInfo)
+	if err != nil {
+		handleError(w, err)
+		return
+	}
+	tokenID, err := util.GetRandomString(16)
+	if err != nil {
+		handleError(w, err)
+		return
+	}
+	expireToken := time.Now().Add(p.cfg.TimeToLive.Duration).Unix()
+	claims := auth.JWTClaims{
+		StandardClaims: jwt.StandardClaims{
+			ExpiresAt: expireToken,
+			Issuer:    "gopherbin",
+		},
+		UserID:    auth.UserID(ctx),
+		UpdatedAt: auth.UpdatedAt(ctx),
+		TokenID:   tokenID,
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString([]byte(p.cfg.Secret))
+	if err != nil {
+		handleError(w, err)
+		return
+	}
+	json.NewEncoder(w).Encode(params.JWTResponse{Token: tokenString})
+}
+
+// LogoutHandler will blacklist the token ID
+func (p *APIController) LogoutHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	claim := auth.JWTClaim(ctx)
+	fmt.Println(claim)
+	err := p.manager.BlacklistToken(claim.TokenID, claim.StandardClaims.ExpiresAt)
+	if err != nil {
+		handleError(w, err)
+		return
+	}
 }
 
 // PasteViewHandler returns details about a single paste
@@ -91,7 +152,7 @@ func (p *APIController) DeletePasteHandler(w http.ResponseWriter, r *http.Reques
 	pasteID, ok := vars["pasteID"]
 	if !ok {
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(APIErrorResponse{
+		json.NewEncoder(w).Encode(responses.APIErrorResponse{
 			Error:   "Bad Request",
 			Details: "No paste ID specified",
 		})
@@ -109,7 +170,7 @@ func (p *APIController) UserListHandler(w http.ResponseWriter, r *http.Request) 
 	ctx := r.Context()
 	if auth.IsSuperUser(ctx) == false && auth.IsAdmin(ctx) == false {
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(unauthorizedResponse)
+		json.NewEncoder(w).Encode(responses.UnauthorizedResponse)
 		return
 	}
 
@@ -133,5 +194,5 @@ func (p *APIController) UserListHandler(w http.ResponseWriter, r *http.Request) 
 // NotFoundHandler is returned when an invalid URL is acccessed
 func (p *APIController) NotFoundHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotFound)
-	json.NewEncoder(w).Encode(notFoundResponse)
+	json.NewEncoder(w).Encode(responses.NotFoundResponse)
 }

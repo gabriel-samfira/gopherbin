@@ -12,7 +12,7 @@
 //    License for the specific language governing permissions and limitations
 //    under the License.
 
-package controllers
+package responses
 
 // ErrorResponse holds any errors generated during
 // a request
@@ -27,12 +27,19 @@ type APIErrorResponse struct {
 }
 
 var (
-	notFoundResponse = APIErrorResponse{
+	// NotFoundResponse is returned when a resource is not found
+	NotFoundResponse = APIErrorResponse{
 		Error:   "Not Found",
 		Details: "The resource you are looking for was not found",
 	}
-	unauthorizedResponse = APIErrorResponse{
+	// UnauthorizedResponse is a canned response for unauthorized access
+	UnauthorizedResponse = APIErrorResponse{
 		Error:   "Not Authorized",
 		Details: "You do not have the required permissions to access this resource",
+	}
+	// InitializationRequired is returned if gopherbin has not beed properly initialized
+	InitializationRequired = APIErrorResponse{
+		Error:   "Init Required",
+		Details: "Missing superuser",
 	}
 )

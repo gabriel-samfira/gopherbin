@@ -82,16 +82,16 @@ func runAPIServer(cfgFile string) {
 
 	cfg, err := getConfig(cfgFile)
 	if err != nil {
-		log.Errorf("error validating config: %q", err)
+		log.Errorf("error validating config: %+v", err)
 		os.Exit(1)
 	}
 	apiServer, err := apiserver.GetAPIServer(cfg)
 	if err != nil {
-		log.Errorf("error getting apiserver: %v", err)
+		log.Errorf("error getting apiserver: %+v", err)
 		os.Exit(1)
 	}
 	if err := apiServer.Start(); err != nil {
-		log.Errorf("error starting api worker: %v", err)
+		log.Errorf("error starting api worker: %+v", err)
 		os.Exit(1)
 	}
 	select {

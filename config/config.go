@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
+	"time"
 
 	"github.com/BurntSushi/toml"
 	"github.com/pkg/errors"
@@ -28,16 +29,19 @@ import (
 const (
 	// MySQLBackend represents the MySQL DB backend
 	MySQLBackend = "mysql"
+	// DefaultJWTTTL is the default duration in seconds a JWT token
+	// will be valid.
+	DefaultJWTTTL time.Duration = 60 * time.Second
 )
 
 // NewConfig returns a new Config
 func NewConfig(cfgFile string) (*Config, error) {
 	var config Config
 	if _, err := toml.DecodeFile(cfgFile, &config); err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "decoding toml")
 	}
 	if err := config.Validate(); err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "validating config")
 	}
 	return &config, nil
 }
@@ -193,6 +197,37 @@ func (t *TLSConfig) Validate() error {
 	return nil
 }
 
+type duration struct {
+	time.Duration
+}
+
+func (d *duration) UnmarshalText(text []byte) error {
+	var err error
+	d.Duration, err = time.ParseDuration(string(text))
+	if err != nil {
+		return errors.Wrap(err, "parsing time_to_live")
+	}
+	return nil
+}
+
+// JWTAuth holds settings used to generate JWT tokens
+type JWTAuth struct {
+	Secret     string   `toml:"secret"`
+	TimeToLive duration `toml:"time_to_live"`
+}
+
+// Validate validates the JWTAuth config
+func (j *JWTAuth) Validate() error {
+	// TODO: Set defaults somewhere else.
+	if j.TimeToLive.Duration < DefaultJWTTTL {
+		j.TimeToLive.Duration = DefaultJWTTTL
+	}
+	if j.Secret == "" {
+		return fmt.Errorf("invalid JWT secret")
+	}
+	return nil
+}
+
 // APIServer holds configuration for the API server
 // worker
 type APIServer struct {
@@ -200,6 +235,7 @@ type APIServer struct {
 	Port          int
 	UseTLS        bool
 	SessionSecret string    `toml:"session_secret"`
+	JWTAuth       JWTAuth   `toml:"jwt_auth"`
 	TLSConfig     TLSConfig `toml:"tls"`
 }
 
@@ -212,6 +248,10 @@ func (a *APIServer) Validate() error {
 	}
 	if a.Port > 65535 || a.Port < 1 {
 		return fmt.Errorf("invalid port nr %q", a.Port)
+	}
+
+	if err := a.JWTAuth.Validate(); err != nil {
+		return errors.Wrap(err, "validating jwt config")
 	}
 	ip := net.ParseIP(a.Bind)
 	if ip == nil {
