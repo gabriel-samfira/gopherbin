@@ -25,6 +25,7 @@ import (
 	"gopherbin/apiserver"
 	"gopherbin/config"
 	"gopherbin/params"
+	"gopherbin/workers/maintenance"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/juju/loggo"
@@ -94,10 +95,21 @@ func runAPIServer(cfgFile string) {
 		log.Errorf("error starting api worker: %+v", err)
 		os.Exit(1)
 	}
+	maintenanceWrk, err := maintenance.NewMaintenanceWorker(cfg.Database, cfg.Default)
+	if err != nil {
+		log.Errorf("error getting maintenance worker: %+v", err)
+		os.Exit(1)
+	}
+
+	if err := maintenanceWrk.Start(); err != nil {
+		log.Errorf("error starting maintenance worker: %+v", err)
+		os.Exit(1)
+	}
 	select {
 	case <-stop:
 		log.Infof("shutting down gracefully")
 		apiServer.Stop()
+		maintenanceWrk.Stop()
 	}
 }
 

@@ -313,6 +313,15 @@ func (u *userManager) BlacklistToken(tokenID string, expiration int64) error {
 	return nil
 }
 
+func (u *userManager) CleanTokens() error {
+	now := time.Now().Unix()
+	err := u.conn.Where("expiration < ?", now).Delete(models.JWTBacklist{}).Error
+	if err != nil {
+		return errors.Wrap(err, "pruning tokens")
+	}
+	return nil
+}
+
 func (u *userManager) setEnabledFlag(userID int64, enabled bool) error {
 	usr, err := u.getUser(userID)
 	if err != nil {

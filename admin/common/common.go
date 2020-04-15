@@ -37,4 +37,6 @@ type UserManager interface {
 	ValidateToken(tokenID string) error
 	// BlacklistToken will invalidate a JWT token
 	BlacklistToken(tokenID string, expiration int64) error
+	// CleanTokens will delete expired tokens from blacklist
+	CleanTokens() error
 }

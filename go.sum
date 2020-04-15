@@ -42,6 +42,7 @@ github.com/fsnotify/fsnotify v1.4.7/go.mod h1:jwhsz4b93w/PPRr/qN1Yymfu8t87LnFCMo
 github.com/gabriel-samfira/gopherbin v0.0.0-20200109155303-e403738db351 h1:ZHaQyhgz863vbp4JPgs+zlRj46SPo7bNqXEZ3uhKqp4=
 github.com/gabriel-samfira/gopherbin v0.0.0-20200403010634-0c393b1bbb28 h1:1tZSIj8cqRnWbCsf1v+J39qrOk+r2P1rqF1K5PE07Jg=
 github.com/gabriel-samfira/gopherbin v0.0.0-20200414213225-53ac410e85b8 h1:OGusAqn5Bv/TrN4N0J6kyI22LmtrmpGK7gNO9eLXbHc=
+github.com/gabriel-samfira/gopherbin v0.0.0-20200415163146-50650bcfbc08 h1:zIOnZVAqCS6cwCjr8rNA1kZtvbld15ytIOhJKNgnUo8=
 github.com/ghodss/yaml v1.0.0/go.mod h1:4dBDuWmgqj2HViK6kFavaiC9ZROes6MMH2rRYeMEF04=
 github.com/go-kit/kit v0.8.0/go.mod h1:xBxKIO96dXMWWy0MnWVtmwkA9/13aqxPnvrjFYMA2as=
 github.com/go-logfmt/logfmt v0.3.0/go.mod h1:Qt1PoO58o5twSAckw1HlFXLmHsOX5/0LbT9GBnD5lWE=
