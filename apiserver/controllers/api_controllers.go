@@ -38,6 +38,7 @@ type APIController struct {
 }
 
 func handleError(w http.ResponseWriter, err error) {
+	w.Header().Set("Content-Type", "application/json")
 	apiErr := responses.APIErrorResponse{
 		Details: err.Error(),
 	}
@@ -48,6 +49,9 @@ func handleError(w http.ResponseWriter, err error) {
 	case gErrors.ErrUnauthorized:
 		w.WriteHeader(http.StatusUnauthorized)
 		apiErr.Error = "Not Authorized"
+	case gErrors.ErrBadRequest:
+		w.WriteHeader(http.StatusBadRequest)
+		apiErr.Error = "Bad Request"
 	default:
 		w.WriteHeader(http.StatusInternalServerError)
 		apiErr.Error = "Server error"
@@ -59,14 +63,17 @@ func handleError(w http.ResponseWriter, err error) {
 // LoginHandler returns a jwt token
 func (p *APIController) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	var loginInfo params.PasswordLoginParams
-	err := json.NewDecoder(r.Body).Decode(&loginInfo)
+	if err := json.NewDecoder(r.Body).Decode(&loginInfo); err != nil {
+		handleError(w, gErrors.ErrBadRequest)
+		return
+	}
 
 	if err := loginInfo.Validate(); err != nil {
 		handleError(w, err)
 		return
 	}
 	ctx := r.Context()
-	ctx, err = p.manager.Authenticate(ctx, loginInfo)
+	ctx, err := p.manager.Authenticate(ctx, loginInfo)
 	if err != nil {
 		handleError(w, err)
 		return
@@ -92,6 +99,7 @@ func (p *APIController) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		handleError(w, err)
 		return
 	}
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(params.JWTResponse{Token: tokenString})
 }
 
@@ -123,6 +131,7 @@ func (p *APIController) PasteViewHandler(w http.ResponseWriter, r *http.Request)
 		handleError(w, err)
 		return
 	}
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(pasteInfo)
 }
 
@@ -142,6 +151,7 @@ func (p *APIController) PasteListHandler(w http.ResponseWriter, r *http.Request)
 		handleError(w, err)
 		return
 	}
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(res)
 }
 
@@ -162,6 +172,7 @@ func (p *APIController) DeletePasteHandler(w http.ResponseWriter, r *http.Reques
 		handleError(w, err)
 		return
 	}
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -187,12 +198,35 @@ func (p *APIController) UserListHandler(w http.ResponseWriter, r *http.Request) 
 		handleError(w, err)
 		return
 	}
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(res)
-	return
+}
+
+// CreatePasteHandler creates a new paste
+func (p *APIController) CreatePasteHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var pasteData params.Paste
+	if err := json.NewDecoder(r.Body).Decode(&pasteData); err != nil {
+		handleError(w, gErrors.ErrBadRequest)
+		return
+	}
+
+	pasteInfo, err := p.paster.Create(
+		ctx, pasteData.Data, pasteData.Name,
+		pasteData.Language, pasteData.Expires,
+		pasteData.Public, pasteData.Encrypted)
+	if err != nil {
+		handleError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(pasteInfo)
 }
 
 // NotFoundHandler is returned when an invalid URL is acccessed
 func (p *APIController) NotFoundHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotFound)
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(responses.NotFoundResponse)
 }

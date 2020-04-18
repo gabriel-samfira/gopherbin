@@ -191,7 +191,7 @@ func (p *paste) sqlToCommonPaste(modelPaste models.Paste) params.Paste {
 	return paste
 }
 
-func (p *paste) Create(ctx context.Context, data, title, language string, expires *time.Time, isPublic, encrypted bool) (paste params.Paste, err error) {
+func (p *paste) Create(ctx context.Context, data []byte, title, language string, expires *time.Time, isPublic, encrypted bool) (paste params.Paste, err error) {
 	pasteID, err := util.GetRandomString(24)
 	if err != nil {
 		return params.Paste{}, errors.Wrap(err, "getting random string")
@@ -204,12 +204,16 @@ func (p *paste) Create(ctx context.Context, data, title, language string, expire
 	if err != nil {
 		return params.Paste{}, errors.Wrap(err, "fetching user")
 	}
+	if len(data) == 0 || len(title) == 0 {
+		// TODO: create some custom error types
+		return params.Paste{}, gErrors.ErrBadRequest
+	}
 
 	newPaste := models.Paste{
 		PasteID:   pasteID,
 		Owner:     user.ID,
 		CreatedAt: time.Now(),
-		Data:      []byte(data),
+		Data:      data,
 		Expires:   expires,
 		Language:  language,
 		Public:    isPublic,

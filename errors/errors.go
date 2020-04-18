@@ -28,4 +28,6 @@ var (
 	// ErrDuplicateUser is returned when creating a user, if the
 	// user already exists.
 	ErrDuplicateUser = fmt.Errorf("duplicate user")
+	// ErrBadRequest is returned is a malformed request is sent
+	ErrBadRequest = fmt.Errorf("invalid request")
 )
