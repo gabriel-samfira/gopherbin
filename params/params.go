@@ -39,7 +39,7 @@ type Users struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 	Email       string    `json:"email"`
 	FullName    string    `json:"full_name"`
-	Password    string    `json:"password"`
+	Password    *string   `json:"password,omitempty"`
 	Enabled     bool      `json:"enabled"`
 	IsAdmin     bool      `json:"is_admin"`
 	IsSuperUser bool      `json:"is_superuser"`

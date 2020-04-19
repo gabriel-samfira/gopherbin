@@ -100,7 +100,7 @@ type DuplicateUserError struct {
 func NewBadRequestError(msg string, a ...interface{}) error {
 	return &BadRequestError{
 		baseError{
-			msg: fmt.Sprintf(msg, a),
+			msg: fmt.Sprintf(msg, a...),
 		},
 	}
 }

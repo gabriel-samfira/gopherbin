@@ -39,11 +39,11 @@ type APIController struct {
 
 func handleError(w http.ResponseWriter, err error) {
 	w.Header().Set("Content-Type", "application/json")
+	origErr := errors.Cause(err)
 	apiErr := responses.APIErrorResponse{
-		Details: err.Error(),
+		Details: origErr.Error(),
 	}
 
-	origErr := errors.Cause(err)
 	switch origErr.(type) {
 	case *gErrors.NotFoundError:
 		w.WriteHeader(http.StatusNotFound)

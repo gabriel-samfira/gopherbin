@@ -63,7 +63,7 @@ func (u *userManager) HasSuperUser() bool {
 
 func (u *userManager) newUserParamsToSQL(user params.NewUserParams) (models.Users, error) {
 	if err := user.Validate(); err != nil {
-		return models.Users{}, errors.Wrap(err, "validating user info")
+		return models.Users{}, gErrors.NewBadRequestError("error validating parameters: %s", err)
 	}
 	// When creating a new user only 3 fields are ever used:
 	// Email, FullName and Password. The ID is generated from the email
