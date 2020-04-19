@@ -14,6 +14,8 @@
 
 package errors
 
+import "fmt"
+
 var (
 	// ErrUnauthorized is returned when a user does not have
 	// authorization to perform a request
@@ -95,10 +97,10 @@ type DuplicateUserError struct {
 }
 
 // NewBadRequestError returns a new BadRequestError
-func NewBadRequestError(msg string) error {
+func NewBadRequestError(msg string, a ...interface{}) error {
 	return &BadRequestError{
 		baseError{
-			msg: msg,
+			msg: fmt.Sprintf(msg, a),
 		},
 	}
 }

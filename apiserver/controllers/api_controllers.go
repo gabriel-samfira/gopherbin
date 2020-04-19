@@ -242,6 +242,7 @@ func (p *APIController) NewUserHandler(w http.ResponseWriter, r *http.Request) {
 		handleError(w, err)
 		return
 	}
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(newUser)
 }
 
@@ -270,7 +271,7 @@ func (p *APIController) UpdateUserHandler(w http.ResponseWriter, r *http.Request
 	}
 	var updateUserPayload params.UpdateUserPayload
 	if err := json.NewDecoder(r.Body).Decode(&updateUserPayload); err != nil {
-		handleError(w, gErrors.ErrBadRequest)
+		handleError(w, gErrors.NewBadRequestError("failed to unmarshal request: %v", err))
 		return
 	}
 
@@ -279,12 +280,13 @@ func (p *APIController) UpdateUserHandler(w http.ResponseWriter, r *http.Request
 		handleError(w, err)
 		return
 	}
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(updatedUser)
 }
 
 // NotFoundHandler is returned when an invalid URL is acccessed
 func (p *APIController) NotFoundHandler(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotFound)
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusNotFound)
 	json.NewEncoder(w).Encode(responses.NotFoundResponse)
 }

@@ -281,7 +281,10 @@ func (u *userManager) Update(ctx context.Context, userID int64, update params.Up
 		}
 		tmpUser.Enabled = *update.Enabled
 	}
-
+	// TODO: When we update the user for any reason, it will invalidate
+	// all login tokens. Add a separate field as witness instead of UpdatedAt,
+	// which will only update when the password is reset, or when any other
+	// operation that should invalidate a token, happens.
 	tmpUser.UpdatedAt = time.Now()
 	q := u.conn.Save(&tmpUser)
 	if q.Error != nil {
