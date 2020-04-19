@@ -14,7 +14,9 @@
 
 package models
 
-import "time"
+import (
+	"time"
+)
 
 // TeamUsers is used for many2many relation between
 // the users model and the teams model. We define it here

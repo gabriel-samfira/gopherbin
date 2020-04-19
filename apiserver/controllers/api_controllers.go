@@ -42,20 +42,23 @@ func handleError(w http.ResponseWriter, err error) {
 	apiErr := responses.APIErrorResponse{
 		Details: err.Error(),
 	}
-	switch errors.Cause(err) {
-	case gErrors.ErrNotFound:
+
+	origErr := errors.Cause(err)
+	switch origErr.(type) {
+	case *gErrors.NotFoundError:
 		w.WriteHeader(http.StatusNotFound)
 		apiErr.Error = "Not Found"
-	case gErrors.ErrUnauthorized:
+	case *gErrors.UnauthorizedError:
 		w.WriteHeader(http.StatusUnauthorized)
 		apiErr.Error = "Not Authorized"
-	case gErrors.ErrBadRequest:
+	case *gErrors.BadRequestError, *gErrors.DuplicateUserError:
 		w.WriteHeader(http.StatusBadRequest)
 		apiErr.Error = "Bad Request"
 	default:
 		w.WriteHeader(http.StatusInternalServerError)
 		apiErr.Error = "Server error"
 	}
+
 	json.NewEncoder(w).Encode(apiErr)
 	return
 }
@@ -222,6 +225,61 @@ func (p *APIController) CreatePasteHandler(w http.ResponseWriter, r *http.Reques
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(pasteInfo)
+}
+
+// NewUserHandler creates a new user
+func (p *APIController) NewUserHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var newUserParams params.NewUserParams
+	if err := json.NewDecoder(r.Body).Decode(&newUserParams); err != nil {
+		handleError(w, gErrors.ErrBadRequest)
+		return
+	}
+
+	newUser, err := p.manager.Create(ctx, newUserParams)
+	if err != nil {
+		handleError(w, err)
+		return
+	}
+	json.NewEncoder(w).Encode(newUser)
+}
+
+// UpdateUserHandler will update a user
+func (p *APIController) UpdateUserHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	vars := mux.Vars(r)
+	userID, ok := vars["userID"]
+	if !ok {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(responses.APIErrorResponse{
+			Error:   "Bad Request",
+			Details: "no user ID specified",
+		})
+		return
+	}
+
+	userIDInt, err := strconv.ParseInt(userID, 10, 64)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(responses.APIErrorResponse{
+			Error:   "Bad Request",
+			Details: "invalid user ID",
+		})
+		return
+	}
+	var updateUserPayload params.UpdateUserPayload
+	if err := json.NewDecoder(r.Body).Decode(&updateUserPayload); err != nil {
+		handleError(w, gErrors.ErrBadRequest)
+		return
+	}
+
+	updatedUser, err := p.manager.Update(ctx, userIDInt, updateUserPayload)
+	if err != nil {
+		handleError(w, err)
+		return
+	}
+	json.NewEncoder(w).Encode(updatedUser)
 }
 
 // NotFoundHandler is returned when an invalid URL is acccessed

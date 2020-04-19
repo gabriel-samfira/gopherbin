@@ -85,7 +85,7 @@ func (u NewUserParams) Validate() error {
 		return fmt.Errorf("invalid email address %s", u.Email)
 	}
 
-	if len(u.FullName) == 0 {
+	if len(u.FullName) == 0 || len(u.FullName) > 255 {
 		return fmt.Errorf("full name may not be empty")
 	}
 	return nil
@@ -97,6 +97,26 @@ type UpdateUserPayload struct {
 	IsAdmin  *bool   `json:"is_admin,omitempty"`
 	Password *string `json:"password,omitempty"`
 	FullName *string `json:"full_name,omitempty"`
+	Enabled  *bool   `json:"enabled,omitempty"`
+}
+
+// Validate validates the object in order to determine
+// if the minimum required fields have proper values (email
+// is valid, password is of a decent strength etc).
+func (u UpdateUserPayload) Validate() error {
+	if u.Password != nil {
+		passwordStenght := zxcvbn.PasswordStrength(*u.Password, nil)
+		if passwordStenght.Score < 4 {
+			return errors.NewBadRequestError("the password is too weak, please use a stronger password")
+		}
+	}
+
+	if u.FullName != nil {
+		if len(*u.FullName) == 0 || len(*u.FullName) > 255 {
+			return errors.NewBadRequestError("invalid full name")
+		}
+	}
+	return nil
 }
 
 // Paste holds information about a paste

@@ -123,12 +123,20 @@ func (u *userManager) Authenticate(ctx context.Context, info params.PasswordLogi
 }
 
 func (u *userManager) Create(ctx context.Context, user params.NewUserParams) (params.Users, error) {
-	if u.cfg.RegistrationOpen == false && auth.IsAdmin(ctx) == false {
+	if auth.IsAdmin(ctx) == false {
 		return params.Users{}, gErrors.ErrUnauthorized
 	}
 
-	if user.IsAdmin != false && !auth.IsSuperUser(ctx) {
+	if user.IsAdmin && !auth.IsSuperUser(ctx) {
 		return params.Users{}, gErrors.ErrUnauthorized
+	}
+
+	if user.FullName == "" || len(user.FullName) > 255 {
+		return params.Users{}, gErrors.NewBadRequestError("invalid full name")
+	}
+
+	if user.Email == "" || !util.IsValidEmail(user.Email) {
+		return params.Users{}, gErrors.NewBadRequestError("invalid email")
 	}
 
 	newUser, err := u.newUserParamsToSQL(user)
@@ -227,6 +235,10 @@ func (u *userManager) List(ctx context.Context, page int64, results int64) (past
 }
 
 func (u *userManager) Update(ctx context.Context, userID int64, update params.UpdateUserPayload) (params.Users, error) {
+	if err := update.Validate(); err != nil {
+		return params.Users{}, errors.Wrap(err, "validating params")
+	}
+
 	tmpUser, err := u.getUser(userID)
 	if err != nil {
 		return params.Users{}, errors.Wrap(err, "fetching user")
@@ -260,11 +272,16 @@ func (u *userManager) Update(ctx context.Context, userID int64, update params.Up
 	}
 
 	if update.FullName != nil {
-		if len(*update.FullName) == 0 {
-			return params.Users{}, fmt.Errorf("name may not be empty")
-		}
 		tmpUser.FullName = *update.FullName
 	}
+
+	if update.Enabled != nil {
+		if userID == user {
+			return params.Users{}, gErrors.NewBadRequestError("you may not enable/disable your own account")
+		}
+		tmpUser.Enabled = *update.Enabled
+	}
+
 	tmpUser.UpdatedAt = time.Now()
 	q := u.conn.Save(&tmpUser)
 	if q.Error != nil {
