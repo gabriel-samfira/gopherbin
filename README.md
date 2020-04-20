@@ -77,10 +77,6 @@ flush privileges;
 The config is a simple toml.
 
 ```toml
-[default]
-registration_open = false
-allow_anonymous = false
-
 [apiserver]
 bind = "0.0.0.0"
 port = 9997
