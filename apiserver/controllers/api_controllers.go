@@ -51,9 +51,12 @@ func handleError(w http.ResponseWriter, err error) {
 	case *gErrors.UnauthorizedError:
 		w.WriteHeader(http.StatusUnauthorized)
 		apiErr.Error = "Not Authorized"
-	case *gErrors.BadRequestError, *gErrors.DuplicateUserError:
+	case *gErrors.BadRequestError:
 		w.WriteHeader(http.StatusBadRequest)
 		apiErr.Error = "Bad Request"
+	case *gErrors.DuplicateUserError, *gErrors.ConflictError:
+		w.WriteHeader(http.StatusConflict)
+		apiErr.Error = "Conflict"
 	default:
 		w.WriteHeader(http.StatusInternalServerError)
 		apiErr.Error = "Server error"
@@ -282,6 +285,35 @@ func (p *APIController) UpdateUserHandler(w http.ResponseWriter, r *http.Request
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(updatedUser)
+}
+
+// DeleteUserHandler deletes a user
+func (p *APIController) DeleteUserHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	vars := mux.Vars(r)
+	userID, ok := vars["userID"]
+	if !ok {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(responses.APIErrorResponse{
+			Error:   "Bad Request",
+			Details: "no user ID specified",
+		})
+		return
+	}
+	userIDInt, err := strconv.ParseInt(userID, 10, 64)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(responses.APIErrorResponse{
+			Error:   "Bad Request",
+			Details: "invalid user ID",
+		})
+		return
+	}
+	err = p.manager.Delete(ctx, userIDInt)
+	if err != nil {
+		handleError(w, err)
+		return
+	}
 }
 
 // NotFoundHandler is returned when an invalid URL is acccessed

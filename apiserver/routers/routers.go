@@ -111,8 +111,12 @@ func AddAPIURLs(router *mux.Router, han *controllers.APIController, authMiddlewa
 	// admin routes
 	apiRouter.Handle("/admin/{users:users\\/?}", log(os.Stdout, http.HandlerFunc(han.UserListHandler))).Methods("GET")
 	apiRouter.Handle("/admin/{users:users\\/?}", log(os.Stdout, http.HandlerFunc(han.NewUserHandler))).Methods("POST")
+	// update user
 	apiRouter.Handle("/admin/users/{userID}", log(os.Stdout, http.HandlerFunc(han.UpdateUserHandler))).Methods("PUT")
 	apiRouter.Handle("/admin/users/{userID}/", log(os.Stdout, http.HandlerFunc(han.UpdateUserHandler))).Methods("PUT")
+	// delete user
+	apiRouter.Handle("/admin/users/{userID}", log(os.Stdout, http.HandlerFunc(han.DeleteUserHandler))).Methods("DELETE")
+	apiRouter.Handle("/admin/users/{userID}/", log(os.Stdout, http.HandlerFunc(han.DeleteUserHandler))).Methods("DELETE")
 
 	apiRouter.PathPrefix("/").Handler(log(os.Stdout, http.HandlerFunc(han.NotFoundHandler)))
 	return nil

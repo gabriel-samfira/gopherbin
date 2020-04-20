@@ -98,6 +98,7 @@ type UpdateUserPayload struct {
 	Password *string `json:"password,omitempty"`
 	FullName *string `json:"full_name,omitempty"`
 	Enabled  *bool   `json:"enabled,omitempty"`
+	Email    *string `json:"email,omitempty"`
 }
 
 // Validate validates the object in order to determine

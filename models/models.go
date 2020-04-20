@@ -70,7 +70,7 @@ type Users struct {
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 	FullName     string   `gorm:"type:varchar(254)"`
-	Email        string   `gorm:"type:varchar(254)"`
+	Email        string   `gorm:"type:varchar(254);unique;index:idx_email"`
 	Teams        []*Teams `gorm:"many2many:team_users;"`
 	CreatedTeams []Teams  `gorm:"foreignkey:Owner"`
 	Password     string   `gorm:"type:varchar(60)"`

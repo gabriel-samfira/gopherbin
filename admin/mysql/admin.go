@@ -73,12 +73,7 @@ func (u *userManager) newUserParamsToSQL(user params.NewUserParams) (models.User
 	if err != nil {
 		return models.Users{}, errors.Wrap(err, "hashing password")
 	}
-	id, err := util.HashString(user.Email)
-	if err != nil {
-		return models.Users{}, errors.Wrap(err, "hashing the email address")
-	}
 	newUser := models.Users{
-		ID:          int64(id),
 		Email:       user.Email,
 		FullName:    user.FullName,
 		Password:    hashedPassword,
@@ -104,14 +99,27 @@ func (u *userManager) sqlUserToParams(user models.Users) params.Users {
 }
 
 func (u *userManager) Authenticate(ctx context.Context, info params.PasswordLoginParams) (context.Context, error) {
-	userID := info.ID()
-	if userID == 0 {
-		return ctx, fmt.Errorf("missing username")
+	if info.Username == "" {
+		return ctx, gErrors.ErrUnauthorized
 	}
-	modelUser, err := u.getUser(userID)
+
+	if info.Password == "" {
+		return ctx, gErrors.ErrUnauthorized
+	}
+
+	modelUser, err := u.getUserByEmail(info.Username)
 	if err != nil {
+		if err == gErrors.ErrNotFound {
+			return ctx, gErrors.NewUnauthorizedError("invalid username or password")
+		}
 		return ctx, err
 	}
+	if !modelUser.Enabled {
+		return ctx, gErrors.NewUnauthorizedError("user is disabled")
+	}
+	// If the user has an empty password saved in the
+	// database, it is implicitly disabled. This should not happen,
+	// but an extra check can't hurt.
 	if modelUser.Password == "" {
 		return ctx, gErrors.ErrUnauthorized
 	}
@@ -143,7 +151,7 @@ func (u *userManager) Create(ctx context.Context, user params.NewUserParams) (pa
 	if err != nil {
 		return params.Users{}, errors.Wrap(err, "fetching user object")
 	}
-	_, err = u.getUser(newUser.ID)
+	_, err = u.getUserByEmail(newUser.Email)
 	if err != nil {
 		if err != gErrors.ErrNotFound {
 			return params.Users{}, errors.Wrap(err, "fetching user")
@@ -249,18 +257,19 @@ func (u *userManager) Update(ctx context.Context, userID int64, update params.Up
 	if user == 0 {
 		return params.Users{}, gErrors.ErrUnauthorized
 	}
-	// Only superusers may create administrators
-	if update.IsAdmin != nil && isSuper == false {
-		return params.Users{}, gErrors.ErrUnauthorized
-	}
+
 	// A user may update their own info, or an admin may
 	// update another user's info.
 	if userID != user && isAdmin == false {
 		return params.Users{}, gErrors.ErrUnauthorized
 	}
 
-	if update.IsAdmin != nil {
+	// Only superusers may create administrators
+	if update.IsAdmin != nil && isSuper {
 		tmpUser.IsAdmin = *update.IsAdmin
+	} else {
+		// return meaningful error. Whould we just ignore the request?
+		return params.Users{}, gErrors.NewUnauthorizedError("you are not authorized to perform this action")
 	}
 
 	if update.Password != nil {
@@ -269,6 +278,18 @@ func (u *userManager) Update(ctx context.Context, userID int64, update params.Up
 			return params.Users{}, errors.Wrap(err, "updating password")
 		}
 		tmpUser.Password = hashed
+	}
+
+	if update.Email != nil && *update.Email != tmpUser.Email {
+		_, err = u.getUserByEmail(*update.Email)
+		if err != nil {
+			if err != gErrors.ErrNotFound {
+				return params.Users{}, errors.Wrap(err, "updating email")
+			}
+			tmpUser.Email = *update.Email
+		} else {
+			return params.Users{}, gErrors.NewDuplicateUserError("email address already in use")
+		}
 	}
 
 	if update.FullName != nil {
@@ -291,6 +312,18 @@ func (u *userManager) Update(ctx context.Context, userID int64, update params.Up
 		return params.Users{}, errors.Wrap(q.Error, "saving user to database")
 	}
 	return u.sqlUserToParams(tmpUser), nil
+}
+
+func (u *userManager) getUserByEmail(email string) (models.Users, error) {
+	var tmpUser models.Users
+	q := u.conn.Where("email = ?", email).First(&tmpUser)
+	if q.Error != nil {
+		if q.RecordNotFound() {
+			return models.Users{}, gErrors.ErrNotFound
+		}
+		return models.Users{}, errors.Wrap(q.Error, "fetching user from database")
+	}
+	return tmpUser, nil
 }
 
 func (u *userManager) getUser(userID int64) (models.Users, error) {
@@ -377,9 +410,22 @@ func (u *userManager) Delete(ctx context.Context, userID int64) error {
 	if isAdmin == false {
 		return gErrors.ErrUnauthorized
 	}
+	isSuperUser := auth.IsSuperUser(ctx)
+	currentUserID := auth.UserID(ctx)
+	if userID == currentUserID {
+		return gErrors.NewConflictError("you may not delete your own account")
+	}
+
 	usr, err := u.getUser(userID)
 	if err != nil {
 		return errors.Wrap(err, "fetching user from db")
+	}
+	if usr.IsSuperUser {
+		return gErrors.NewUnauthorizedError("the superuser may not be deleted")
+	}
+
+	if usr.IsAdmin && !isSuperUser {
+		return gErrors.NewUnauthorizedError("only a superuser may delete an admin")
 	}
 	q := u.conn.Delete(&usr)
 	if q.Error != nil {

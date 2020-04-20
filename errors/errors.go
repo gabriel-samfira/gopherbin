@@ -109,3 +109,17 @@ func NewBadRequestError(msg string, a ...interface{}) error {
 type BadRequestError struct {
 	baseError
 }
+
+// NewConflictError returns a new ConflictError
+func NewConflictError(msg string, a ...interface{}) error {
+	return &ConflictError{
+		baseError{
+			msg: fmt.Sprintf(msg, a...),
+		},
+	}
+}
+
+// ConflictError is returned when a conflicting request is made
+type ConflictError struct {
+	baseError
+}
