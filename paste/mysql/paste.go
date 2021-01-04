@@ -279,7 +279,8 @@ func (p *paste) List(ctx context.Context, page int64, results int64) (paste para
 	var cnt int64
 	now := time.Now()
 	startFrom := (page - 1) * results
-	q := p.conn.Select("id, paste_id, language, name, owner, created_at, expires, public").Where(
+	// List will return only a small preview of the paste data (first 512 bytes).
+	q := p.conn.Select("id, paste_id, language, name, owner, created_at, expires, public, LEFT(`data`, 512) as data").Where(
 		"owner = ? and (expires is NULL or expires >= ?)",
 		user.ID, now).Order("id desc")
 
@@ -288,7 +289,7 @@ func (p *paste) List(ctx context.Context, page int64, results int64) (paste para
 		return params.PasteListResult{}, errors.Wrap(cntQ.Error, "counting results")
 	}
 
-	resQ := q.Offset(startFrom).Limit(results).Find(&pasteResults)
+	resQ := q.Debug().Offset(startFrom).Limit(results).Find(&pasteResults)
 	if resQ.Error != nil {
 		if resQ.RecordNotFound() {
 			return params.PasteListResult{}, gErrors.ErrNotFound

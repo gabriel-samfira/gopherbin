@@ -2,7 +2,6 @@ package controllers
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -113,7 +112,6 @@ func (p *APIController) LoginHandler(w http.ResponseWriter, r *http.Request) {
 func (p *APIController) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	claim := auth.JWTClaim(ctx)
-	fmt.Println(claim)
 	err := p.manager.BlacklistToken(claim.TokenID, claim.StandardClaims.ExpiresAt)
 	if err != nil {
 		handleError(w, err)
