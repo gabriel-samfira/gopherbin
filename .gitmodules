@@ -1,0 +1,3 @@
+[submodule "webui/web"]
+	path = webui/web
+	url = https://github.com/gabriel-samfira/gopherbin-web

@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -320,6 +321,7 @@ func (p *APIController) DeleteUserHandler(w http.ResponseWriter, r *http.Request
 
 // NotFoundHandler is returned when an invalid URL is acccessed
 func (p *APIController) NotFoundHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Println(r.URL.Path)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusNotFound)
 	json.NewEncoder(w).Encode(responses.NotFoundResponse)

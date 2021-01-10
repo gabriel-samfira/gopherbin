@@ -27,7 +27,7 @@ import (
 
 	"gopherbin/apiserver/controllers"
 	"gopherbin/auth"
-	"gopherbin/templates"
+	"gopherbin/webui"
 )
 
 var log = loggo.GetLogger("gopherbin.apiserver.routes")
@@ -51,33 +51,6 @@ func maxAge(h http.Handler) http.Handler {
 
 		h.ServeHTTP(w, r)
 	})
-}
-
-// AddWebURLs adds web UI specific URLs to the router
-func AddWebURLs(router *mux.Router, han *controllers.PasteController, authMiddleware auth.Middleware) error {
-	// This is temporary. The Web UI will pe completely replaced
-	// by a single page application that will leverage the REST API
-	staticRouter := router.PathPrefix("/static").Subrouter()
-	staticRouter.PathPrefix("/").Handler(gorillaHandlers.CombinedLoggingHandler(os.Stdout, http.StripPrefix("/static/", maxAge(http.FileServer(templates.AssetsBox))))).Methods("GET")
-
-	authRouter := router.PathPrefix("/auth").Subrouter()
-	authRouter.Handle("/{login:login\\/?}", gorillaHandlers.CombinedLoggingHandler(os.Stdout, http.HandlerFunc(han.LoginHandler))).Methods("GET", "POST")
-	authRouter.Handle("/{logout:logout\\/?}", gorillaHandlers.CombinedLoggingHandler(os.Stdout, http.HandlerFunc(han.LogoutHandler))).Methods("GET")
-
-	uiRouter := router.PathPrefix("").Subrouter()
-	uiRouter.Use(authMiddleware.Middleware)
-
-	uiRouter.Handle("/{login:login\\/?}", gorillaHandlers.CombinedLoggingHandler(os.Stdout, http.HandlerFunc(han.LoginHandler))).Methods("GET", "POST")
-	uiRouter.Handle("/{logout:logout\\/?}", gorillaHandlers.CombinedLoggingHandler(os.Stdout, http.HandlerFunc(han.LogoutHandler))).Methods("GET")
-	uiRouter.Handle("/", gorillaHandlers.CombinedLoggingHandler(os.Stdout, http.HandlerFunc(han.IndexHandler))).Methods("GET", "POST")
-	uiRouter.Handle("/firstrun", gorillaHandlers.CombinedLoggingHandler(os.Stdout, http.HandlerFunc(han.FirstRunHandler))).Methods("GET")
-	uiRouter.Handle("/{p:p\\/?}", gorillaHandlers.CombinedLoggingHandler(os.Stdout, http.HandlerFunc(han.PasteListHandler))).Methods("GET")
-	uiRouter.Handle("/p/{pasteID}", gorillaHandlers.CombinedLoggingHandler(os.Stdout, http.HandlerFunc(han.PasteViewHandler))).Methods("GET")
-	uiRouter.Handle("/p/{pasteID}/{delete:delete\\/?}", gorillaHandlers.CombinedLoggingHandler(os.Stdout, http.HandlerFunc(han.DeletePasteHandler))).Methods("DELETE")
-	uiRouter.Handle("/admin/{users:users\\/?}", gorillaHandlers.CombinedLoggingHandler(os.Stdout, http.HandlerFunc(han.UserListHandler))).Methods("GET")
-	uiRouter.Handle("/admin/{new-user:new-user\\/?}", gorillaHandlers.CombinedLoggingHandler(os.Stdout, http.HandlerFunc(han.NewUserHandler))).Methods("GET", "POST")
-
-	return nil
 }
 
 // AddAPIURLs adds REST API urls
@@ -119,5 +92,7 @@ func AddAPIURLs(router *mux.Router, han *controllers.APIController, authMiddlewa
 	apiRouter.Handle("/admin/users/{userID}/", log(os.Stdout, http.HandlerFunc(han.DeleteUserHandler))).Methods("DELETE", "OPTIONS")
 
 	apiRouter.PathPrefix("/").Handler(log(os.Stdout, http.HandlerFunc(han.NotFoundHandler)))
+
+	router.PathPrefix("/").Handler(log(os.Stdout, http.HandlerFunc(webui.UIHandler)))
 	return nil
 }

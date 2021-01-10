@@ -100,19 +100,10 @@ func GetAPIServer(cfg *config.Config) (*APIServer, error) {
 		return nil, errors.Wrap(err, "getting user manager")
 	}
 
-	sessQuit := make(chan struct{})
-	sess, err := initSessionStor(cfg, sessQuit)
-
 	if err != nil {
 		return nil, errors.Wrap(err, "initializing session store")
 	}
-	pasteHandler := controllers.NewPasteController(paster, sess, userMgr)
 	apiHandler := controllers.NewAPIController(paster, userMgr, cfg.APIServer.JWTAuth)
-
-	authMiddleware, err := getAuthMiddleware(sess, userMgr)
-	if err != nil {
-		return nil, errors.Wrap(err, "initializing auth middleware")
-	}
 
 	jwtMiddleware, err := auth.NewjwtMiddleware(userMgr, cfg.APIServer.JWTAuth)
 	if err != nil {
@@ -124,10 +115,6 @@ func GetAPIServer(cfg *config.Config) (*APIServer, error) {
 
 	if err := routers.AddAPIURLs(router, apiHandler, jwtMiddleware); err != nil {
 		return nil, errors.Wrap(err, "setting API urls")
-	}
-
-	if err := routers.AddWebURLs(router, pasteHandler, authMiddleware); err != nil {
-		return nil, errors.Wrap(err, "setting web ui urls")
 	}
 
 	router.Use(corwMw)
@@ -150,8 +137,7 @@ func GetAPIServer(cfg *config.Config) (*APIServer, error) {
 		return nil, err
 	}
 	return &APIServer{
-		srv:         srv,
-		listener:    listener,
-		sessCleanup: sessQuit,
+		srv:      srv,
+		listener: listener,
 	}, nil
 }
