@@ -31,9 +31,12 @@ import (
 
 // JWTClaims holds JWT claims
 type JWTClaims struct {
-	UserID    int64  `json:"user"`
-	UpdatedAt string `json:"updated_at"`
-	TokenID   string `json:"token_id"`
+	UserID      int64  `json:"user"`
+	UpdatedAt   string `json:"updated_at"`
+	TokenID     string `json:"token_id"`
+	FullName    string `json:"full_name"`
+	IsAdmin     bool   `json:"is_admin"`
+	IsSuperUser bool   `json:"is_superuser"`
 	jwt.StandardClaims
 }
 

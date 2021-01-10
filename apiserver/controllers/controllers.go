@@ -489,7 +489,7 @@ func (p *PasteController) IndexHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// Create(ctx context.Context, data, title, language string, expires time.Time, isPublic bool) (paste params.Paste, err error)
-		pasteInfo, err := p.paster.Create(ctx, []byte(data), title, lang, pasteExpiration, public, encrypted)
+		pasteInfo, err := p.paster.Create(ctx, []byte(data), title, lang, "", pasteExpiration, public, encrypted, nil)
 		if err != nil {
 			switch errors.Cause(err) {
 			case gErrors.ErrNotFound:

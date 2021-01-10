@@ -29,6 +29,7 @@ const (
 	SessionTokenName              = "session_token"
 	isAdminKey       contextFlags = "is_admin"
 	isSuperUserKey   contextFlags = "is_super"
+	fullNameKey      contextFlags = "full_name"
 	// UpdatedAtFlag sets the timestamp when the user was
 	// updated in the context
 	UpdatedAtFlag contextFlags = "updated_at"
@@ -46,7 +47,22 @@ func PopulateContext(ctx context.Context, user params.Users) context.Context {
 	ctx = SetSuperUser(ctx, user.IsSuperUser)
 	ctx = SetIsEnabled(ctx, user.Enabled)
 	ctx = SetUpdatedAt(ctx, user.UpdatedAt)
+	ctx = SetFullName(ctx, user.FullName)
 	return ctx
+}
+
+// SetFullName sets the user full name in the context
+func SetFullName(ctx context.Context, fullName string) context.Context {
+	return context.WithValue(ctx, fullNameKey, fullName)
+}
+
+// FullName returns the full name from context
+func FullName(ctx context.Context) string {
+	name := ctx.Value(fullNameKey)
+	if name == nil {
+		return ""
+	}
+	return name.(string)
 }
 
 // SetUpdatedAt sets the update stamp for a user in the context

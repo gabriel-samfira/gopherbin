@@ -265,11 +265,13 @@ func (u *userManager) Update(ctx context.Context, userID int64, update params.Up
 	}
 
 	// Only superusers may create administrators
-	if update.IsAdmin != nil && isSuper {
-		tmpUser.IsAdmin = *update.IsAdmin
-	} else {
-		// return meaningful error. Whould we just ignore the request?
-		return params.Users{}, gErrors.NewUnauthorizedError("you are not authorized to perform this action")
+	if update.IsAdmin != nil {
+		if isSuper {
+			tmpUser.IsAdmin = *update.IsAdmin
+		} else {
+			// return meaningful error. Whould we just ignore the request?
+			return params.Users{}, gErrors.NewUnauthorizedError("you are not authorized to perform this action")
+		}
 	}
 
 	if update.Password != nil {

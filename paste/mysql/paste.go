@@ -16,7 +16,11 @@ package mysql
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"math"
+	"time"
+
 	"gopherbin/auth"
 	"gopherbin/config"
 	gErrors "gopherbin/errors"
@@ -24,8 +28,6 @@ import (
 	"gopherbin/params"
 	"gopherbin/paste/common"
 	"gopherbin/util"
-	"math"
-	"time"
 
 	"github.com/jinzhu/gorm"
 
@@ -173,25 +175,42 @@ func (p *paste) getPaste(pasteID string, user models.Users, anonymous bool) (mod
 	return tmpPaste, nil
 }
 
-func (p *paste) sqlToCommonPaste(modelPaste models.Paste) params.Paste {
-	paste := params.Paste{
-		ID:        modelPaste.ID,
-		PasteID:   modelPaste.PasteID,
-		Data:      modelPaste.Data,
-		Language:  modelPaste.Language,
-		Name:      modelPaste.Name,
-		Public:    modelPaste.Public,
-		Encrypted: modelPaste.Encrypted,
-		CreatedAt: modelPaste.CreatedAt,
-		Expires:   modelPaste.Expires,
+func (p *paste) sqlToCommonPaste(modelPaste models.Paste, withPreview bool) params.Paste {
+	metadata := make(map[string]string)
+	if modelPaste.Metadata != nil {
+		err := json.Unmarshal(modelPaste.Metadata, &metadata)
+		if err != nil {
+			metadata = nil
+		}
 	}
-	// if modelPaste.Expires != nil {
-	// 	paste.Expires = modelPaste.Expires
-	// }
+
+	paste := params.Paste{
+		ID:          modelPaste.ID,
+		PasteID:     modelPaste.PasteID,
+		Language:    modelPaste.Language,
+		Name:        modelPaste.Name,
+		Description: modelPaste.Description,
+		Public:      modelPaste.Public,
+		Encrypted:   modelPaste.Encrypted,
+		CreatedAt:   modelPaste.CreatedAt,
+		Expires:     modelPaste.Expires,
+		Metadata:    metadata,
+	}
+	if withPreview {
+		paste.Preview = modelPaste.Data
+	} else {
+		paste.Data = modelPaste.Data
+	}
 	return paste
 }
 
-func (p *paste) Create(ctx context.Context, data []byte, title, language string, expires *time.Time, isPublic, encrypted bool) (paste params.Paste, err error) {
+func (p *paste) Create(
+	ctx context.Context, data []byte,
+	title, language, description string,
+	expires *time.Time,
+	isPublic, encrypted bool,
+	metadata map[string]string) (paste params.Paste, err error) {
+
 	pasteID, err := util.GetRandomString(24)
 	if err != nil {
 		return params.Paste{}, errors.Wrap(err, "getting random string")
@@ -209,22 +228,32 @@ func (p *paste) Create(ctx context.Context, data []byte, title, language string,
 		return params.Paste{}, gErrors.ErrBadRequest
 	}
 
+	var encodedMetadata []byte
+	if metadata != nil {
+		encodedMetadata, err = json.Marshal(metadata)
+		if err != nil {
+			return params.Paste{}, errors.Wrap(err, "encoding metadata")
+		}
+	}
+
 	newPaste := models.Paste{
-		PasteID:   pasteID,
-		Owner:     user.ID,
-		CreatedAt: time.Now(),
-		Data:      data,
-		Expires:   expires,
-		Language:  language,
-		Public:    isPublic,
-		Encrypted: encrypted,
-		Name:      title,
+		PasteID:     pasteID,
+		Owner:       user.ID,
+		CreatedAt:   time.Now(),
+		Data:        data,
+		Expires:     expires,
+		Language:    language,
+		Public:      isPublic,
+		Encrypted:   encrypted,
+		Name:        title,
+		Description: description,
+		Metadata:    encodedMetadata,
 	}
 	q := p.conn.Create(&newPaste)
 	if q.Error != nil {
 		return params.Paste{}, errors.Wrap(q.Error, "creating paste")
 	}
-	return p.sqlToCommonPaste(newPaste), nil
+	return p.sqlToCommonPaste(newPaste, false), nil
 }
 
 func (p *paste) get(ctx context.Context, pasteID string) (models.Paste, error) {
@@ -245,7 +274,7 @@ func (p *paste) Get(ctx context.Context, pasteID string) (paste params.Paste, er
 	if err != nil {
 		return params.Paste{}, errors.Wrap(err, "fetching paste")
 	}
-	return p.sqlToCommonPaste(pst), nil
+	return p.sqlToCommonPaste(pst, false), nil
 }
 
 func (p *paste) Delete(ctx context.Context, pasteID string) error {
@@ -280,7 +309,7 @@ func (p *paste) List(ctx context.Context, page int64, results int64) (paste para
 	now := time.Now()
 	startFrom := (page - 1) * results
 	// List will return only a small preview of the paste data (first 512 bytes).
-	q := p.conn.Select("id, paste_id, language, name, owner, created_at, expires, public, LEFT(`data`, 512) as data").Where(
+	q := p.conn.Select("id, paste_id, language, name, description, metadata, owner, created_at, expires, public, LEFT(`data`, 512) as data").Where(
 		"owner = ? and (expires is NULL or expires >= ?)",
 		user.ID, now).Order("id desc")
 
@@ -298,7 +327,7 @@ func (p *paste) List(ctx context.Context, page int64, results int64) (paste para
 	}
 	asParams := make([]params.Paste, len(pasteResults))
 	for idx, val := range pasteResults {
-		asParams[idx] = p.sqlToCommonPaste(val)
+		asParams[idx] = p.sqlToCommonPaste(val, true)
 	}
 	totalPages := int64(math.Ceil(float64(cnt) / float64(results)))
 	if totalPages == 0 {

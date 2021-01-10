@@ -122,15 +122,18 @@ func (u UpdateUserPayload) Validate() error {
 
 // Paste holds information about a paste
 type Paste struct {
-	ID        int64      `json:"id"`
-	PasteID   string     `json:"paste_id"`
-	Data      []byte     `json:"data,omitempty"`
-	Language  string     `json:"language"`
-	Name      string     `json:"name"`
-	Expires   *time.Time `json:"expires,omitempty"`
-	Public    bool       `json:"public"`
-	CreatedAt time.Time  `json:"created_at"`
-	Encrypted bool       `json:"encrypted"`
+	ID          int64             `json:"id"`
+	PasteID     string            `json:"paste_id"`
+	Data        []byte            `json:"data,omitempty"`
+	Preview     []byte            `json:"preview,omitempty"`
+	Language    string            `json:"language"`
+	Name        string            `json:"name"`
+	Description string            `json:"description"`
+	Expires     *time.Time        `json:"expires,omitempty"`
+	Public      bool              `json:"public"`
+	CreatedAt   time.Time         `json:"created_at"`
+	Encrypted   bool              `json:"encrypted"`
+	Metadata    map[string]string `json:"metadata"`
 }
 
 // FormattedCreatedAt returns a DD-MM-YY formatted createdAt

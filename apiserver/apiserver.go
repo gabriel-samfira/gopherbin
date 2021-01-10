@@ -31,6 +31,7 @@ import (
 	"gopherbin/config"
 	"gopherbin/util"
 
+	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/sessions"
 	"github.com/pkg/errors"
@@ -119,6 +120,8 @@ func GetAPIServer(cfg *config.Config) (*APIServer, error) {
 	}
 
 	router := mux.NewRouter()
+	corwMw := mux.CORSMethodMiddleware(router)
+
 	if err := routers.AddAPIURLs(router, apiHandler, jwtMiddleware); err != nil {
 		return nil, errors.Wrap(err, "setting API urls")
 	}
@@ -127,8 +130,13 @@ func GetAPIServer(cfg *config.Config) (*APIServer, error) {
 		return nil, errors.Wrap(err, "setting web ui urls")
 	}
 
+	router.Use(corwMw)
+	allowedOrigins := handlers.AllowedOrigins(cfg.APIServer.CORSOrigins)
+	methodsOk := handlers.AllowedMethods([]string{"GET", "HEAD", "POST", "PUT", "OPTIONS", "DELETE"})
+	headersOk := handlers.AllowedHeaders([]string{"X-Requested-With", "Content-Type", "Authorization"})
+
 	srv := &http.Server{
-		Handler: router,
+		Handler: handlers.CORS(methodsOk, headersOk, allowedOrigins)(router),
 	}
 	if cfg.APIServer.UseTLS {
 		tlsCfg, err := cfg.APIServer.TLSConfig.TLSConfig()

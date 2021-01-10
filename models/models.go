@@ -16,6 +16,8 @@ package models
 
 import (
 	"time"
+
+	"gorm.io/datatypes"
 )
 
 // TeamUsers is used for many2many relation between
@@ -50,18 +52,20 @@ type PasteUsers struct {
 
 // Paste represents a pastebin entry in the database
 type Paste struct {
-	ID        int64  `gorm:"primary_key"`
-	PasteID   string `gorm:"type:varchar(32);unique_index"`
-	Data      []byte `gorm:"type:longblob"`
-	Language  string `gorm:"type:varchar(64)"`
-	Name      string
-	Owner     int64
-	CreatedAt time.Time
-	Expires   *time.Time `gorm:"index:expires"`
-	Public    bool
-	Encrypted bool
-	Teams     []Teams `gorm:"many2many:paste_teams;"`
-	Users     []Users `gorm:"many2many:paste_users;"`
+	ID          int64  `gorm:"primary_key"`
+	PasteID     string `gorm:"type:varchar(32);unique_index"`
+	Data        []byte `gorm:"type:longblob"`
+	Language    string `gorm:"type:varchar(64)"`
+	Name        string
+	Description string
+	Metadata    datatypes.JSON
+	Owner       int64
+	CreatedAt   time.Time
+	Expires     *time.Time `gorm:"index:expires"`
+	Public      bool
+	Encrypted   bool
+	Teams       []Teams `gorm:"many2many:paste_teams;"`
+	Users       []Users `gorm:"many2many:paste_users;"`
 }
 
 // Users represents a user entry in the database

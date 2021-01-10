@@ -23,7 +23,12 @@ import (
 
 // Paster is the interface for pastes
 type Paster interface {
-	Create(ctx context.Context, data []byte, title, language string, expires *time.Time, isPublic, encrypted bool) (paste params.Paste, err error)
+	Create(
+		ctx context.Context, data []byte,
+		title, language, description string,
+		expires *time.Time,
+		isPublic, encrypted bool,
+		metadata map[string]string) (paste params.Paste, err error)
 	Get(ctx context.Context, pasteID string) (paste params.Paste, err error)
 	List(ctx context.Context, page int64, results int64) (paste params.PasteListResult, err error)
 	Delete(ctx context.Context, pasteID string) error

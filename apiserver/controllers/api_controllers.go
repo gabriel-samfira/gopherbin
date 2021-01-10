@@ -94,9 +94,12 @@ func (p *APIController) LoginHandler(w http.ResponseWriter, r *http.Request) {
 			ExpiresAt: expireToken,
 			Issuer:    "gopherbin",
 		},
-		UserID:    auth.UserID(ctx),
-		UpdatedAt: auth.UpdatedAt(ctx),
-		TokenID:   tokenID,
+		UserID:      auth.UserID(ctx),
+		UpdatedAt:   auth.UpdatedAt(ctx),
+		TokenID:     tokenID,
+		IsAdmin:     auth.IsAdmin(ctx),
+		IsSuperUser: auth.IsSuperUser(ctx),
+		FullName:    auth.FullName(ctx),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	tokenString, err := token.SignedString([]byte(p.cfg.Secret))
@@ -218,8 +221,9 @@ func (p *APIController) CreatePasteHandler(w http.ResponseWriter, r *http.Reques
 
 	pasteInfo, err := p.paster.Create(
 		ctx, pasteData.Data, pasteData.Name,
-		pasteData.Language, pasteData.Expires,
-		pasteData.Public, pasteData.Encrypted)
+		pasteData.Language, pasteData.Description,
+		pasteData.Expires, pasteData.Public,
+		pasteData.Encrypted, pasteData.Metadata)
 	if err != nil {
 		handleError(w, err)
 		return

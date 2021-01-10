@@ -237,6 +237,7 @@ type APIServer struct {
 	SessionSecret string    `toml:"session_secret"`
 	JWTAuth       JWTAuth   `toml:"jwt_auth"`
 	TLSConfig     TLSConfig `toml:"tls"`
+	CORSOrigins   []string  `toml:"cors_origins"`
 }
 
 // Validate validates the API server config
