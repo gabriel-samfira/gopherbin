@@ -79,7 +79,7 @@ func (amw *jwtMiddleware) claimsToContext(ctx context.Context, claims *JWTClaims
 }
 
 func invalidAuthResponse(w http.ResponseWriter) {
-	w.WriteHeader(http.StatusForbidden)
+	w.WriteHeader(http.StatusUnauthorized)
 	w.Header().Add("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(
 		responses.APIErrorResponse{
@@ -93,8 +93,8 @@ func (amw *jwtMiddleware) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// TODO: Log error details when authentication fails
 		if amw.manager.HasSuperUser() == false {
-			w.WriteHeader(http.StatusConflict)
 			w.Header().Add("Content-Type", "application/json")
+			w.WriteHeader(http.StatusConflict)
 			json.NewEncoder(w).Encode(responses.InitializationRequired)
 			return
 		}

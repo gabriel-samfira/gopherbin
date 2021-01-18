@@ -38,7 +38,7 @@ type APIController struct {
 }
 
 func handleError(w http.ResponseWriter, err error) {
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Add("Content-Type", "application/json")
 	origErr := errors.Cause(err)
 	apiErr := responses.APIErrorResponse{
 		Details: origErr.Error(),
@@ -64,6 +64,29 @@ func handleError(w http.ResponseWriter, err error) {
 
 	json.NewEncoder(w).Encode(apiErr)
 	return
+}
+
+// FirstRunHandler initializez gopherbin
+func (p *APIController) FirstRunHandler(w http.ResponseWriter, r *http.Request) {
+	if p.manager.HasSuperUser() {
+		err := gErrors.NewConflictError("already initialized")
+		handleError(w, err)
+		return
+	}
+
+	var newUserParams params.NewUserParams
+	if err := json.NewDecoder(r.Body).Decode(&newUserParams); err != nil {
+		handleError(w, gErrors.ErrBadRequest)
+		return
+	}
+
+	newUser, err := p.manager.CreateSuperUser(newUserParams)
+	if err != nil {
+		handleError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(newUser)
 }
 
 // LoginHandler returns a jwt token
@@ -135,6 +158,26 @@ func (p *APIController) PasteViewHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	pasteInfo, err := p.paster.Get(ctx, pasteID)
+	if err != nil {
+		handleError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(pasteInfo)
+}
+
+// PublicPasteViewHandler returns details about a single public paste
+func (p *APIController) PublicPasteViewHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	vars := mux.Vars(r)
+	pasteID, ok := vars["pasteID"]
+
+	if !ok {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	pasteInfo, err := p.paster.GetPublicPaste(ctx, pasteID)
 	if err != nil {
 		handleError(w, err)
 		return

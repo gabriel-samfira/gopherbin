@@ -129,52 +129,6 @@ func (p *paste) getUser(userID int64) (models.Users, error) {
 	return tmpUser, nil
 }
 
-func (p *paste) canAccess(paste models.Paste, user models.Users, anonymous bool) bool {
-	if paste.Public == true {
-		return true
-	}
-
-	if anonymous == true {
-		return false
-	}
-
-	if paste.Owner == user.ID {
-		return true
-	}
-
-	for _, usr := range paste.Users {
-		if usr.ID == user.ID {
-			return true
-		}
-	}
-
-	for _, team := range paste.Teams {
-		for _, usrTeam := range user.Teams {
-			if team.ID == usrTeam.ID {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func (p *paste) getPaste(pasteID string, user models.Users, anonymous bool) (models.Paste, error) {
-	var tmpPaste models.Paste
-	now := time.Now()
-	q := p.conn.Preload("Teams").Preload("Users").Where(
-		"paste_id = ? and (expires is NULL or expires >= ?)", pasteID, now).First(&tmpPaste)
-	if q.Error != nil {
-		if q.RecordNotFound() {
-			return models.Paste{}, gErrors.ErrNotFound
-		}
-		return models.Paste{}, errors.Wrap(q.Error, "fetching paste from database")
-	}
-	if canAccess := p.canAccess(tmpPaste, user, anonymous); !canAccess {
-		return models.Paste{}, gErrors.ErrUnauthorized
-	}
-	return tmpPaste, nil
-}
-
 func (p *paste) sqlToCommonPaste(modelPaste models.Paste, withPreview bool) params.Paste {
 	metadata := make(map[string]string)
 	if modelPaste.Metadata != nil {
@@ -256,13 +210,72 @@ func (p *paste) Create(
 	return p.sqlToCommonPaste(newPaste, false), nil
 }
 
+func (p *paste) canAccess(paste models.Paste, user models.Users) bool {
+	if paste.Public == true {
+		return true
+	}
+
+	if paste.Owner == user.ID {
+		return true
+	}
+
+	for _, usr := range paste.Users {
+		if usr.ID == user.ID {
+			return true
+		}
+	}
+
+	for _, team := range paste.Teams {
+		for _, usrTeam := range user.Teams {
+			if team.ID == usrTeam.ID {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (p *paste) GetPublicPaste(ctx context.Context, pasteID string) (params.Paste, error) {
+	var tmpPaste models.Paste
+	now := time.Now()
+	q := p.conn.Debug().Where(
+		"paste_id = ? and (expires is NULL or expires >= ?) and public = ?", pasteID, now, true).First(&tmpPaste)
+	if q.Error != nil {
+		if q.RecordNotFound() {
+			return params.Paste{}, gErrors.ErrNotFound
+		}
+		return params.Paste{}, errors.Wrap(q.Error, "fetching paste from database")
+	}
+	return p.sqlToCommonPaste(tmpPaste, false), nil
+}
+
+func (p *paste) getPaste(pasteID string, user models.Users) (models.Paste, error) {
+	var tmpPaste models.Paste
+	now := time.Now()
+	q := p.conn.Preload("Teams").Preload("Users").Where(
+		"paste_id = ? and (expires is NULL or expires >= ?)", pasteID, now).First(&tmpPaste)
+	if q.Error != nil {
+		if q.RecordNotFound() {
+			return models.Paste{}, gErrors.ErrNotFound
+		}
+		return models.Paste{}, errors.Wrap(q.Error, "fetching paste from database")
+	}
+	if canAccess := p.canAccess(tmpPaste, user); !canAccess {
+		return models.Paste{}, gErrors.ErrUnauthorized
+	}
+	return tmpPaste, nil
+}
+
 func (p *paste) get(ctx context.Context, pasteID string) (models.Paste, error) {
+	if auth.IsAnonymous(ctx) {
+		return models.Paste{}, gErrors.ErrUnauthorized
+	}
 	userID := auth.UserID(ctx)
 	user, err := p.getUser(userID)
 	if err != nil {
 		return models.Paste{}, errors.Wrap(err, fmt.Sprintf("fetching user %v from DB", userID))
 	}
-	pst, err := p.getPaste(pasteID, user, auth.IsAnonymous(ctx))
+	pst, err := p.getPaste(pasteID, user)
 	if err != nil {
 		return models.Paste{}, errors.Wrap(err, "fetching paste")
 	}

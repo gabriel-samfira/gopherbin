@@ -58,11 +58,21 @@ func AddAPIURLs(router *mux.Router, han *controllers.APIController, authMiddlewa
 	log := gorillaHandlers.CombinedLoggingHandler
 
 	apiSubRouter := router.PathPrefix("/api/v1").Subrouter()
-	authRouter := apiSubRouter.PathPrefix("/auth").Subrouter()
+
+	// First run
+	// FirstRunHandler
+	firstRunRouter := apiSubRouter.PathPrefix("/first-run").Subrouter()
+	firstRunRouter.Handle("/", log(os.Stdout, http.HandlerFunc(han.FirstRunHandler))).Methods("POST", "OPTIONS")
+
+	// Public API endpoints
+	publicRouter := apiSubRouter.PathPrefix("/public").Subrouter()
+	publicRouter.Handle("/paste/{pasteID}", log(os.Stdout, http.HandlerFunc(han.PublicPasteViewHandler))).Methods("GET", "OPTIONS")
 
 	// Login
+	authRouter := apiSubRouter.PathPrefix("/auth").Subrouter()
 	authRouter.Handle("/{login:login\\/?}", log(os.Stdout, http.HandlerFunc(han.LoginHandler))).Methods("POST", "OPTIONS")
 
+	// Private API endpoints
 	apiRouter := apiSubRouter.PathPrefix("").Subrouter()
 	apiRouter.Use(authMiddleware.Middleware)
 	// Duplicate the route to allow fetching a paste, both with and without a traling slash.

@@ -39,7 +39,7 @@ var (
 	}
 	// InitializationRequired is returned if gopherbin has not beed properly initialized
 	InitializationRequired = APIErrorResponse{
-		Error:   "Init Required",
+		Error:   "init_required",
 		Details: "Missing superuser",
 	}
 )

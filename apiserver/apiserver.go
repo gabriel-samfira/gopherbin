@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"gopherbin/admin"
-	adminCommon "gopherbin/admin/common"
 	"gopherbin/apiserver/controllers"
 	"gopherbin/apiserver/routers"
 	"gopherbin/auth"
@@ -78,14 +77,6 @@ func initSessionStor(cfg *config.Config, quit chan struct{}) (sessions.Store, er
 
 func addWebUIRoutes(router *mux.Router) (*mux.Router, error) {
 	return nil, nil
-}
-
-func getAuthMiddleware(sessionStore sessions.Store, userMgr adminCommon.UserManager) (auth.Middleware, error) {
-	authMiddleware, err := auth.NewSessionAuthMiddleware(sessionStore, userMgr)
-	if err != nil {
-		return nil, errors.Wrap(err, "initializing auth middleware")
-	}
-	return authMiddleware, nil
 }
 
 // GetAPIServer returns a new API server
