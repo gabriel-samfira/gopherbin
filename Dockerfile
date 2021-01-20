@@ -1,23 +1,25 @@
-FROM golang:alpine AS builder
+FROM golang:1.16-rc AS builder
 LABEL stage=builder
 
-RUN apk update && apk add --no-cache git file
+RUN curl -sL https://deb.nodesource.com/setup_15.x > /tmp/setup_node.sh
+RUN /bin/bash /tmp/setup_node.sh
+RUN apt-get update && apt-get -y install git make git nodejs
+RUN npm install --global yarn
 
-RUN go get -u github.com/gobuffalo/packr/v2/packr2 && \
-  git clone https://github.com/gabriel-samfira/gopherbin
+ADD . /build/gopherbin
+WORKDIR /build/gopherbin
 
-WORKDIR /go/gopherbin/templates
+RUN mkdir /tmp/go
+ENV GOPATH /tmp/go
 
 # build gopher binary
-RUN packr2
-RUN GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -a -ldflags="-w -s" \
-  -o /tmp/gopherbin ../cmd/gopherbin/gopherbin.go
+RUN make all-ui 
 
 # creating a minimal image
 FROM scratch
 
 # Copy our binary to the image
-COPY --from=builder /tmp/gopherbin /gopherbin
+COPY --from=builder /tmp/go/bin/gopherbin /gopherbin
 
 # Run binary and expose port
 ENTRYPOINT ["/gopherbin","run", "-config", "/etc/gopherbin-config.toml"]

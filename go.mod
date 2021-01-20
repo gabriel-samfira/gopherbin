@@ -16,6 +16,7 @@ require (
 	github.com/nbutton23/zxcvbn-go v0.0.0-20180912185939-ae427f1e4c1d
 	github.com/pkg/errors v0.8.1
 	github.com/wader/gormstore v0.0.0-20190904144442-d36772af4310
+	golang.org/dl v0.0.0-20210120004500-be2bfd84e4cf // indirect
 	golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9
 	gorm.io/datatypes v1.0.0
 )
