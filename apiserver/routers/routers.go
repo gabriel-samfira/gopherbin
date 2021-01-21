@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/NYTimes/gziphandler"
 	gorillaHandlers "github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/juju/loggo"
@@ -103,6 +104,6 @@ func AddAPIURLs(router *mux.Router, han *controllers.APIController, authMiddlewa
 
 	apiRouter.PathPrefix("/").Handler(log(os.Stdout, http.HandlerFunc(han.NotFoundHandler)))
 
-	router.PathPrefix("/").Handler(log(os.Stdout, http.HandlerFunc(webui.UIHandler)))
+	router.PathPrefix("/").Handler(log(os.Stdout, gziphandler.GzipHandler(http.HandlerFunc(webui.UIHandler))))
 	return nil
 }
