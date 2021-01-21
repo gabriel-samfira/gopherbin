@@ -73,5 +73,6 @@ func UIHandler(w http.ResponseWriter, r *http.Request) {
 	mime := determineMIMEType(fullPath, contents)
 	w.Header().Set("Content-Type", mime)
 	w.Header().Set("Last-Modified", buildTime.UTC().Format(http.TimeFormat))
+	w.Header().Set("Cache-Control", "max-age=604800")
 	w.Write(contents)
 }
