@@ -6,15 +6,9 @@ Welcome to Gopherbin. This project offers a simple password protected, paste-lik
 
 ### Using Go
 
-You will need at least Go version ```1.13```.
+You will need at least Go version ```1.16```.
 
-Gopherbin uses [packr2](https://github.com/gobuffalo/packr/tree/master/v2) to bundle static files within the final binary. One of the beauties of Go is the fact that you get a single binary that you can simply distribute and run, without any dependencies. This should be true even with web applications that need to serve up static files.
-
-Install ```packr2```:
-
-```bash
-go get -u github.com/gobuffalo/packr/v2/packr2
-```
+Gopherbin uses the embed feature in Go to optionally bundle the [Web UI](https://github.com/gabriel-samfira/gopherbin-web). You an choose to build without a web UI and simply serve the needed static files using a proper web server. 
 
 Clone Gopherbin:
 
@@ -22,36 +16,21 @@ Clone Gopherbin:
 git clone https://github.com/gabriel-samfira/gopherbin
 ```
 
-Generate packr2 boxes:
+If you want to build the UI, you will need a recent version of nodejs and yarn. With those dependencies installed, simply run:
 
 ```bash
-cd gopherbin/templates
-packr2
+make all-ui
 ```
 
-Build the binary:
+Building without a UI:
 
 ```bash
-# Build for GNU/Linux
-GOOS=linux go build -o /tmp/gopherbin -mod vendor ../cmd/gopherbin/gopherbin.go
-
-# Or if you prefer Windows
-GOOS=windows go build -o /tmp/gopherbin.exe -mod vendor ../cmd/gopherbin/gopherbin.go
-
-# Or to build for a Mac
-GOOS=darwin go build -o /tmp/gopherbin -mod vendor ../cmd/gopherbin/gopherbin.go
-
+make all-noui
 ```
 
-### Using docker and make
+### Building a docker image
 
-It runs on a system where docker is installed and have command `make`
-
-- easiest way of starting the app is to just use `make app`
-
-- for a more "granular approach" use:
-
-```sh
+```bash
 # For a full list of available variables and commands run: make help
 
 # creating docker image
@@ -105,7 +84,7 @@ backend = "mysql"
 Simply run the Gopherbin service. Gopherbin will create the database tables automatically:
 
 ```bash
-/tmp/gopherbin run -config /tmp/config.toml
+/tmp/gopherbin -config /tmp/config.toml
 ```
 
 Before you can use Gopherbin, you need to create the super user. This user is the admin of the system, which can create new users and regular admins. Gopherbin will not allow anyone to log in if this user is missing. The super user can create regular administrators, that can in turn create regular users.
@@ -113,11 +92,17 @@ Before you can use Gopherbin, you need to create the super user. This user is th
 Anyway, let's get to it:
 
 ```bash
-/tmp/gopherbin create-superuser \
-    -config /tmp/config.toml \
-    -email example@example.com \
-    -fullName "John Doe" \
-    -password SuperSecretPassword
+# Make sure you change the password
+
+curl -0 -X POST http://127.0.0.1:9997/api/v1/first-run/ \
+	-H "Content-type: application-json" \
+	--data-binary @- << EOF
+	{
+		"email": "example@example.com",
+		"full_name": "John Doe",
+		"password": "ubdyweercivIch"
+	}
+EOF
 ```
 
 If you're running on your local machine, you should be able to access Gopherbin at:

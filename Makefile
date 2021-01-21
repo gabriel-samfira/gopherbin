@@ -27,11 +27,11 @@ submodules:
 	git submodule update --init --recursive
 
 noUI:
-	go build -o $(GOPATH)/bin/gopherbin cmd/gopherbin/gopherbin.go
+	go1.16beta1 build -o $(GOPATH)/bin/gopherbin cmd/gopherbin/gopherbin.go
 
 withUI:
 	cd webui/web && npm install && yarn build
-	go build -o $(GOPATH)/bin/gopherbin -ldflags "-X 'gopherbin/webui.BuildTime=$(shell date +%s)'" -tags webui cmd/gopherbin/gopherbin.go
+	go1.16beta1 build -o $(GOPATH)/bin/gopherbin -ldflags "-X 'gopherbin/webui.BuildTime=$(shell date +%s)'" -tags webui cmd/gopherbin/gopherbin.go
 
 all-noui: fmt submodules noUI
 
