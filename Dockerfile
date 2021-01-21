@@ -22,6 +22,6 @@ FROM scratch
 COPY --from=builder /tmp/go/bin/gopherbin /gopherbin
 
 # Run binary and expose port
-ENTRYPOINT ["/gopherbin","run", "-config", "/etc/gopherbin-config.toml"]
+ENTRYPOINT ["/gopherbin", "-config", "/etc/gopherbin-config.toml"]
 
 EXPOSE 9997/tcp
