@@ -234,7 +234,6 @@ type APIServer struct {
 	Bind          string
 	Port          int
 	UseTLS        bool
-	SessionSecret string    `toml:"session_secret"`
 	JWTAuth       JWTAuth   `toml:"jwt_auth"`
 	TLSConfig     TLSConfig `toml:"tls"`
 	CORSOrigins   []string  `toml:"cors_origins"`
@@ -260,9 +259,6 @@ func (a *APIServer) Validate() error {
 		// IP address specified in this setting will raise an error
 		// when we try to bind to it.
 		return fmt.Errorf("invalid IP address")
-	}
-	if a.SessionSecret == "" {
-		return fmt.Errorf("invalid session secret")
 	}
 	return nil
 }

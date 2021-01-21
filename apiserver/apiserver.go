@@ -28,13 +28,10 @@ import (
 	"gopherbin/apiserver/routers"
 	"gopherbin/auth"
 	"gopherbin/config"
-	"gopherbin/util"
 
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
-	"github.com/gorilla/sessions"
 	"github.com/pkg/errors"
-	"github.com/wader/gormstore"
 )
 
 // APIServer is the API server worker
@@ -65,16 +62,6 @@ func (h *APIServer) Stop() error {
 	return nil
 }
 
-func initSessionStor(cfg *config.Config, quit chan struct{}) (sessions.Store, error) {
-	db, err := util.NewDBConn(cfg.Database)
-	if err != nil {
-		return nil, errors.Wrap(err, "connecting to database")
-	}
-	store := gormstore.New(db, []byte(cfg.APIServer.SessionSecret))
-	go store.PeriodicCleanup(1*time.Hour, quit)
-	return store, nil
-}
-
 func addWebUIRoutes(router *mux.Router) (*mux.Router, error) {
 	return nil, nil
 }
@@ -91,9 +78,6 @@ func GetAPIServer(cfg *config.Config) (*APIServer, error) {
 		return nil, errors.Wrap(err, "getting user manager")
 	}
 
-	if err != nil {
-		return nil, errors.Wrap(err, "initializing session store")
-	}
 	apiHandler := controllers.NewAPIController(paster, userMgr, cfg.APIServer.JWTAuth)
 
 	jwtMiddleware, err := auth.NewjwtMiddleware(userMgr, cfg.APIServer.JWTAuth)

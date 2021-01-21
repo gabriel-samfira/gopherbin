@@ -23,8 +23,6 @@ var (
 	// ErrNotFound is returned if an object is not found in
 	// the database.
 	ErrNotFound = NewNotFoundError("not found")
-	// ErrInvalidSession is returned when a session is invalid
-	ErrInvalidSession = NewInvalidSessionError("invalid session")
 	// ErrDuplicateUser is returned when creating a user, if the
 	// user already exists.
 	ErrDuplicateUser = NewDuplicateUserError("duplicate user")
@@ -65,20 +63,6 @@ func NewNotFoundError(msg string) error {
 
 // NotFoundError is returned when a resource is not found
 type NotFoundError struct {
-	baseError
-}
-
-// NewInvalidSessionError returns a new InvalidSessionError
-func NewInvalidSessionError(msg string) error {
-	return &InvalidSessionError{
-		baseError{
-			msg: msg,
-		},
-	}
-}
-
-// InvalidSessionError is returned when a session is invalid
-type InvalidSessionError struct {
 	baseError
 }
 

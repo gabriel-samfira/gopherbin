@@ -60,8 +60,6 @@ The config is a simple toml.
 bind = "0.0.0.0"
 port = 9997
 use_tls = false
-# Use a decently secure secret. Obviously this needs to be changed :-).
-session_secret = "beerdesOwshitvobkeshyijuchepavbiejCefJubemrirjOnJeutyucHalHushbo"
 
 #    [apiserver.tls]
 #    certificate = "/path/to/cert.pem"

@@ -24,9 +24,6 @@ import (
 type contextFlags string
 
 const (
-	// SessionTokenName is the name of the header value that defines
-	// the session
-	SessionTokenName              = "session_token"
 	isAdminKey       contextFlags = "is_admin"
 	isSuperUserKey   contextFlags = "is_super"
 	fullNameKey      contextFlags = "full_name"
