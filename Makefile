@@ -15,6 +15,11 @@ help :
 	@echo
 	@echo "Usage:"
 	@echo "	make fmt			-> running gofmt with options -s(simplify code) and -l (list files)"
+	@echo " make submodules"		-> initialize the web UI submodule
+	@echo " make noUI"			-> build gopherbin without the web UI
+	@echo " make withUI"			-> build gopherbin with the web UI (requires nodejs and yarn to be installed)
+	@echo " make all-noui"			-> shorthand for make fmt submodules noUI
+	@echo " make all-ui"			-> shorthand for make fmt submodules withUI
 	@echo "	make build-image		-> create a docker image with gopher binary"
 	@echo "	make container-start		-> start ghoperbin container"
 	@echo "	make app			-> build go binary and start a container with it"
