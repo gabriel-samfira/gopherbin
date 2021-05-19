@@ -3,7 +3,7 @@ LABEL stage=builder
 
 RUN curl -sL https://deb.nodesource.com/setup_15.x > /tmp/setup_node.sh
 RUN /bin/bash /tmp/setup_node.sh
-RUN apt-get update && apt-get -y install git make git nodejs
+RUN apt-get update && apt-get -y install git make nodejs apt-utils
 RUN npm install --global yarn
 
 ADD . /build/gopherbin
@@ -13,7 +13,7 @@ RUN mkdir /tmp/go
 ENV GOPATH /tmp/go
 
 # build gopher binary
-RUN make all-ui 
+RUN make all-ui
 
 # creating a minimal image
 FROM scratch
