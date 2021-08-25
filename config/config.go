@@ -184,7 +184,6 @@ func (t *TLSConfig) TLSConfig() (*tls.Config, error) {
 	}
 	return &tls.Config{
 		Certificates: []tls.Certificate{cert},
-		ClientAuth:   tls.RequireAndVerifyClientCert,
 		ClientCAs:    roots,
 	}, nil
 }
@@ -231,12 +230,12 @@ func (j *JWTAuth) Validate() error {
 // APIServer holds configuration for the API server
 // worker
 type APIServer struct {
-	Bind          string
-	Port          int
-	UseTLS        bool
-	JWTAuth       JWTAuth   `toml:"jwt_auth"`
-	TLSConfig     TLSConfig `toml:"tls"`
-	CORSOrigins   []string  `toml:"cors_origins"`
+	Bind        string
+	Port        int
+	UseTLS      bool
+	JWTAuth     JWTAuth   `toml:"jwt_auth"`
+	TLSConfig   TLSConfig `toml:"tls"`
+	CORSOrigins []string  `toml:"cors_origins"`
 }
 
 // Validate validates the API server config
