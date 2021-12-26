@@ -92,12 +92,6 @@ func invalidAuthResponse(w http.ResponseWriter) {
 func (amw *jwtMiddleware) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// TODO: Log error details when authentication fails
-		if amw.manager.HasSuperUser() == false {
-			w.Header().Add("Content-Type", "application/json")
-			w.WriteHeader(http.StatusConflict)
-			json.NewEncoder(w).Encode(responses.InitializationRequired)
-			return
-		}
 		ctx := r.Context()
 		authorizationHeader := r.Header.Get("authorization")
 		if authorizationHeader == "" {

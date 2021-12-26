@@ -85,10 +85,14 @@ func GetAPIServer(cfg *config.Config) (*APIServer, error) {
 		return nil, errors.Wrap(err, "initializing jwt middleware")
 	}
 
+	initMiddleware, err := auth.NewInitRequiredMiddleware(userMgr)
+	if err != nil {
+		return nil, errors.Wrap(err, "initializing init required middleware")
+	}
 	router := mux.NewRouter()
 	corwMw := mux.CORSMethodMiddleware(router)
 
-	if err := routers.AddAPIURLs(router, apiHandler, jwtMiddleware); err != nil {
+	if err := routers.AddAPIURLs(router, apiHandler, jwtMiddleware, initMiddleware); err != nil {
 		return nil, errors.Wrap(err, "setting API urls")
 	}
 

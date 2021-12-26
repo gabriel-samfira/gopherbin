@@ -261,7 +261,7 @@ func (p *paste) getPaste(pasteID string, user models.Users) (models.Paste, error
 		return models.Paste{}, errors.Wrap(q.Error, "fetching paste from database")
 	}
 	if canAccess := p.canAccess(tmpPaste, user); !canAccess {
-		return models.Paste{}, gErrors.ErrUnauthorized
+		return models.Paste{}, gErrors.ErrNotFound
 	}
 	return tmpPaste, nil
 }

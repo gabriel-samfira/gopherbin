@@ -55,7 +55,7 @@ func maxAge(h http.Handler) http.Handler {
 }
 
 // AddAPIURLs adds REST API urls
-func AddAPIURLs(router *mux.Router, han *controllers.APIController, authMiddleware auth.Middleware) error {
+func AddAPIURLs(router *mux.Router, han *controllers.APIController, authMiddleware, initMiddleware auth.Middleware) error {
 	log := gorillaHandlers.CombinedLoggingHandler
 
 	apiSubRouter := router.PathPrefix("/api/v1").Subrouter()
@@ -72,9 +72,11 @@ func AddAPIURLs(router *mux.Router, han *controllers.APIController, authMiddlewa
 	// Login
 	authRouter := apiSubRouter.PathPrefix("/auth").Subrouter()
 	authRouter.Handle("/{login:login\\/?}", log(os.Stdout, http.HandlerFunc(han.LoginHandler))).Methods("POST", "OPTIONS")
+	authRouter.Use(initMiddleware.Middleware)
 
 	// Private API endpoints
 	apiRouter := apiSubRouter.PathPrefix("").Subrouter()
+	apiRouter.Use(initMiddleware.Middleware)
 	apiRouter.Use(authMiddleware.Middleware)
 	// Duplicate the route to allow fetching a paste, both with and without a traling slash.
 	// StrictSlashes generates an extra request, which I am not willing to add. There is no
