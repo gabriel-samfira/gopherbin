@@ -6,6 +6,7 @@ SHELL := bash
 IMAGE_NAME = gopherbin
 CONTAINER_NAME = gopher
 CONFIG_FILE = $(PWD)/testdata/config.toml
+GOPATH ?= $(shell go env GOPATH)
 
 help :
 	@echo "Variables:"
