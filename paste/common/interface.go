@@ -37,5 +37,5 @@ type Paster interface {
 	UnshareWithUser(ctx context.Context, pasteID string, userID int64) error
 	ShareWithTeam(ctx context.Context, pasteID string, teamID int64) error
 	UnshareWithTeam(ctx context.Context, pasteID string, teamID int64) error
-	SetPrivacy(ctx context.Context, pasteID string, public bool) error
+	SetPrivacy(ctx context.Context, pasteID string, public bool) (params.Paste, error)
 }

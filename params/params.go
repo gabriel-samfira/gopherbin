@@ -192,3 +192,8 @@ func (p PasswordLoginParams) Validate() error {
 type JWTResponse struct {
 	Token string `json:"token"`
 }
+
+// UpdatePasteParams is the payload we can send to update a paste.
+type UpdatePasteParams struct {
+	Public bool `json:"public"`
+}

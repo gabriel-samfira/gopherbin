@@ -276,6 +276,35 @@ func (p *APIController) CreatePasteHandler(w http.ResponseWriter, r *http.Reques
 	json.NewEncoder(w).Encode(pasteInfo)
 }
 
+// UpdatePasteHandler
+func (p *APIController) UpdatePasteHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	vars := mux.Vars(r)
+	pasteID, ok := vars["pasteID"]
+	if !ok {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(responses.APIErrorResponse{
+			Error:   "Bad Request",
+			Details: "No paste ID specified",
+		})
+		return
+	}
+
+	var pasteData params.UpdatePasteParams
+	if err := json.NewDecoder(r.Body).Decode(&pasteData); err != nil {
+		handleError(w, gErrors.ErrBadRequest)
+		return
+	}
+
+	pasteInfo, err := p.paster.SetPrivacy(ctx, pasteID, pasteData.Public)
+	if err != nil {
+		handleError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(pasteInfo)
+}
+
 // NewUserHandler creates a new user
 func (p *APIController) NewUserHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()

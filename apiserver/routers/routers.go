@@ -85,6 +85,9 @@ func AddAPIURLs(router *mux.Router, han *controllers.APIController, authMiddlewa
 	// use StrictSlashes.
 	apiRouter.Handle("/paste/{pasteID}", log(os.Stdout, http.HandlerFunc(han.PasteViewHandler))).Methods("GET", "OPTIONS")
 	apiRouter.Handle("/paste/{pasteID}/", log(os.Stdout, http.HandlerFunc(han.PasteViewHandler))).Methods("GET", "OPTIONS")
+	// Update paste
+	apiRouter.Handle("/paste/{pasteID}", log(os.Stdout, http.HandlerFunc(han.UpdatePasteHandler))).Methods("PUT", "OPTIONS")
+	apiRouter.Handle("/paste/{pasteID}/", log(os.Stdout, http.HandlerFunc(han.UpdatePasteHandler))).Methods("PUT", "OPTIONS")
 	// Delete paste handlers
 	apiRouter.Handle("/paste/{pasteID}", log(os.Stdout, http.HandlerFunc(han.DeletePasteHandler))).Methods("DELETE", "OPTIONS")
 	apiRouter.Handle("/paste/{pasteID}/", log(os.Stdout, http.HandlerFunc(han.DeletePasteHandler))).Methods("DELETE", "OPTIONS")

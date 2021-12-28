@@ -352,7 +352,6 @@ func (p *paste) List(ctx context.Context, page int64, results int64) (paste para
 	}
 	return params.PasteListResult{
 		Pastes: asParams,
-		// Total:      cnt,
 		TotalPages: totalPages,
 		Page:       page,
 	}, nil
@@ -374,15 +373,15 @@ func (p *paste) UnshareWithTeam(ctx context.Context, pasteID string, teamID int6
 	return nil
 }
 
-func (p *paste) SetPrivacy(ctx context.Context, pasteID string, public bool) error {
+func (p *paste) SetPrivacy(ctx context.Context, pasteID string, public bool) (params.Paste, error) {
 	pst, err := p.get(ctx, pasteID)
 	if err != nil {
-		return errors.Wrap(err, "fetching paste")
+		return params.Paste{}, errors.Wrap(err, "fetching paste")
 	}
 	pst.Public = public
 	q := p.conn.Save(&pst)
 	if q.Error != nil {
-		return errors.Wrap(q.Error, "saving paste to DB")
+		return params.Paste{}, errors.Wrap(q.Error, "saving paste to DB")
 	}
-	return nil
+	return p.sqlToCommonPaste(pst, true), nil
 }
