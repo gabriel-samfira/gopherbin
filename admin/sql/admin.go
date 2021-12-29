@@ -12,7 +12,7 @@
 //    License for the specific language governing permissions and limitations
 //    under the License.
 
-package mysql
+package sql
 
 import (
 	"context"
@@ -28,9 +28,9 @@ import (
 	"gopherbin/params"
 	"gopherbin/util"
 
-	"github.com/jinzhu/gorm"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
 // NewUserManager returns a new *UserManager
@@ -131,7 +131,7 @@ func (u *userManager) Authenticate(ctx context.Context, info params.PasswordLogi
 }
 
 func (u *userManager) Create(ctx context.Context, user params.NewUserParams) (params.Users, error) {
-	if auth.IsAdmin(ctx) == false {
+	if !auth.IsAdmin(ctx) {
 		return params.Users{}, gErrors.ErrUnauthorized
 	}
 
@@ -190,7 +190,7 @@ func (u *userManager) CreateSuperUser(user params.NewUserParams) (params.Users, 
 
 func (u *userManager) Get(ctx context.Context, userID int64) (params.Users, error) {
 	user := auth.UserID(ctx)
-	if user != userID && auth.IsAdmin(ctx) == false {
+	if user != userID && !auth.IsAdmin(ctx) {
 		return params.Users{}, gErrors.ErrUnauthorized
 	}
 	modelUser, err := u.getUser(userID)
@@ -201,7 +201,7 @@ func (u *userManager) Get(ctx context.Context, userID int64) (params.Users, erro
 }
 
 func (u *userManager) List(ctx context.Context, page int64, results int64) (paste params.UserListResult, err error) {
-	if auth.IsAdmin(ctx) == false {
+	if !auth.IsAdmin(ctx) {
 		return params.UserListResult{}, gErrors.ErrUnauthorized
 	}
 
@@ -221,9 +221,9 @@ func (u *userManager) List(ctx context.Context, page int64, results int64) (past
 		return params.UserListResult{}, errors.Wrap(cntQ.Error, "counting results")
 	}
 
-	resQ := u.conn.Offset(startFrom).Limit(results).Find(&userResults)
+	resQ := u.conn.Offset(int(startFrom)).Limit(int(results)).Find(&userResults)
 	if resQ.Error != nil {
-		if resQ.RecordNotFound() {
+		if errors.Is(resQ.Error, gorm.ErrRecordNotFound) {
 			return params.UserListResult{}, gErrors.ErrNotFound
 		}
 		return params.UserListResult{}, errors.Wrap(resQ.Error, "fetching pastes from database")
@@ -260,7 +260,7 @@ func (u *userManager) Update(ctx context.Context, userID int64, update params.Up
 
 	// A user may update their own info, or an admin may
 	// update another user's info.
-	if userID != user && isAdmin == false {
+	if userID != user && !isAdmin {
 		return params.Users{}, gErrors.ErrUnauthorized
 	}
 
@@ -320,7 +320,7 @@ func (u *userManager) getUserByEmail(email string) (models.Users, error) {
 	var tmpUser models.Users
 	q := u.conn.Where("email = ?", email).First(&tmpUser)
 	if q.Error != nil {
-		if q.RecordNotFound() {
+		if errors.Is(q.Error, gorm.ErrRecordNotFound) {
 			return models.Users{}, gErrors.ErrNotFound
 		}
 		return models.Users{}, errors.Wrap(q.Error, "fetching user from database")
@@ -332,7 +332,7 @@ func (u *userManager) getUser(userID int64) (models.Users, error) {
 	var tmpUser models.Users
 	q := u.conn.Where("id = ?", userID).First(&tmpUser)
 	if q.Error != nil {
-		if q.RecordNotFound() {
+		if errors.Is(q.Error, gorm.ErrRecordNotFound) {
 			return models.Users{}, gErrors.ErrNotFound
 		}
 		return models.Users{}, errors.Wrap(q.Error, "fetching user from database")
@@ -348,7 +348,7 @@ func (u *userManager) ValidateToken(tokenID string) error {
 	var token models.JWTBacklist
 	q := u.conn.Where("token_id = ?", tokenID).First(&token)
 	if q.Error != nil {
-		if q.RecordNotFound() {
+		if errors.Is(q.Error, gorm.ErrRecordNotFound) {
 			return nil
 		}
 		return errors.Wrap(q.Error, "checking token blacklist")
@@ -393,7 +393,7 @@ func (u *userManager) setEnabledFlag(userID int64, enabled bool) error {
 
 func (u *userManager) Enable(ctx context.Context, userID int64) error {
 	isAdmin := auth.IsAdmin(ctx)
-	if isAdmin == false {
+	if !isAdmin {
 		return gErrors.ErrUnauthorized
 	}
 	return u.setEnabledFlag(userID, true)
@@ -401,7 +401,7 @@ func (u *userManager) Enable(ctx context.Context, userID int64) error {
 
 func (u *userManager) Disable(ctx context.Context, userID int64) error {
 	isAdmin := auth.IsAdmin(ctx)
-	if isAdmin == false {
+	if !isAdmin {
 		return gErrors.ErrUnauthorized
 	}
 	return u.setEnabledFlag(userID, false)
@@ -409,7 +409,7 @@ func (u *userManager) Disable(ctx context.Context, userID int64) error {
 
 func (u *userManager) Delete(ctx context.Context, userID int64) error {
 	isAdmin := auth.IsAdmin(ctx)
-	if isAdmin == false {
+	if !isAdmin {
 		return gErrors.ErrUnauthorized
 	}
 	isSuperUser := auth.IsSuperUser(ctx)

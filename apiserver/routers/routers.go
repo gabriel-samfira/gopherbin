@@ -15,44 +15,17 @@
 package routers
 
 import (
-	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
-	"time"
 
 	"github.com/NYTimes/gziphandler"
 	gorillaHandlers "github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
-	"github.com/juju/loggo"
 
 	"gopherbin/apiserver/controllers"
 	"gopherbin/auth"
 	"gopherbin/webui"
 )
-
-var log = loggo.GetLogger("gopherbin.apiserver.routes")
-
-func maxAge(h http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var age time.Duration
-		ext := filepath.Ext(r.URL.String())
-		switch ext {
-		case ".css", ".js":
-			age = (time.Hour * 24 * 365) / time.Second
-		case ".jpg", ".jpeg", ".gif", ".png", ".ico":
-			age = (time.Hour * 24 * 30) / time.Second
-		default:
-			age = 0
-		}
-
-		if age > 0 {
-			w.Header().Add("Cache-Control", fmt.Sprintf("max-age=%d, public, must-revalidate, proxy-revalidate", age))
-		}
-
-		h.ServeHTTP(w, r)
-	})
-}
 
 // AddAPIURLs adds REST API urls
 func AddAPIURLs(router *mux.Router, han *controllers.APIController, authMiddleware, initMiddleware auth.Middleware) error {

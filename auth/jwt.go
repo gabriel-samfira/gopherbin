@@ -73,7 +73,7 @@ func (amw *jwtMiddleware) claimsToContext(ctx context.Context, claims *JWTClaims
 	ctx = PopulateContext(ctx, userInfo)
 
 	if claims.UpdatedAt != UpdatedAt(ctx) {
-		return ctx, fmt.Errorf("Invalid token")
+		return ctx, fmt.Errorf("invalid token")
 	}
 	return ctx, nil
 }
@@ -108,7 +108,7 @@ func (amw *jwtMiddleware) Middleware(next http.Handler) http.Handler {
 		claims := &JWTClaims{}
 		token, err := jwt.ParseWithClaims(bearerToken[1], claims, func(token *jwt.Token) (interface{}, error) {
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, fmt.Errorf("Invalid signing method")
+				return nil, fmt.Errorf("invalid signing method")
 			}
 			return []byte(amw.cfg.Secret), nil
 		})
@@ -118,7 +118,7 @@ func (amw *jwtMiddleware) Middleware(next http.Handler) http.Handler {
 			return
 		}
 
-		if token.Valid != true {
+		if !token.Valid {
 			invalidAuthResponse(w)
 			return
 		}
@@ -128,7 +128,7 @@ func (amw *jwtMiddleware) Middleware(next http.Handler) http.Handler {
 			invalidAuthResponse(w)
 			return
 		}
-		if IsEnabled(ctx) == false || IsAnonymous(ctx) {
+		if !IsEnabled(ctx) || IsAnonymous(ctx) {
 			invalidAuthResponse(w)
 			return
 		}

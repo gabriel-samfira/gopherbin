@@ -153,7 +153,6 @@ func (p Paste) FormattedExpires() string {
 
 // PasteListResult holds results for a paste list request
 type PasteListResult struct {
-	// Total      int64   `json:"total"`
 	TotalPages int64   `json:"total_pages"`
 	Page       int64   `json:"page"`
 	Pastes     []Paste `json:"pastes"`

@@ -18,7 +18,7 @@ import (
 	"fmt"
 
 	"gopherbin/admin/common"
-	"gopherbin/admin/mysql"
+	"gopherbin/admin/sql"
 	"gopherbin/config"
 )
 
@@ -26,8 +26,8 @@ import (
 func GetUserManager(dbCfg config.Database, defCfg config.Default) (common.UserManager, error) {
 	dbBackend := dbCfg.DbBackend
 	switch dbBackend {
-	case config.MySQLBackend:
-		return mysql.NewUserManager(dbCfg, defCfg)
+	case config.MySQLBackend, config.SQLiteBackend:
+		return sql.NewUserManager(dbCfg, defCfg)
 	default:
 		return nil, fmt.Errorf("no user manager available for db backend %s", dbBackend)
 	}

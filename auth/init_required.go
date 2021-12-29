@@ -8,14 +8,12 @@ import (
 	"gopherbin/apiserver/responses"
 )
 
-
 // NewjwtMiddleware returns a populated jwtMiddleware
 func NewInitRequiredMiddleware(manager adminCommon.UserManager) (Middleware, error) {
 	return &initRequired{
 		manager: manager,
 	}, nil
 }
-
 
 type initRequired struct {
 	manager adminCommon.UserManager
@@ -25,7 +23,7 @@ type initRequired struct {
 func (i *initRequired) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// TODO: Log error details when authentication fails
-		if i.manager.HasSuperUser() == false {
+		if !i.manager.HasSuperUser() {
 			w.Header().Add("Content-Type", "application/json")
 			w.WriteHeader(http.StatusConflict)
 			json.NewEncoder(w).Encode(responses.InitializationRequired)

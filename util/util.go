@@ -22,9 +22,12 @@ import (
 	"gopherbin/config"
 
 	"github.com/cespare/xxhash"
-	"github.com/jinzhu/gorm"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/bcrypt"
+
+	"gorm.io/driver/mysql"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 const alphanumeric = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
@@ -46,11 +49,16 @@ func NewDBConn(dbCfg config.Database) (conn *gorm.DB, err error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "getting DB URI string")
 	}
-	db, err := gorm.Open(dbType, connURI)
+	switch dbType {
+	case config.MySQLBackend:
+		conn, err = gorm.Open(mysql.Open(connURI), &gorm.Config{})
+	case config.SQLiteBackend:
+		conn, err = gorm.Open(sqlite.Open(connURI), &gorm.Config{})
+	}
 	if err != nil {
 		return nil, errors.Wrap(err, "connecting to database")
 	}
-	return db, nil
+	return conn, nil
 }
 
 // PaswsordToBcrypt returns a bcrypt hash of the specified password using the default cost

@@ -63,7 +63,6 @@ func handleError(w http.ResponseWriter, err error) {
 	}
 
 	json.NewEncoder(w).Encode(apiErr)
-	return
 }
 
 // FirstRunHandler initializez gopherbin
@@ -230,7 +229,7 @@ func (p *APIController) DeletePasteHandler(w http.ResponseWriter, r *http.Reques
 // UserListHandler handles the list of pastes
 func (p *APIController) UserListHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	if auth.IsSuperUser(ctx) == false && auth.IsAdmin(ctx) == false {
+	if !auth.IsSuperUser(ctx) && !auth.IsAdmin(ctx) {
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(responses.UnauthorizedResponse)
 		return

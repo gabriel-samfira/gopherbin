@@ -11,7 +11,6 @@ require (
 	github.com/golang-jwt/jwt v3.2.2+incompatible
 	github.com/gorilla/handlers v1.5.1
 	github.com/gorilla/mux v1.8.0
-	github.com/jinzhu/gorm v1.9.16
 	github.com/jinzhu/now v1.1.4 // indirect
 	github.com/juju/loggo v0.0.0-20210728185423-eebad3a902c4
 	github.com/mattn/go-sqlite3 v2.0.1+incompatible // indirect
@@ -19,5 +18,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	golang.org/x/crypto v0.0.0-20211215153901-e495a2d5b3d3
 	gorm.io/datatypes v1.0.4
-	gorm.io/driver/mysql v1.2.2 // indirect
+	gorm.io/driver/mysql v1.2.2
+	gorm.io/driver/sqlite v1.2.6
+	gorm.io/gorm v1.22.4
 )

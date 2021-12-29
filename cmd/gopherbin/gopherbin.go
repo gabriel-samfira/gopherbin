@@ -30,7 +30,6 @@ import (
 
 var log = loggo.GetLogger("gopherbin.cmd")
 
-
 func getConfig(cfgFile string) (*config.Config, error) {
 	cfg, err := config.NewConfig(cfgFile)
 	if err != nil {
@@ -43,7 +42,7 @@ func getConfig(cfgFile string) (*config.Config, error) {
 }
 
 func runAPIServer(cfgFile string) {
-	stop := make(chan os.Signal)
+	stop := make(chan os.Signal, 5)
 	signal.Notify(stop, syscall.SIGTERM)
 	signal.Notify(stop, syscall.SIGINT)
 	log.SetLogLevel(loggo.DEBUG)
@@ -72,12 +71,11 @@ func runAPIServer(cfgFile string) {
 		log.Errorf("error starting maintenance worker: %+v", err)
 		os.Exit(1)
 	}
-	select {
-	case <-stop:
-		log.Infof("shutting down gracefully")
-		apiServer.Stop()
-		maintenanceWrk.Stop()
-	}
+
+	<-stop
+	log.Infof("shutting down gracefully")
+	apiServer.Stop()
+	maintenanceWrk.Stop()
 }
 
 func main() {

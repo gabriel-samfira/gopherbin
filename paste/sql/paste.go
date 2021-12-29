@@ -12,7 +12,7 @@
 //    License for the specific language governing permissions and limitations
 //    under the License.
 
-package mysql
+package sql
 
 import (
 	"context"
@@ -29,7 +29,7 @@ import (
 	"gopherbin/paste/common"
 	"gopherbin/util"
 
-	"github.com/jinzhu/gorm"
+	"gorm.io/gorm"
 
 	"github.com/pkg/errors"
 )
@@ -61,58 +61,10 @@ func (p *paste) migrateDB() error {
 		&models.Paste{},
 		&models.Teams{},
 		&models.JWTBacklist{},
-	).Error; err != nil {
+	); err != nil {
 		return err
 	}
-	if err := p.conn.Debug().Model(&models.Paste{}).AddForeignKey(
-		"owner", "users(id)",
-		"CASCADE", "CASCADE").Error; err != nil {
 
-		return errors.Wrap(err, "creating foreign key")
-	}
-	if err := p.conn.Debug().Model(&models.Teams{}).AddForeignKey(
-		"owner", "users(id)",
-		"CASCADE", "CASCADE").Error; err != nil {
-
-		return errors.Wrap(err, "creating foreign key")
-	}
-
-	if err := p.conn.Debug().Model(&models.TeamUsers{}).AddForeignKey(
-		"users_id", "users(id)",
-		"CASCADE", "CASCADE").Error; err != nil {
-
-		return errors.Wrap(err, "creating foreign key")
-	}
-	if err := p.conn.Debug().Model(&models.TeamUsers{}).AddForeignKey(
-		"teams_id", "teams(id)",
-		"CASCADE", "CASCADE").Error; err != nil {
-
-		return errors.Wrap(err, "creating foreign key")
-	}
-	if err := p.conn.Debug().Model(&models.PasteTeams{}).AddForeignKey(
-		"paste_id", "pastes(id)",
-		"CASCADE", "CASCADE").Error; err != nil {
-
-		return errors.Wrap(err, "creating foreign key")
-	}
-	if err := p.conn.Debug().Model(&models.PasteTeams{}).AddForeignKey(
-		"teams_id", "teams(id)",
-		"CASCADE", "CASCADE").Error; err != nil {
-
-		return errors.Wrap(err, "creating foreign key")
-	}
-	if err := p.conn.Debug().Model(&models.PasteUsers{}).AddForeignKey(
-		"paste_id", "pastes(id)",
-		"CASCADE", "CASCADE").Error; err != nil {
-
-		return errors.Wrap(err, "creating foreign key")
-	}
-	if err := p.conn.Debug().Model(&models.PasteUsers{}).AddForeignKey(
-		"users_id", "users(id)",
-		"CASCADE", "CASCADE").Error; err != nil {
-
-		return errors.Wrap(err, "creating foreign key")
-	}
 	return nil
 }
 
@@ -121,7 +73,7 @@ func (p *paste) getUser(userID int64) (models.Users, error) {
 	var tmpUser models.Users
 	q := p.conn.Preload("Teams").Preload("CreatedTeams").Where("id = ?", userID).First(&tmpUser)
 	if q.Error != nil {
-		if q.RecordNotFound() {
+		if errors.Is(q.Error, gorm.ErrRecordNotFound) {
 			return models.Users{}, gErrors.ErrNotFound
 		}
 		return models.Users{}, errors.Wrap(q.Error, "fetching user from database")
@@ -169,7 +121,7 @@ func (p *paste) Create(
 	if err != nil {
 		return params.Paste{}, errors.Wrap(err, "getting random string")
 	}
-	if auth.IsAnonymous(ctx) || auth.IsEnabled(ctx) == false {
+	if auth.IsAnonymous(ctx) || !auth.IsEnabled(ctx) {
 		return params.Paste{}, gErrors.ErrUnauthorized
 	}
 	userID := auth.UserID(ctx)
@@ -211,7 +163,7 @@ func (p *paste) Create(
 }
 
 func (p *paste) canAccess(paste models.Paste, user models.Users) bool {
-	if paste.Public == true {
+	if paste.Public {
 		return true
 	}
 
@@ -241,7 +193,7 @@ func (p *paste) GetPublicPaste(ctx context.Context, pasteID string) (params.Past
 	q := p.conn.Debug().Where(
 		"paste_id = ? and (expires is NULL or expires >= ?) and public = ?", pasteID, now, true).First(&tmpPaste)
 	if q.Error != nil {
-		if q.RecordNotFound() {
+		if errors.Is(q.Error, gorm.ErrRecordNotFound) {
 			return params.Paste{}, gErrors.ErrNotFound
 		}
 		return params.Paste{}, errors.Wrap(q.Error, "fetching paste from database")
@@ -255,7 +207,7 @@ func (p *paste) getPaste(pasteID string, user models.Users) (models.Paste, error
 	q := p.conn.Preload("Teams").Preload("Users").Where(
 		"paste_id = ? and (expires is NULL or expires >= ?)", pasteID, now).First(&tmpPaste)
 	if q.Error != nil {
-		if q.RecordNotFound() {
+		if errors.Is(q.Error, gorm.ErrRecordNotFound) {
 			return models.Paste{}, gErrors.ErrNotFound
 		}
 		return models.Paste{}, errors.Wrap(q.Error, "fetching paste from database")
@@ -299,7 +251,7 @@ func (p *paste) Delete(ctx context.Context, pasteID string) error {
 		return nil
 	}
 	q := p.conn.Delete(&pst)
-	if q.Error != nil && !q.RecordNotFound() {
+	if q.Error != nil && !errors.Is(q.Error, gorm.ErrRecordNotFound) {
 		return errors.Wrap(q.Error, "deleting paste")
 	}
 	return nil
@@ -322,8 +274,7 @@ func (p *paste) List(ctx context.Context, page int64, results int64) (paste para
 	now := time.Now()
 	startFrom := (page - 1) * results
 	// List will return only a small preview of the paste data (first 512 bytes).
-	q := p.conn.Select("id, paste_id, language, name, description, metadata, owner, created_at, expires, public, LEFT(`data`, 512) as data").Where(
-		"owner = ? and (expires is NULL or expires >= ?)",
+	q := p.conn.Select("id, paste_id, language, name, description, metadata, owner, created_at, expires, public, substr(`data`, 1, 512) as data").Where("owner = ? and (expires is NULL or expires >= ?)",
 		user.ID, now).Order("id desc")
 
 	cntQ := q.Debug().Model(&models.Paste{}).Count(&cnt)
@@ -331,9 +282,9 @@ func (p *paste) List(ctx context.Context, page int64, results int64) (paste para
 		return params.PasteListResult{}, errors.Wrap(cntQ.Error, "counting results")
 	}
 
-	resQ := q.Debug().Offset(startFrom).Limit(results).Find(&pasteResults)
+	resQ := q.Debug().Offset(int(startFrom)).Limit(int(results)).Find(&pasteResults)
 	if resQ.Error != nil {
-		if resQ.RecordNotFound() {
+		if errors.Is(resQ.Error, gorm.ErrRecordNotFound) {
 			return params.PasteListResult{}, gErrors.ErrNotFound
 		}
 		return params.PasteListResult{}, errors.Wrap(resQ.Error, "fetching pastes from database")
@@ -351,7 +302,7 @@ func (p *paste) List(ctx context.Context, page int64, results int64) (paste para
 		page = totalPages
 	}
 	return params.PasteListResult{
-		Pastes: asParams,
+		Pastes:     asParams,
 		TotalPages: totalPages,
 		Page:       page,
 	}, nil

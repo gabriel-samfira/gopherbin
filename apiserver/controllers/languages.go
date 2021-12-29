@@ -140,12 +140,3 @@ var LanguageMappings = map[string]string{
 	"YAML":                    "yml",
 	"Zephir":                  "zephir",
 }
-
-func hasLanguage(lang string) bool {
-	for _, val := range LanguageMappings {
-		if val == lang {
-			return true
-		}
-	}
-	return false
-}

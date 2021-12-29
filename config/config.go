@@ -20,15 +20,21 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/BurntSushi/toml"
 	"github.com/pkg/errors"
 )
 
+type DBBackendType string
+
 const (
 	// MySQLBackend represents the MySQL DB backend
-	MySQLBackend = "mysql"
+	MySQLBackend DBBackendType = "mysql"
+	// SQLiteBackend represents the SQLite3 DB backend
+	SQLiteBackend DBBackendType = "sqlite3"
 	// DefaultJWTTTL is the default duration in seconds a JWT token
 	// will be valid.
 	DefaultJWTTTL time.Duration = 60 * time.Second
@@ -81,12 +87,13 @@ func (d *Default) Validate() error {
 
 // Database is the database config entry
 type Database struct {
-	DbBackend string `toml:"backend"`
-	MySQL     MySQL  `toml:"mysql"`
+	DbBackend DBBackendType `toml:"backend"`
+	MySQL     MySQL         `toml:"mysql"`
+	SQLite    SQLite        `toml:"sqlite3"`
 }
 
 // GormParams returns the database type and connection URI
-func (d *Database) GormParams() (dbType string, uri string, err error) {
+func (d *Database) GormParams() (dbType DBBackendType, uri string, err error) {
 	if err := d.Validate(); err != nil {
 		return "", "", errors.Wrap(err, "validating database config")
 	}
@@ -94,6 +101,11 @@ func (d *Database) GormParams() (dbType string, uri string, err error) {
 	switch dbType {
 	case MySQLBackend:
 		uri, err = d.MySQL.ConnectionString()
+		if err != nil {
+			return "", "", errors.Wrap(err, "validating mysql config")
+		}
+	case SQLiteBackend:
+		uri, err = d.SQLite.ConnectionString()
 		if err != nil {
 			return "", "", errors.Wrap(err, "validating mysql config")
 		}
@@ -106,17 +118,46 @@ func (d *Database) GormParams() (dbType string, uri string, err error) {
 // Validate validates the database config entry
 func (d *Database) Validate() error {
 	if d.DbBackend == "" {
-		return fmt.Errorf("Invalid databse configuration: backend is required")
+		return fmt.Errorf("invalid databse configuration: backend is required")
 	}
 	switch d.DbBackend {
 	case MySQLBackend:
 		if err := d.MySQL.Validate(); err != nil {
 			return errors.Wrap(err, "validating mysql config")
 		}
+	case SQLiteBackend:
+		if err := d.SQLite.Validate(); err != nil {
+			return errors.Wrap(err, "validating sqlite3 config")
+		}
 	default:
-		return fmt.Errorf("Invalid database backend: %s", d.DbBackend)
+		return fmt.Errorf("invalid database backend: %s", d.DbBackend)
 	}
 	return nil
+}
+
+// SQLite is the config entry for the sqlite3 section
+type SQLite struct {
+	DBFile string `toml:"db_file"`
+}
+
+func (s *SQLite) Validate() error {
+	if s.DBFile == "" {
+		return fmt.Errorf("no valid db_file was specified")
+	}
+
+	if !filepath.IsAbs(s.DBFile) {
+		return fmt.Errorf("please specify an absolute path for db_file")
+	}
+
+	parent := filepath.Dir(s.DBFile)
+	if _, err := os.Stat(parent); err != nil {
+		return errors.Wrapf(err, "accessing db_file parent dir: %s", parent)
+	}
+	return nil
+}
+
+func (s *SQLite) ConnectionString() (string, error) {
+	return s.DBFile, nil
 }
 
 // MySQL is the config entry for the mysql section

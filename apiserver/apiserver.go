@@ -62,10 +62,6 @@ func (h *APIServer) Stop() error {
 	return nil
 }
 
-func addWebUIRoutes(router *mux.Router) (*mux.Router, error) {
-	return nil, nil
-}
-
 // GetAPIServer returns a new API server
 func GetAPIServer(cfg *config.Config) (*APIServer, error) {
 	paster, err := paste.NewPaster(cfg.Database, cfg.Default)
