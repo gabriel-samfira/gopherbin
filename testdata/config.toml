@@ -16,6 +16,7 @@ use_tls = false
 #    ca_certificate = "/path/to/ca_cert.pem"
 
 [database]
+# Valid options are: mysql, sqlite3
 backend = "mysql"
 
     [database.mysql]
@@ -24,3 +25,6 @@ backend = "mysql"
     password = "superSecretPassword"
     hostname = "192.168.100.10"
     database = "pastedb"
+
+#    [database.sqlite3]
+#    db_file = "/tmp/gopherbin.sql"

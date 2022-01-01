@@ -19,7 +19,7 @@ git clone https://github.com/gabriel-samfira/gopherbin
 If you want to build the UI, you will need a recent version of nodejs and yarn. With those dependencies installed, simply run:
 
 ```bash
-make all-ui
+make all
 ```
 
 Building without a UI:
@@ -43,11 +43,14 @@ make start-container
 
 ## Creating a database
 
-Gopherbin uses a MySQL/MariaDB database. Install either one of these two, using your preferred method/how-to, then create a database that Gopherbin can use:
+Gopherbin can use either MySQL/MariaDB or SQLite3.
+
+If you're planning on using MySQL, you'll need to create the database first:
 
 ```sql
-create database pastedb;
-grant all on pastedb.* to 'pasteuser'@'%' identified by 'superSecretPassword';
+create database gopherbin;
+create user 'gopherbin'@'%' identified by 'superSecretPassword';
+grant all on gopherbin.* to 'gopherbin'@'%';
 flush privileges;
 ```
 
@@ -61,20 +64,32 @@ bind = "0.0.0.0"
 port = 9997
 use_tls = false
 
-#    [apiserver.tls]
-#    certificate = "/path/to/cert.pem"
-#    key = "/path/to/key.pem"
-#    ca_certificate = "/path/to/ca_cert.pem"
+    [apiserver.jwt_auth]
+    # secret used to sign jwt tokens
+    #
+    secret = "beerdesOwshitvobkeshyijuchepavbiejCefJubemrirjOnJeutyucHalHushbo"
+    # the duration, a token will be valid for
+    # format is of the form 4m41s
+    time_to_live = "1h"
+
+    # [apiserver.tls]
+    # certificate = "/path/to/cert.pem"
+    # key = "/path/to/key.pem"
+    # ca_certificate = "/path/to/ca_cert.pem"
 
 [database]
-backend = "mysql"
+# Valid options are: mysql, sqlite3
+backend = "sqlite3"
 
-    [database.mysql]
-    username = "pasteuser"
-    # This obviously also needs to be changed :-)
-    password = "superSecretPassword"
-    hostname = "192.168.100.10"
-    database = "pastedb"
+    # [database.mysql]
+    # username = "gopherbin"
+    # # This obviously also needs to be changed :-)
+    # password = "superSecretPassword"
+    # hostname = "192.168.100.10"
+    # database = "gopherbin"
+
+    [database.sqlite3]
+    db_file = "/tmp/gopherbin.sql"
 ```
 
 ## First run

@@ -75,10 +75,10 @@ func (c *Config) Validate() error {
 }
 
 // Default defines settings
-type Default struct {
-	RegistrationOpen bool `toml:"registration_open"`
-	AllowAnonymous   bool `toml:"allow_anonymous"`
-}
+//type Default struct {
+//	RegistrationOpen bool `toml:"registration_open"`
+//	AllowAnonymous   bool `toml:"allow_anonymous"`
+//}
 
 // Validate validates the default section of the config
 func (d *Default) Validate() error {

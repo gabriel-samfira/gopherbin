@@ -20,7 +20,7 @@ help :
 	@echo "	make noUI			-> build gopherbin without the web UI"
 	@echo "	make withUI			-> build gopherbin with the web UI (requires nodejs and yarn to be installed)"
 	@echo "	make all-noui			-> shorthand for make fmt submodules noUI"
-	@echo "	make all-ui			-> shorthand for make fmt submodules withUI"
+	@echo "	make all			-> shorthand for make fmt submodules withUI"
 	@echo "	make build-image		-> create a docker image with gopher binary"
 	@echo "	make container-start		-> start ghoperbin container"
 	@echo "	make app			-> build go binary and start a container with it"
@@ -32,16 +32,18 @@ fmt:
 submodules:
 	git submodule update --init --recursive
 
+buildUI:
+	cd webui/web && npm install && yarn build --production
+
 noUI:
 	go build -ldflags="-s -w" -o $(GOPATH)/bin/gopherbin cmd/gopherbin/gopherbin.go
 
 withUI:
-	cd webui/web && npm install && yarn build --production
 	go build -ldflags="-s -w" -o $(GOPATH)/bin/gopherbin -ldflags "-X 'gopherbin/webui.BuildTime=$(shell date +%s)'" -tags webui cmd/gopherbin/gopherbin.go
 
 all-noui: fmt submodules noUI
 
-all-ui: fmt submodules withUI
+all: fmt submodules buildUI withUI
 
 build-image:
 	docker build --no-cache --tag $(IMAGE_NAME) .
