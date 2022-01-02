@@ -61,7 +61,7 @@ func runAPIServer(cfgFile string) {
 		log.Errorf("error starting api worker: %+v", err)
 		os.Exit(1)
 	}
-	maintenanceWrk, err := maintenance.NewMaintenanceWorker(cfg.Database, cfg.Default)
+	maintenanceWrk, err := maintenance.NewMaintenanceWorker(cfg.Database)
 	if err != nil {
 		log.Errorf("error getting maintenance worker: %+v", err)
 		os.Exit(1)

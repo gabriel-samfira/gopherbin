@@ -27,15 +27,23 @@ type Paster interface {
 		ctx context.Context, data []byte,
 		title, language, description string,
 		expires *time.Time,
-		isPublic, encrypted bool,
+		isPublic bool, team string,
 		metadata map[string]string) (paste params.Paste, err error)
 	Get(ctx context.Context, pasteID string) (paste params.Paste, err error)
 	GetPublicPaste(ctx context.Context, pasteID string) (paste params.Paste, err error)
 	List(ctx context.Context, page int64, results int64) (paste params.PasteListResult, err error)
 	Delete(ctx context.Context, pasteID string) error
-	ShareWithUser(ctx context.Context, pasteID string, userID int64) error
-	UnshareWithUser(ctx context.Context, pasteID string, userID int64) error
-	ShareWithTeam(ctx context.Context, pasteID string, teamID int64) error
-	UnshareWithTeam(ctx context.Context, pasteID string, teamID int64) error
+	ShareWithUser(ctx context.Context, pasteID string, userID string) error
+	UnshareWithUser(ctx context.Context, pasteID string, userID string) error
 	SetPrivacy(ctx context.Context, pasteID string, public bool) (params.Paste, error)
+}
+
+type TeamManager interface {
+	Create(ctx context.Context, name string) (team params.Teams, err error)
+	Delete(ctx context.Context, name string) error
+	Get(ctx context.Context, name string) (team params.Teams, err error)
+	List(ctx context.Context, page int64, results int64) (teams []params.Teams, err error)
+	AddMember(ctx context.Context, team string, member params.AddTeamMemberRequest) (params.TeamMember, error)
+	ListMembers(ctx context.Context, team string, page int64, results int64) ([]params.TeamMember, error)
+	RemoveMember(ctx context.Context, team, member string) error
 }

@@ -18,6 +18,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"regexp"
+	"unicode"
 
 	"gopherbin/config"
 
@@ -43,6 +44,15 @@ func IsValidEmail(email string) bool {
 	return true
 }
 
+func IsAlphanumeric(s string) bool {
+	for _, r := range s {
+		if !unicode.IsLetter(r) && !unicode.IsNumber(r) {
+			return false
+		}
+	}
+	return true
+}
+
 // NewDBConn returns a new gorm db connection, given the config
 func NewDBConn(dbCfg config.Database) (conn *gorm.DB, err error) {
 	dbType, connURI, err := dbCfg.GormParams()
@@ -57,6 +67,10 @@ func NewDBConn(dbCfg config.Database) (conn *gorm.DB, err error) {
 	}
 	if err != nil {
 		return nil, errors.Wrap(err, "connecting to database")
+	}
+
+	if dbCfg.Debug {
+		conn = conn.Debug()
 	}
 	return conn, nil
 }

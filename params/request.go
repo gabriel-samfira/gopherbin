@@ -16,57 +16,17 @@ package params
 
 import (
 	"fmt"
-	"time"
-
 	"gopherbin/errors"
 	"gopherbin/util"
 
 	zxcvbn "github.com/nbutton23/zxcvbn-go"
 )
 
-// Teams holds information about a team
-type Teams struct {
-	ID      int64   `json:"id"`
-	Name    string  `json:"name"`
-	Owner   Users   `json:"owner"`
-	Members []Users `json:"members"`
-}
-
-// Users holds information about a particular user
-type Users struct {
-	ID          int64     `json:"id"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-	Email       string    `json:"email"`
-	FullName    string    `json:"full_name"`
-	Password    *string   `json:"password,omitempty"`
-	Enabled     bool      `json:"enabled"`
-	IsAdmin     bool      `json:"is_admin"`
-	IsSuperUser bool      `json:"is_superuser"`
-}
-
-// FormattedCreatedAt returns a DD-MM-YY formatted createdAt
-// date
-func (u Users) FormattedCreatedAt() string {
-	return u.CreatedAt.Format("02-Jan-2006")
-}
-
-// FormattedUpdatedAt returns a DD-MM-YY formatted expiration
-// date
-func (u Users) FormattedUpdatedAt() string {
-	return u.UpdatedAt.Format("02-Jan-2006")
-}
-
-// UserListResult holds results for a user list request
-type UserListResult struct {
-	TotalPages int64   `json:"total_pages"`
-	Users      []Users `json:"users"`
-}
-
 // NewUserParams holds the needed information to create
 // a new user
 type NewUserParams struct {
 	Email    string `json:"email"`
+	Username string `json:"username"`
 	FullName string `json:"full_name"`
 	Password string `json:"password"`
 	IsAdmin  bool   `json:"is_admin"`
@@ -85,6 +45,10 @@ func (u NewUserParams) Validate() error {
 		return fmt.Errorf("invalid email address %s", u.Email)
 	}
 
+	if !util.IsAlphanumeric(u.Username) {
+		return fmt.Errorf("invalid username %s", u.Username)
+	}
+
 	if len(u.FullName) == 0 || len(u.FullName) > 255 {
 		return fmt.Errorf("full name may not be empty")
 	}
@@ -95,6 +59,7 @@ func (u NewUserParams) Validate() error {
 // on a user entry
 type UpdateUserPayload struct {
 	IsAdmin  *bool   `json:"is_admin,omitempty"`
+	Username *string `json:"username,omitempty"`
 	Password *string `json:"password,omitempty"`
 	FullName *string `json:"full_name,omitempty"`
 	Enabled  *bool   `json:"enabled,omitempty"`
@@ -118,44 +83,6 @@ func (u UpdateUserPayload) Validate() error {
 		}
 	}
 	return nil
-}
-
-// Paste holds information about a paste
-type Paste struct {
-	ID          int64             `json:"id"`
-	PasteID     string            `json:"paste_id"`
-	Data        []byte            `json:"data,omitempty"`
-	Preview     []byte            `json:"preview,omitempty"`
-	Language    string            `json:"language"`
-	Name        string            `json:"name"`
-	Description string            `json:"description"`
-	Expires     *time.Time        `json:"expires,omitempty"`
-	Public      bool              `json:"public"`
-	CreatedAt   time.Time         `json:"created_at"`
-	Encrypted   bool              `json:"encrypted"`
-	Metadata    map[string]string `json:"metadata"`
-}
-
-// FormattedCreatedAt returns a DD-MM-YY formatted createdAt
-// date
-func (p Paste) FormattedCreatedAt() string {
-	return p.CreatedAt.Format("02-Jan-2006")
-}
-
-// FormattedExpires returns a DD-MM-YY formatted expiration
-// date
-func (p Paste) FormattedExpires() string {
-	if p.Expires != nil {
-		return p.Expires.Format("02-Jan-2006")
-	}
-	return ""
-}
-
-// PasteListResult holds results for a paste list request
-type PasteListResult struct {
-	TotalPages int64   `json:"total_pages"`
-	Page       int64   `json:"page"`
-	Pastes     []Paste `json:"pastes"`
 }
 
 // PasswordLoginParams holds information used during
@@ -186,13 +113,19 @@ func (p PasswordLoginParams) Validate() error {
 	return nil
 }
 
-// JWTResponse holds the JWT token returned as a result of a
-// successful auth
-type JWTResponse struct {
-	Token string `json:"token"`
-}
-
 // UpdatePasteParams is the payload we can send to update a paste.
 type UpdatePasteParams struct {
 	Public bool `json:"public"`
+}
+
+// NewTeamParams holds information needed to create a new team.
+type NewTeamParams struct {
+	Name string `json:"name"`
+}
+
+// AddTeamMemberRequest is the payload needed to add a new team member.
+// Either username or email can be used. Username takes precedence.
+type AddTeamMemberRequest struct {
+	Username string `json:"username"`
+	Email    string `json:"email"`
 }

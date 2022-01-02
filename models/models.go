@@ -22,47 +22,48 @@ import (
 
 // Paste represents a pastebin entry in the database
 type Paste struct {
-	ID          int64  `gorm:"primary_key"`
-	PasteID     string `gorm:"type:varchar(32);unique_index"`
+	ID          int64  `gorm:"primarykey"`
+	PasteID     string `gorm:"type:varchar(32);uniqueIndex"`
 	Data        []byte `gorm:"type:longblob"`
 	Language    string `gorm:"type:varchar(64)"`
 	Name        string
 	Description string
 	Metadata    datatypes.JSON
-	Owner       int64
+	OwnerID     int64
+	Owner       Users `gorm:"foreignKey:OwnerID"`
 	CreatedAt   time.Time
 	Expires     *time.Time `gorm:"index:expires"`
 	Public      bool
-	Encrypted   bool
-	Teams       []Teams `gorm:"many2many:paste_teams;"`
+	TeamID      int64
+	Team        Teams   `gorm:"foreignKey:TeamID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
 	Users       []Users `gorm:"many2many:paste_users;"`
 }
 
 // Users represents a user entry in the database
 type Users struct {
-	ID           int64 `gorm:"primary_key"`
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-	FullName     string   `gorm:"type:varchar(254)"`
-	Email        string   `gorm:"type:varchar(254);unique;index:idx_email"`
-	Teams        []*Teams `gorm:"many2many:team_users;"`
-	CreatedTeams []Teams  `gorm:"foreignkey:Owner"`
-	Password     string   `gorm:"type:varchar(60)"`
-	IsAdmin      bool
-	IsSuperUser  bool
-	Enabled      bool
+	ID          int64 `gorm:"primarykey"`
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	Username    string  `gorm:"index;unique;varchar(64)"`
+	FullName    string  `gorm:"type:varchar(254)"`
+	Email       string  `gorm:"type:varchar(254);unique;index:idx_email"`
+	Teams       []Teams `gorm:"foreignKey:Owner"`
+	Password    string  `gorm:"type:varchar(60)"`
+	IsAdmin     bool
+	IsSuperUser bool
+	Enabled     bool
 }
 
 // Teams represents a team of users
 type Teams struct {
-	ID      int64    `gorm:"primary_key"`
-	Name    string   `gorm:"type:varchar(32)"`
+	ID      int64    `gorm:"primarykey"`
+	Name    string   `gorm:"type:varchar(32);uniqueIndex"`
 	Owner   int64    `gorm:"index"`
 	Members []*Users `gorm:"many2many:team_users;"`
 }
 
 // JWTBacklist is a JWT token blacklist
 type JWTBacklist struct {
-	TokenID    string `gorm:"primary_key;type:varchar(16)"`
+	TokenID    string `gorm:"primarykey;type:varchar(16)"`
 	Expiration int64  `gorm:"index:expire"`
 }

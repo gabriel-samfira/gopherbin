@@ -34,14 +34,13 @@ import (
 )
 
 // NewUserManager returns a new *UserManager
-func NewUserManager(dbCfg config.Database, defCfg config.Default) (common.UserManager, error) {
+func NewUserManager(dbCfg config.Database) (common.UserManager, error) {
 	db, err := util.NewDBConn(dbCfg)
 	if err != nil {
 		return nil, errors.Wrap(err, "connecting to database")
 	}
 	return &userManager{
 		conn: db,
-		cfg:  defCfg,
 	}, nil
 }
 
@@ -49,7 +48,6 @@ func NewUserManager(dbCfg config.Database, defCfg config.Default) (common.UserMa
 // creation and updating of users
 type userManager struct {
 	conn *gorm.DB
-	cfg  config.Default
 }
 
 func (u *userManager) HasSuperUser() bool {
@@ -75,6 +73,7 @@ func (u *userManager) newUserParamsToSQL(user params.NewUserParams) (models.User
 	}
 	newUser := models.Users{
 		Email:       user.Email,
+		Username:    user.Username,
 		FullName:    user.FullName,
 		Password:    hashedPassword,
 		CreatedAt:   time.Now(),
@@ -90,6 +89,7 @@ func (u *userManager) sqlUserToParams(user models.Users) params.Users {
 		ID:          user.ID,
 		FullName:    user.FullName,
 		Email:       user.Email,
+		Username:    user.Username,
 		CreatedAt:   user.CreatedAt,
 		UpdatedAt:   user.UpdatedAt,
 		Enabled:     user.Enabled,
@@ -107,7 +107,15 @@ func (u *userManager) Authenticate(ctx context.Context, info params.PasswordLogi
 		return ctx, gErrors.ErrUnauthorized
 	}
 
-	modelUser, err := u.getUserByEmail(info.Username)
+	isEmail := util.IsValidEmail(info.Username)
+	var modelUser models.Users
+	var err error
+	if isEmail {
+		modelUser, err = u.getUserByEmail(info.Username)
+	} else {
+		modelUser, err = u.getUserByUsername(info.Username)
+	}
+
 	if err != nil {
 		if err == gErrors.ErrNotFound {
 			return ctx, gErrors.NewUnauthorizedError("invalid username or password")
@@ -147,6 +155,10 @@ func (u *userManager) Create(ctx context.Context, user params.NewUserParams) (pa
 		return params.Users{}, gErrors.NewBadRequestError("invalid email")
 	}
 
+	if user.Username == "" || !util.IsAlphanumeric(user.Username) {
+		return params.Users{}, gErrors.NewBadRequestError("invalid username")
+	}
+
 	newUser, err := u.newUserParamsToSQL(user)
 	if err != nil {
 		return params.Users{}, errors.Wrap(err, "fetching user object")
@@ -157,7 +169,7 @@ func (u *userManager) Create(ctx context.Context, user params.NewUserParams) (pa
 			return params.Users{}, errors.Wrap(err, "fetching user")
 		}
 	} else {
-		return params.Users{}, gErrors.ErrDuplicateUser
+		return params.Users{}, gErrors.ErrDuplicateEntity
 	}
 
 	err = u.conn.Create(&newUser).Error
@@ -216,7 +228,7 @@ func (u *userManager) List(ctx context.Context, page int64, results int64) (past
 	var cnt int64
 	startFrom := (page - 1) * results
 
-	cntQ := u.conn.Debug().Model(&models.Users{}).Count(&cnt)
+	cntQ := u.conn.Model(&models.Users{}).Count(&cnt)
 	if cntQ.Error != nil {
 		return params.UserListResult{}, errors.Wrap(cntQ.Error, "counting results")
 	}
@@ -304,6 +316,21 @@ func (u *userManager) Update(ctx context.Context, userID int64, update params.Up
 		}
 		tmpUser.Enabled = *update.Enabled
 	}
+
+	if update.Username != nil {
+		if tmpUser.Username != "" {
+			return params.Users{}, gErrors.NewBadRequestError("username is already set")
+		}
+		_, err := u.getUserByUsername(*update.Username)
+		if err != nil {
+			if !errors.Is(err, gErrors.ErrNotFound) {
+				return params.Users{}, errors.Wrap(err, "looking up user")
+			}
+		} else {
+			return params.Users{}, errors.Wrap(gErrors.ErrDuplicateEntity, "updating username")
+		}
+		tmpUser.Username = *update.Username
+	}
 	// TODO: When we update the user for any reason, it will invalidate
 	// all login tokens. Add a separate field as witness instead of UpdatedAt,
 	// which will only update when the password is reset, or when any other
@@ -319,6 +346,18 @@ func (u *userManager) Update(ctx context.Context, userID int64, update params.Up
 func (u *userManager) getUserByEmail(email string) (models.Users, error) {
 	var tmpUser models.Users
 	q := u.conn.Where("email = ?", email).First(&tmpUser)
+	if q.Error != nil {
+		if errors.Is(q.Error, gorm.ErrRecordNotFound) {
+			return models.Users{}, gErrors.ErrNotFound
+		}
+		return models.Users{}, errors.Wrap(q.Error, "fetching user from database")
+	}
+	return tmpUser, nil
+}
+
+func (u *userManager) getUserByUsername(username string) (models.Users, error) {
+	var tmpUser models.Users
+	q := u.conn.Where("username = ?", username).First(&tmpUser)
 	if q.Error != nil {
 		if errors.Is(q.Error, gorm.ErrRecordNotFound) {
 			return models.Users{}, gErrors.ErrNotFound

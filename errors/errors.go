@@ -25,7 +25,7 @@ var (
 	ErrNotFound = NewNotFoundError("not found")
 	// ErrDuplicateUser is returned when creating a user, if the
 	// user already exists.
-	ErrDuplicateUser = NewDuplicateUserError("duplicate user")
+	ErrDuplicateEntity = NewDuplicateUserError("duplicate")
 	// ErrBadRequest is returned is a malformed request is sent
 	ErrBadRequest = NewBadRequestError("invalid request")
 )

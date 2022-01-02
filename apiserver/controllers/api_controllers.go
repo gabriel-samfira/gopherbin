@@ -22,19 +22,21 @@ import (
 )
 
 // NewAPIController returns a new APIController
-func NewAPIController(paster common.Paster, mgr adminCommon.UserManager, cfg config.JWTAuth) *APIController {
+func NewAPIController(paster common.Paster, teamManager common.TeamManager, mgr adminCommon.UserManager, cfg config.JWTAuth) *APIController {
 	return &APIController{
-		paster:  paster,
-		manager: mgr,
-		cfg:     cfg,
+		paster:      paster,
+		manager:     mgr,
+		teamManager: nil,
+		cfg:         cfg,
 	}
 }
 
 // APIController implements handlers for the REST API
 type APIController struct {
-	paster  common.Paster
-	manager adminCommon.UserManager
-	cfg     config.JWTAuth
+	paster      common.Paster
+	manager     adminCommon.UserManager
+	teamManager common.TeamManager
+	cfg         config.JWTAuth
 }
 
 func handleError(w http.ResponseWriter, err error) {
@@ -63,6 +65,14 @@ func handleError(w http.ResponseWriter, err error) {
 	}
 
 	json.NewEncoder(w).Encode(apiErr)
+}
+
+// NotFoundHandler is returned when an invalid URL is acccessed
+func (p *APIController) NotFoundHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Println(r.URL.Path)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusNotFound)
+	json.NewEncoder(w).Encode(responses.NotFoundResponse)
 }
 
 // FirstRunHandler initializez gopherbin
@@ -265,8 +275,8 @@ func (p *APIController) CreatePasteHandler(w http.ResponseWriter, r *http.Reques
 	pasteInfo, err := p.paster.Create(
 		ctx, pasteData.Data, pasteData.Name,
 		pasteData.Language, pasteData.Description,
-		pasteData.Expires, pasteData.Public,
-		pasteData.Encrypted, pasteData.Metadata)
+		pasteData.Expires, pasteData.Public, "",
+		pasteData.Metadata)
 	if err != nil {
 		handleError(w, err)
 		return
@@ -390,10 +400,143 @@ func (p *APIController) DeleteUserHandler(w http.ResponseWriter, r *http.Request
 	}
 }
 
-// NotFoundHandler is returned when an invalid URL is acccessed
-func (p *APIController) NotFoundHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Println(r.URL.Path)
+//
+// Teams handlers
+//
+
+// NewUserHandler creates a new team
+func (p *APIController) NewTeamHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	var newTeamParams params.NewTeamParams
+
+	if err := json.NewDecoder(r.Body).Decode(&newTeamParams); err != nil {
+		handleError(w, gErrors.ErrBadRequest)
+		return
+	}
+
+	newTeam, err := p.teamManager.Create(ctx, newTeamParams.Name)
+	if err != nil {
+		handleError(w, err)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusNotFound)
-	json.NewEncoder(w).Encode(responses.NotFoundResponse)
+	json.NewEncoder(w).Encode(newTeam)
+}
+
+// DeleteTeamHandler deletes a team
+func (p *APIController) DeleteTeamHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	vars := mux.Vars(r)
+	teamName, ok := vars["teamName"]
+	if !ok {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(responses.APIErrorResponse{
+			Error:   "Bad Request",
+			Details: "no team name specified",
+		})
+		return
+	}
+	err := p.teamManager.Delete(ctx, teamName)
+	if err != nil {
+		handleError(w, err)
+		return
+	}
+}
+
+func (p *APIController) ListTeamsHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	page := r.URL.Query().Get("page")
+	pageInt, _ := strconv.ParseInt(page, 10, 64)
+	maxResultsOpt := r.URL.Query().Get("max_results")
+	maxResults, _ := strconv.ParseInt(maxResultsOpt, 10, 64)
+	if maxResults == 0 {
+		maxResults = 50
+	}
+
+	res, err := p.teamManager.List(ctx, pageInt, maxResults)
+	if err != nil {
+		handleError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(res)
+}
+
+func (p *APIController) AddTeamMemberHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	vars := mux.Vars(r)
+	teamName, ok := vars["teamName"]
+	if !ok {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(responses.APIErrorResponse{
+			Error:   "Bad Request",
+			Details: "no team name specified",
+		})
+		return
+	}
+
+	var addTeamMemberParams params.AddTeamMemberRequest
+	if err := json.NewDecoder(r.Body).Decode(&addTeamMemberParams); err != nil {
+		handleError(w, gErrors.ErrBadRequest)
+		return
+	}
+
+	newMember, err := p.teamManager.AddMember(ctx, teamName, addTeamMemberParams)
+	if err != nil {
+		handleError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(newMember)
+
+}
+
+func (p *APIController) ListTeamMembersHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	vars := mux.Vars(r)
+	teamName, ok := vars["teamName"]
+	if !ok {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(responses.APIErrorResponse{
+			Error:   "Bad Request",
+			Details: "no team name specified",
+		})
+		return
+	}
+
+	page := r.URL.Query().Get("page")
+	pageInt, _ := strconv.ParseInt(page, 10, 64)
+	maxResultsOpt := r.URL.Query().Get("max_results")
+	maxResults, _ := strconv.ParseInt(maxResultsOpt, 10, 64)
+	if maxResults == 0 {
+		maxResults = 50
+	}
+
+	res, err := p.teamManager.ListMembers(ctx, teamName, pageInt, maxResults)
+	if err != nil {
+		handleError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(res)
+}
+
+func (p *APIController) RemoveTeamMemberHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	vars := mux.Vars(r)
+	teamName, teamOK := vars["teamName"]
+	member, memberOK := vars["member"]
+	if !teamOK || !memberOK {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(responses.APIErrorResponse{
+			Error:   "Bad Request",
+			Details: "no team or member name specified",
+		})
+		return
+	}
+	err := p.teamManager.RemoveMember(ctx, teamName, member)
+	if err != nil {
+		handleError(w, err)
+		return
+	}
 }
