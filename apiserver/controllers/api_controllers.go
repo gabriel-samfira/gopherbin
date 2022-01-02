@@ -347,7 +347,7 @@ func (p *APIController) UpdateUserHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	userIDInt, err := strconv.ParseInt(userID, 10, 64)
+	userIDInt, err := strconv.ParseUint(userID, 10, 64)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(responses.APIErrorResponse{
@@ -362,7 +362,7 @@ func (p *APIController) UpdateUserHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	updatedUser, err := p.manager.Update(ctx, userIDInt, updateUserPayload)
+	updatedUser, err := p.manager.Update(ctx, uint(userIDInt), updateUserPayload)
 	if err != nil {
 		handleError(w, err)
 		return
@@ -393,7 +393,7 @@ func (p *APIController) DeleteUserHandler(w http.ResponseWriter, r *http.Request
 		})
 		return
 	}
-	err = p.manager.Delete(ctx, userIDInt)
+	err = p.manager.Delete(ctx, uint(userIDInt))
 	if err != nil {
 		handleError(w, err)
 		return

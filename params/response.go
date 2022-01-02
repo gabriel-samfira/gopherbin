@@ -20,7 +20,7 @@ import (
 
 // Teams holds information about a team
 type Teams struct {
-	ID      int64        `json:"id"`
+	ID      uint         `json:"id"`
 	Name    string       `json:"name"`
 	Owner   TeamMember   `json:"owner"`
 	Members []TeamMember `json:"members"`
@@ -34,7 +34,7 @@ type TeamMember struct {
 
 // Users holds information about a particular user
 type Users struct {
-	ID          int64     `json:"id"`
+	ID          uint      `json:"id"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 	Email       string    `json:"email"`
@@ -66,7 +66,7 @@ type UserListResult struct {
 
 // Paste holds information about a paste
 type Paste struct {
-	ID          int64             `json:"id"`
+	ID          uint              `json:"id"`
 	PasteID     string            `json:"paste_id"`
 	Data        []byte            `json:"data,omitempty"`
 	Preview     []byte            `json:"preview,omitempty"`

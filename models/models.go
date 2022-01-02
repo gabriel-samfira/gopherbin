@@ -22,26 +22,26 @@ import (
 
 // Paste represents a pastebin entry in the database
 type Paste struct {
-	ID          int64  `gorm:"primarykey"`
+	ID          uint   `gorm:"primarykey"`
 	PasteID     string `gorm:"type:varchar(32);uniqueIndex"`
 	Data        []byte `gorm:"type:longblob"`
 	Language    string `gorm:"type:varchar(64)"`
 	Name        string
 	Description string
 	Metadata    datatypes.JSON
-	OwnerID     int64
+	OwnerID     uint
 	Owner       Users `gorm:"foreignKey:OwnerID"`
 	CreatedAt   time.Time
 	Expires     *time.Time `gorm:"index:expires"`
 	Public      bool
-	TeamID      int64
+	TeamID      uint
 	Team        Teams   `gorm:"foreignKey:TeamID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
 	Users       []Users `gorm:"many2many:paste_users;"`
 }
 
 // Users represents a user entry in the database
 type Users struct {
-	ID          int64 `gorm:"primarykey"`
+	ID          uint `gorm:"primarykey"`
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	Username    string  `gorm:"index;unique;varchar(64)"`
@@ -56,9 +56,9 @@ type Users struct {
 
 // Teams represents a team of users
 type Teams struct {
-	ID      int64    `gorm:"primarykey"`
+	ID      uint     `gorm:"primarykey"`
 	Name    string   `gorm:"type:varchar(32);uniqueIndex"`
-	Owner   int64    `gorm:"index"`
+	Owner   uint     `gorm:"index"`
 	Members []*Users `gorm:"many2many:team_users;"`
 }
 

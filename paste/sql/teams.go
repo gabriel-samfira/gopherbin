@@ -33,7 +33,7 @@ type teamManager struct {
 	conn *gorm.DB
 }
 
-func (p *teamManager) getUser(userID int64) (models.Users, error) {
+func (p *teamManager) getUser(userID uint) (models.Users, error) {
 	// TODO: abstract this into a common interface
 	var tmpUser models.Users
 	q := p.conn.Preload("Teams").Where("id = ?", userID).First(&tmpUser)

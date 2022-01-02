@@ -200,7 +200,7 @@ func (u *userManager) CreateSuperUser(user params.NewUserParams) (params.Users, 
 	return u.sqlUserToParams(newUser), nil
 }
 
-func (u *userManager) Get(ctx context.Context, userID int64) (params.Users, error) {
+func (u *userManager) Get(ctx context.Context, userID uint) (params.Users, error) {
 	user := auth.UserID(ctx)
 	if user != userID && !auth.IsAdmin(ctx) {
 		return params.Users{}, gErrors.ErrUnauthorized
@@ -254,7 +254,7 @@ func (u *userManager) List(ctx context.Context, page int64, results int64) (past
 	}, nil
 }
 
-func (u *userManager) Update(ctx context.Context, userID int64, update params.UpdateUserPayload) (params.Users, error) {
+func (u *userManager) Update(ctx context.Context, userID uint, update params.UpdateUserPayload) (params.Users, error) {
 	if err := update.Validate(); err != nil {
 		return params.Users{}, errors.Wrap(err, "validating params")
 	}
@@ -367,7 +367,7 @@ func (u *userManager) getUserByUsername(username string) (models.Users, error) {
 	return tmpUser, nil
 }
 
-func (u *userManager) getUser(userID int64) (models.Users, error) {
+func (u *userManager) getUser(userID uint) (models.Users, error) {
 	var tmpUser models.Users
 	q := u.conn.Where("id = ?", userID).First(&tmpUser)
 	if q.Error != nil {
@@ -416,7 +416,7 @@ func (u *userManager) CleanTokens() error {
 	return nil
 }
 
-func (u *userManager) setEnabledFlag(userID int64, enabled bool) error {
+func (u *userManager) setEnabledFlag(userID uint, enabled bool) error {
 	usr, err := u.getUser(userID)
 	if err != nil {
 		return errors.Wrap(err, "fetching user from db")
@@ -430,7 +430,7 @@ func (u *userManager) setEnabledFlag(userID int64, enabled bool) error {
 	return nil
 }
 
-func (u *userManager) Enable(ctx context.Context, userID int64) error {
+func (u *userManager) Enable(ctx context.Context, userID uint) error {
 	isAdmin := auth.IsAdmin(ctx)
 	if !isAdmin {
 		return gErrors.ErrUnauthorized
@@ -438,7 +438,7 @@ func (u *userManager) Enable(ctx context.Context, userID int64) error {
 	return u.setEnabledFlag(userID, true)
 }
 
-func (u *userManager) Disable(ctx context.Context, userID int64) error {
+func (u *userManager) Disable(ctx context.Context, userID uint) error {
 	isAdmin := auth.IsAdmin(ctx)
 	if !isAdmin {
 		return gErrors.ErrUnauthorized
@@ -446,7 +446,7 @@ func (u *userManager) Disable(ctx context.Context, userID int64) error {
 	return u.setEnabledFlag(userID, false)
 }
 
-func (u *userManager) Delete(ctx context.Context, userID int64) error {
+func (u *userManager) Delete(ctx context.Context, userID uint) error {
 	isAdmin := auth.IsAdmin(ctx)
 	if !isAdmin {
 		return gErrors.ErrUnauthorized

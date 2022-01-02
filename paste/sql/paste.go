@@ -82,7 +82,7 @@ func (p *paste) getUserFromContext(ctx context.Context) (models.Users, error) {
 	return user, nil
 }
 
-func (p *paste) getUser(userID int64) (models.Users, error) {
+func (p *paste) getUser(userID uint) (models.Users, error) {
 	// TODO: abstract this into a common interface
 	var tmpUser models.Users
 	q := p.conn.Preload("Teams").Where("id = ?", userID).First(&tmpUser)
