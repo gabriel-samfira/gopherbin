@@ -102,6 +102,13 @@ type PasteListResult struct {
 	Pastes     []Paste `json:"pastes"`
 }
 
+// TeamListResult holds results for a team list request
+type TeamListResult struct {
+	TotalPages int64   `json:"total_pages"`
+	Page       int64   `json:"page"`
+	Teams      []Teams `json:"teams"`
+}
+
 // JWTResponse holds the JWT token returned as a result of a
 // successful auth
 type JWTResponse struct {

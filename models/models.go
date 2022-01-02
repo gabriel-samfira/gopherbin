@@ -35,7 +35,7 @@ type Paste struct {
 	Expires     *time.Time `gorm:"index:expires"`
 	Public      bool
 	TeamID      uint
-	Team        Teams   `gorm:"foreignKey:TeamID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
+	Team        Teams   `gorm:"foreignKey:TeamID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 	Users       []Users `gorm:"many2many:paste_users;"`
 }
 
@@ -44,10 +44,10 @@ type Users struct {
 	ID          uint `gorm:"primarykey"`
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
-	Username    string  `gorm:"index;unique;varchar(64)"`
+	Username    string  `gorm:"uniqueIndex;varchar(64)"`
 	FullName    string  `gorm:"type:varchar(254)"`
 	Email       string  `gorm:"type:varchar(254);unique;index:idx_email"`
-	Teams       []Teams `gorm:"foreignKey:Owner"`
+	MemberOf    []Teams `gorm:"many2many:team_users;"`
 	Password    string  `gorm:"type:varchar(60)"`
 	IsAdmin     bool
 	IsSuperUser bool
@@ -56,9 +56,10 @@ type Users struct {
 
 // Teams represents a team of users
 type Teams struct {
-	ID      uint     `gorm:"primarykey"`
-	Name    string   `gorm:"type:varchar(32);uniqueIndex"`
-	Owner   uint     `gorm:"index"`
+	ID      uint   `gorm:"primarykey"`
+	Name    string `gorm:"type:varchar(32);uniqueIndex"`
+	OwnerID uint
+	Owner   Users    `gorm:"foreignKey:OwnerID"`
 	Members []*Users `gorm:"many2many:team_users;"`
 }
 

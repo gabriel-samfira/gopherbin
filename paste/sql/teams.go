@@ -2,7 +2,7 @@ package sql
 
 import (
 	"context"
-	"fmt"
+	"math"
 
 	"gopherbin/auth"
 	"gopherbin/config"
@@ -33,6 +33,29 @@ type teamManager struct {
 	conn *gorm.DB
 }
 
+// TODO: dedup user lookup. Use the admin.UserManager?
+func (p *teamManager) getUserByUsernameOrEmail(username, email string) (models.Users, error) {
+	if username == "" && email == "" {
+		return models.Users{}, gErrors.NewBadRequestError("either email or username must be set")
+	}
+
+	var tmpUser models.Users
+	queryString := "username = ?"
+	queryParam := username
+	if username == "" {
+		queryString = "email = ?"
+		queryParam = email
+	}
+	q := p.conn.Preload("Teams").Where(queryString, queryParam).First(&tmpUser)
+	if q.Error != nil {
+		if errors.Is(q.Error, gorm.ErrRecordNotFound) {
+			return models.Users{}, gErrors.ErrNotFound
+		}
+		return models.Users{}, errors.Wrap(q.Error, "fetching user from database")
+	}
+	return tmpUser, nil
+}
+
 func (p *teamManager) getUser(userID uint) (models.Users, error) {
 	// TODO: abstract this into a common interface
 	var tmpUser models.Users
@@ -59,7 +82,7 @@ func (p *teamManager) getUserFromContext(ctx context.Context) (models.Users, err
 }
 
 func (t *teamManager) canAccess(team models.Teams, user models.Users) bool {
-	if team.Owner == user.ID {
+	if team.OwnerID == user.ID {
 		return true
 	}
 
@@ -74,7 +97,7 @@ func (t *teamManager) canAccess(team models.Teams, user models.Users) bool {
 
 func (t *teamManager) get(name string) (models.Teams, error) {
 	var teamModel models.Teams
-	q := t.conn.Preload("Members").Where("name = ?", name).First(&teamModel)
+	q := t.conn.Preload("Members").Preload("Owner").Where("name = ?", name).First(&teamModel)
 	if q.Error != nil {
 		if errors.Is(q.Error, gorm.ErrRecordNotFound) {
 			return models.Teams{}, gErrors.ErrNotFound
@@ -102,25 +125,23 @@ func (t *teamManager) getTeam(ctx context.Context, name string) (models.Teams, e
 	return team, nil
 }
 
-func (t *teamManager) sqlToCommonTeams(team models.Teams, owner models.Users) params.Teams {
-	teamOwner := params.TeamMember{
-		Username: owner.Username,
-		Email:    owner.Email,
-		FullName: owner.FullName,
+func (t *teamManager) sqlUserToTeamMember(user models.Users) params.TeamMember {
+	return params.TeamMember{
+		Username: user.Username,
+		Email:    user.Email,
+		FullName: user.FullName,
 	}
+}
 
+func (t *teamManager) sqlToCommonTeams(team models.Teams) params.Teams {
 	members := make([]params.TeamMember, len(team.Members))
 	for idx, val := range team.Members {
-		members[idx] = params.TeamMember{
-			Username: val.Username,
-			Email:    val.Email,
-			FullName: val.FullName,
-		}
+		members[idx] = t.sqlUserToTeamMember(*val)
 	}
 	return params.Teams{
 		ID:      team.ID,
 		Name:    team.Name,
-		Owner:   teamOwner,
+		Owner:   t.sqlUserToTeamMember(team.Owner),
 		Members: members,
 	}
 }
@@ -140,41 +161,158 @@ func (t *teamManager) Create(ctx context.Context, name string) (params.Teams, er
 	}
 
 	team := models.Teams{
-		Owner: user.ID,
-		Name:  name,
+		OwnerID: user.ID,
+		Owner:   user,
+		Name:    name,
 	}
 
-	err = t.conn.Model(&user).Association("Teams").Append(&team)
-	if err != nil {
-		return params.Teams{}, errors.Wrap(err, "creating team")
+	q := t.conn.Create(&team)
+	if q.Error != nil {
+		return params.Teams{}, errors.Wrap(q.Error, "creating team")
 	}
 
-	if team.Owner != user.ID {
-		return params.Teams{}, fmt.Errorf("failed to create team")
-	}
-	return t.sqlToCommonTeams(team, user), nil
+	return t.sqlToCommonTeams(team), nil
 }
 
 func (t *teamManager) Delete(ctx context.Context, name string) error {
+	team, err := t.getTeam(ctx, name)
+	if err != nil {
+		if !errors.Is(err, gErrors.ErrNotFound) {
+			return errors.Wrap(err, "looking up team")
+		}
+		return nil
+	}
+	user, err := t.getUserFromContext(ctx)
+	if err != nil {
+		return errors.Wrap(err, "fetching user from context")
+	}
+
+	if team.OwnerID != user.ID {
+		return errors.Wrap(gErrors.ErrUnauthorized, "accessing team")
+	}
+
+	q := t.conn.Delete(&team)
+	if q.Error != nil && !errors.Is(q.Error, gorm.ErrRecordNotFound) {
+		return errors.Wrap(q.Error, "deleting paste")
+	}
 	return nil
 }
 
 func (t *teamManager) Get(ctx context.Context, name string) (params.Teams, error) {
-	return params.Teams{}, nil
+	team, err := t.getTeam(ctx, name)
+	if err != nil {
+		return params.Teams{}, errors.Wrap(err, "fetching team")
+	}
+
+	return t.sqlToCommonTeams(team), nil
 }
 
-func (t *teamManager) List(ctx context.Context, page int64, results int64) (teams []params.Teams, err error) {
-	return []params.Teams{}, nil
+func (t *teamManager) List(ctx context.Context, page int64, results int64) (teams params.TeamListResult, err error) {
+	user, err := t.getUserFromContext(ctx)
+	if err != nil {
+		return params.TeamListResult{}, errors.Wrap(err, "fetching user from DB")
+	}
+	if page == 0 {
+		page = 1
+	}
+	if results == 0 {
+		results = 1
+	}
+	var teamsResults []models.Teams
+	var cnt int64
+	startFrom := (page - 1) * results
+
+	// List will return only a small preview of the paste data (first 512 bytes).
+	q := t.conn.Preload("Members").Select("id, name, owner_id").Where("owner = ?", user.ID).Order("id desc")
+
+	cntQ := q.Model(&models.Teams{}).Count(&cnt)
+	if cntQ.Error != nil {
+		return params.TeamListResult{}, errors.Wrap(cntQ.Error, "counting results")
+	}
+
+	resQ := q.Offset(int(startFrom)).Limit(int(results)).Find(&teamsResults)
+	if resQ.Error != nil {
+		if errors.Is(resQ.Error, gorm.ErrRecordNotFound) {
+			return params.TeamListResult{}, gErrors.ErrNotFound
+		}
+		return params.TeamListResult{}, errors.Wrap(resQ.Error, "fetching teams from database")
+	}
+
+	asParams := make([]params.Teams, len(teamsResults))
+	for idx, val := range teamsResults {
+		asParams[idx] = t.sqlToCommonTeams(val)
+	}
+
+	totalPages := int64(math.Ceil(float64(cnt) / float64(results)))
+	if totalPages == 0 {
+		totalPages = 1
+	}
+
+	if totalPages < page {
+		page = totalPages
+	}
+	return params.TeamListResult{
+		Teams:      asParams,
+		TotalPages: totalPages,
+		Page:       page,
+	}, nil
 }
 
-func (t *teamManager) AddMember(ctx context.Context, team string, member params.AddTeamMemberRequest) (params.TeamMember, error) {
-	return params.TeamMember{}, nil
+func (t *teamManager) AddMember(ctx context.Context, teamName string, member params.AddTeamMemberRequest) (params.TeamMember, error) {
+	team, err := t.getTeam(ctx, teamName)
+	if err != nil {
+		return params.TeamMember{}, errors.Wrap(err, "fetching team")
+	}
+
+	user, err := t.getUserFromContext(ctx)
+	if err != nil {
+		return params.TeamMember{}, errors.Wrap(err, "fetching user from context")
+	}
+
+	if team.OwnerID != user.ID {
+		return params.TeamMember{}, errors.Wrap(gErrors.ErrUnauthorized, "accesing team")
+	}
+
+	memberUser, err := t.getUserByUsernameOrEmail(member.Username, member.Email)
+	if err != nil {
+		return params.TeamMember{}, errors.Wrap(err, "fetching member")
+	}
+
+	if err := t.conn.Model(&team).Association("Members").Append(&memberUser); err != nil {
+		return params.TeamMember{}, errors.Wrapf(err, "adding member %s to team %s", memberUser.Email, team.Name)
+	}
+	return t.sqlUserToTeamMember(memberUser), nil
+}
+
+func (t *teamManager) RemoveMember(ctx context.Context, teamName, member string) error {
+	team, err := t.getTeam(ctx, teamName)
+	if err != nil {
+		return errors.Wrap(err, "fetching team")
+	}
+
+	user, err := t.getUserFromContext(ctx)
+	if err != nil {
+		return errors.Wrap(err, "fetching user from context")
+	}
+
+	if team.OwnerID != user.ID {
+		return errors.Wrap(gErrors.ErrUnauthorized, "accesing team")
+	}
+
+	memberUser, err := t.getUserByUsernameOrEmail(member, "")
+	if err != nil {
+		return errors.Wrap(err, "fetching member")
+	}
+
+	if err := t.conn.Model(&team).Association("Members").Delete(memberUser); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		return errors.Wrap(err, "removing member")
+	}
+	return nil
 }
 
 func (t *teamManager) ListMembers(ctx context.Context, team string, page int64, results int64) ([]params.TeamMember, error) {
 	return []params.TeamMember{}, nil
-}
-
-func (t *teamManager) RemoveMember(ctx context.Context, team, member string) error {
-	return nil
 }

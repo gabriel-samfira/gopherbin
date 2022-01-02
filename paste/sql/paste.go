@@ -189,21 +189,32 @@ func (p *paste) canAccess(paste models.Paste, user models.Users) bool {
 		return true
 	}
 
+	// The user is the owner of the team
 	if paste.Owner.ID == user.ID {
 		return true
 	}
 
+	// This paste belongs to a team, and the user
+	// is the owner of the team.
+	if paste.Team.OwnerID == user.ID {
+		return true
+	}
+
+	// Check if the paste is shared with the user.
 	for _, usr := range paste.Users {
 		if usr.ID == user.ID {
 			return true
 		}
 	}
 
-	for _, team := range user.Teams {
+	// Check if the paste belongs to a team that the user
+	// is a member of.
+	for _, team := range user.MemberOf {
 		if team.ID == paste.Team.ID {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -373,7 +384,7 @@ func (p *paste) UnshareWithUser(ctx context.Context, pasteID string, userID stri
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil
 		}
-		return errors.Wrap(err, "sharing with user")
+		return errors.Wrap(err, "unsharing with user")
 	}
 	return nil
 }

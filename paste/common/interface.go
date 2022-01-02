@@ -39,11 +39,18 @@ type Paster interface {
 }
 
 type TeamManager interface {
+	// Create creates a new team.
 	Create(ctx context.Context, name string) (team params.Teams, err error)
+	// Delete will delete a team. All pastes created within this team will also be deleted.
 	Delete(ctx context.Context, name string) error
+	// Get will return details about a single team.
 	Get(ctx context.Context, name string) (team params.Teams, err error)
-	List(ctx context.Context, page int64, results int64) (teams []params.Teams, err error)
+	// List returns a list of teams created by the user.
+	List(ctx context.Context, page int64, results int64) (teams params.TeamListResult, err error)
+	// AddMember adds a new member to a team. Only the owner of the team can add or remove members.
 	AddMember(ctx context.Context, team string, member params.AddTeamMemberRequest) (params.TeamMember, error)
+	// ListMembers returns a list of all users that are part of a team.
 	ListMembers(ctx context.Context, team string, page int64, results int64) ([]params.TeamMember, error)
+	// RemoveMember removes a user from a team. Only the owner of the team can add or remove members.
 	RemoveMember(ctx context.Context, team, member string) error
 }
