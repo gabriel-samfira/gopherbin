@@ -34,14 +34,13 @@ import (
 )
 
 // NewUserManager returns a new *UserManager
-func NewUserManager(dbCfg config.Database, defCfg config.Default) (common.UserManager, error) {
+func NewUserManager(dbCfg config.Database) (common.UserManager, error) {
 	db, err := util.NewDBConn(dbCfg)
 	if err != nil {
 		return nil, errors.Wrap(err, "connecting to database")
 	}
 	return &userManager{
 		conn: db,
-		cfg:  defCfg,
 	}, nil
 }
 
@@ -49,7 +48,6 @@ func NewUserManager(dbCfg config.Database, defCfg config.Default) (common.UserMa
 // creation and updating of users
 type userManager struct {
 	conn *gorm.DB
-	cfg  config.Default
 }
 
 func (u *userManager) HasSuperUser() bool {
@@ -75,6 +73,7 @@ func (u *userManager) newUserParamsToSQL(user params.NewUserParams) (models.User
 	}
 	newUser := models.Users{
 		Email:       user.Email,
+		Username:    user.Username,
 		FullName:    user.FullName,
 		Password:    hashedPassword,
 		CreatedAt:   time.Now(),
@@ -90,6 +89,7 @@ func (u *userManager) sqlUserToParams(user models.Users) params.Users {
 		ID:          user.ID,
 		FullName:    user.FullName,
 		Email:       user.Email,
+		Username:    user.Username,
 		CreatedAt:   user.CreatedAt,
 		UpdatedAt:   user.UpdatedAt,
 		Enabled:     user.Enabled,
@@ -107,7 +107,15 @@ func (u *userManager) Authenticate(ctx context.Context, info params.PasswordLogi
 		return ctx, gErrors.ErrUnauthorized
 	}
 
-	modelUser, err := u.getUserByEmail(info.Username)
+	isEmail := util.IsValidEmail(info.Username)
+	var modelUser models.Users
+	var err error
+	if isEmail {
+		modelUser, err = u.getUserByEmail(info.Username)
+	} else {
+		modelUser, err = u.getUserByUsername(info.Username)
+	}
+
 	if err != nil {
 		if err == gErrors.ErrNotFound {
 			return ctx, gErrors.NewUnauthorizedError("invalid username or password")
@@ -147,6 +155,10 @@ func (u *userManager) Create(ctx context.Context, user params.NewUserParams) (pa
 		return params.Users{}, gErrors.NewBadRequestError("invalid email")
 	}
 
+	if user.Username == "" || !util.IsAlphanumeric(user.Username) {
+		return params.Users{}, gErrors.NewBadRequestError("invalid username")
+	}
+
 	newUser, err := u.newUserParamsToSQL(user)
 	if err != nil {
 		return params.Users{}, errors.Wrap(err, "fetching user object")
@@ -157,7 +169,7 @@ func (u *userManager) Create(ctx context.Context, user params.NewUserParams) (pa
 			return params.Users{}, errors.Wrap(err, "fetching user")
 		}
 	} else {
-		return params.Users{}, gErrors.ErrDuplicateUser
+		return params.Users{}, gErrors.ErrDuplicateEntity
 	}
 
 	err = u.conn.Create(&newUser).Error
@@ -188,7 +200,7 @@ func (u *userManager) CreateSuperUser(user params.NewUserParams) (params.Users, 
 	return u.sqlUserToParams(newUser), nil
 }
 
-func (u *userManager) Get(ctx context.Context, userID int64) (params.Users, error) {
+func (u *userManager) Get(ctx context.Context, userID uint) (params.Users, error) {
 	user := auth.UserID(ctx)
 	if user != userID && !auth.IsAdmin(ctx) {
 		return params.Users{}, gErrors.ErrUnauthorized
@@ -216,7 +228,7 @@ func (u *userManager) List(ctx context.Context, page int64, results int64) (past
 	var cnt int64
 	startFrom := (page - 1) * results
 
-	cntQ := u.conn.Debug().Model(&models.Users{}).Count(&cnt)
+	cntQ := u.conn.Model(&models.Users{}).Count(&cnt)
 	if cntQ.Error != nil {
 		return params.UserListResult{}, errors.Wrap(cntQ.Error, "counting results")
 	}
@@ -242,7 +254,7 @@ func (u *userManager) List(ctx context.Context, page int64, results int64) (past
 	}, nil
 }
 
-func (u *userManager) Update(ctx context.Context, userID int64, update params.UpdateUserPayload) (params.Users, error) {
+func (u *userManager) Update(ctx context.Context, userID uint, update params.UpdateUserPayload) (params.Users, error) {
 	if err := update.Validate(); err != nil {
 		return params.Users{}, errors.Wrap(err, "validating params")
 	}
@@ -269,7 +281,6 @@ func (u *userManager) Update(ctx context.Context, userID int64, update params.Up
 		if isSuper {
 			tmpUser.IsAdmin = *update.IsAdmin
 		} else {
-			// return meaningful error. Whould we just ignore the request?
 			return params.Users{}, gErrors.NewUnauthorizedError("you are not authorized to perform this action")
 		}
 	}
@@ -285,7 +296,7 @@ func (u *userManager) Update(ctx context.Context, userID int64, update params.Up
 	if update.Email != nil && *update.Email != tmpUser.Email {
 		_, err = u.getUserByEmail(*update.Email)
 		if err != nil {
-			if err != gErrors.ErrNotFound {
+			if !errors.Is(err, gErrors.ErrNotFound) {
 				return params.Users{}, errors.Wrap(err, "updating email")
 			}
 			tmpUser.Email = *update.Email
@@ -294,15 +305,35 @@ func (u *userManager) Update(ctx context.Context, userID int64, update params.Up
 		}
 	}
 
-	if update.FullName != nil {
+	if update.FullName != nil && *update.FullName != tmpUser.FullName {
 		tmpUser.FullName = *update.FullName
 	}
 
-	if update.Enabled != nil {
+	if update.Enabled != nil && *update.Enabled != tmpUser.Enabled {
 		if userID == user {
 			return params.Users{}, gErrors.NewBadRequestError("you may not enable/disable your own account")
 		}
 		tmpUser.Enabled = *update.Enabled
+	}
+
+	if update.Username != nil {
+		if *update.Username != tmpUser.Username {
+			if tmpUser.Username != "" {
+				return params.Users{}, gErrors.NewBadRequestError("username is already set")
+			}
+			if !util.IsAlphanumeric(*update.Username) {
+				return params.Users{}, gErrors.NewBadRequestError("username must be alphanumeric")
+			}
+			_, err := u.getUserByUsername(*update.Username)
+			if err != nil {
+				if !errors.Is(err, gErrors.ErrNotFound) {
+					return params.Users{}, errors.Wrap(err, "looking up user")
+				}
+			} else {
+				return params.Users{}, errors.Wrap(gErrors.ErrDuplicateEntity, "updating username")
+			}
+			tmpUser.Username = *update.Username
+		}
 	}
 	// TODO: When we update the user for any reason, it will invalidate
 	// all login tokens. Add a separate field as witness instead of UpdatedAt,
@@ -328,7 +359,19 @@ func (u *userManager) getUserByEmail(email string) (models.Users, error) {
 	return tmpUser, nil
 }
 
-func (u *userManager) getUser(userID int64) (models.Users, error) {
+func (u *userManager) getUserByUsername(username string) (models.Users, error) {
+	var tmpUser models.Users
+	q := u.conn.Where("username = ?", username).First(&tmpUser)
+	if q.Error != nil {
+		if errors.Is(q.Error, gorm.ErrRecordNotFound) {
+			return models.Users{}, gErrors.ErrNotFound
+		}
+		return models.Users{}, errors.Wrap(q.Error, "fetching user from database")
+	}
+	return tmpUser, nil
+}
+
+func (u *userManager) getUser(userID uint) (models.Users, error) {
 	var tmpUser models.Users
 	q := u.conn.Where("id = ?", userID).First(&tmpUser)
 	if q.Error != nil {
@@ -377,7 +420,7 @@ func (u *userManager) CleanTokens() error {
 	return nil
 }
 
-func (u *userManager) setEnabledFlag(userID int64, enabled bool) error {
+func (u *userManager) setEnabledFlag(userID uint, enabled bool) error {
 	usr, err := u.getUser(userID)
 	if err != nil {
 		return errors.Wrap(err, "fetching user from db")
@@ -391,7 +434,7 @@ func (u *userManager) setEnabledFlag(userID int64, enabled bool) error {
 	return nil
 }
 
-func (u *userManager) Enable(ctx context.Context, userID int64) error {
+func (u *userManager) Enable(ctx context.Context, userID uint) error {
 	isAdmin := auth.IsAdmin(ctx)
 	if !isAdmin {
 		return gErrors.ErrUnauthorized
@@ -399,7 +442,7 @@ func (u *userManager) Enable(ctx context.Context, userID int64) error {
 	return u.setEnabledFlag(userID, true)
 }
 
-func (u *userManager) Disable(ctx context.Context, userID int64) error {
+func (u *userManager) Disable(ctx context.Context, userID uint) error {
 	isAdmin := auth.IsAdmin(ctx)
 	if !isAdmin {
 		return gErrors.ErrUnauthorized
@@ -407,7 +450,7 @@ func (u *userManager) Disable(ctx context.Context, userID int64) error {
 	return u.setEnabledFlag(userID, false)
 }
 
-func (u *userManager) Delete(ctx context.Context, userID int64) error {
+func (u *userManager) Delete(ctx context.Context, userID uint) error {
 	isAdmin := auth.IsAdmin(ctx)
 	if !isAdmin {
 		return gErrors.ErrUnauthorized

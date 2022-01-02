@@ -24,9 +24,9 @@ import (
 type contextFlags string
 
 const (
-	isAdminKey       contextFlags = "is_admin"
-	isSuperUserKey   contextFlags = "is_super"
-	fullNameKey      contextFlags = "full_name"
+	isAdminKey     contextFlags = "is_admin"
+	isSuperUserKey contextFlags = "is_super"
+	fullNameKey    contextFlags = "full_name"
 	// UpdatedAtFlag sets the timestamp when the user was
 	// updated in the context
 	UpdatedAtFlag contextFlags = "updated_at"
@@ -138,17 +138,17 @@ func IsSuperUser(ctx context.Context) bool {
 }
 
 // SetUserID sets the userID in the context
-func SetUserID(ctx context.Context, userID int64) context.Context {
+func SetUserID(ctx context.Context, userID uint) context.Context {
 	return context.WithValue(ctx, UserIDFlag, userID)
 }
 
 // UserID returns the userID from the context
-func UserID(ctx context.Context) int64 {
+func UserID(ctx context.Context) uint {
 	userID := ctx.Value(UserIDFlag)
 	if userID == nil {
 		return 0
 	}
-	return userID.(int64)
+	return userID.(uint)
 }
 
 // IsAnonymous indicates whether or not a context belongs to an

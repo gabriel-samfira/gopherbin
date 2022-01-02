@@ -23,11 +23,11 @@ import (
 )
 
 // GetUserManager returns a common.UserManager based on the selected database type
-func GetUserManager(dbCfg config.Database, defCfg config.Default) (common.UserManager, error) {
+func GetUserManager(dbCfg config.Database) (common.UserManager, error) {
 	dbBackend := dbCfg.DbBackend
 	switch dbBackend {
 	case config.MySQLBackend, config.SQLiteBackend:
-		return sql.NewUserManager(dbCfg, defCfg)
+		return sql.NewUserManager(dbCfg)
 	default:
 		return nil, fmt.Errorf("no user manager available for db backend %s", dbBackend)
 	}

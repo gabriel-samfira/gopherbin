@@ -64,17 +64,22 @@ func (h *APIServer) Stop() error {
 
 // GetAPIServer returns a new API server
 func GetAPIServer(cfg *config.Config) (*APIServer, error) {
-	paster, err := paste.NewPaster(cfg.Database, cfg.Default)
+	paster, err := paste.NewPaster(cfg.Database)
 	if err != nil {
 		return nil, errors.Wrap(err, "initializing paster")
 	}
 
-	userMgr, err := admin.GetUserManager(cfg.Database, cfg.Default)
+	teamMgr, err := paste.NewTeamManager(cfg.Database)
+	if err != nil {
+		return nil, errors.Wrap(err, "initializing team manager")
+	}
+
+	userMgr, err := admin.GetUserManager(cfg.Database)
 	if err != nil {
 		return nil, errors.Wrap(err, "getting user manager")
 	}
 
-	apiHandler := controllers.NewAPIController(paster, userMgr, cfg.APIServer.JWTAuth)
+	apiHandler := controllers.NewAPIController(paster, teamMgr, userMgr, cfg.APIServer.JWTAuth)
 
 	jwtMiddleware, err := auth.NewjwtMiddleware(userMgr, cfg.APIServer.JWTAuth)
 	if err != nil {

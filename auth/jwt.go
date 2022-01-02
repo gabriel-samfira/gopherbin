@@ -31,7 +31,7 @@ import (
 
 // JWTClaims holds JWT claims
 type JWTClaims struct {
-	UserID      int64  `json:"user"`
+	UserID      uint   `json:"user"`
 	UpdatedAt   string `json:"updated_at"`
 	TokenID     string `json:"token_id"`
 	FullName    string `json:"full_name"`

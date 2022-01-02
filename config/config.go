@@ -56,7 +56,6 @@ func NewConfig(cfgFile string) (*Config, error) {
 type Config struct {
 	APIServer APIServer
 	Database  Database
-	Default   Default
 }
 
 // Validate validates the config
@@ -68,25 +67,12 @@ func (c *Config) Validate() error {
 		return errors.Wrap(err, "validating database config")
 	}
 
-	if err := c.Default.Validate(); err != nil {
-		return errors.Wrap(err, "validating the default section")
-	}
-	return nil
-}
-
-// Default defines settings
-//type Default struct {
-//	RegistrationOpen bool `toml:"registration_open"`
-//	AllowAnonymous   bool `toml:"allow_anonymous"`
-//}
-
-// Validate validates the default section of the config
-func (d *Default) Validate() error {
 	return nil
 }
 
 // Database is the database config entry
 type Database struct {
+	Debug     bool          `toml:"debug"`
 	DbBackend DBBackendType `toml:"backend"`
 	MySQL     MySQL         `toml:"mysql"`
 	SQLite    SQLite        `toml:"sqlite3"`

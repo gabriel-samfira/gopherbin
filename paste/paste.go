@@ -24,12 +24,24 @@ import (
 
 // NewPaster returns a new paste implementation based on the configured
 // database backend
-func NewPaster(dbCfg config.Database, cfg config.Default) (common.Paster, error) {
+func NewPaster(dbCfg config.Database) (common.Paster, error) {
 	dbBackend := dbCfg.DbBackend
 	switch dbBackend {
 	case config.MySQLBackend, config.SQLiteBackend:
-		return sql.NewPaster(dbCfg, cfg)
+		return sql.NewPaster(dbCfg)
 	default:
 		return nil, fmt.Errorf("no paste backend available for db backend %s", dbBackend)
+	}
+}
+
+// NewTeamManager returns a new team manager implementation based on the configured
+// database backend
+func NewTeamManager(dbCfg config.Database) (common.TeamManager, error) {
+	dbBackend := dbCfg.DbBackend
+	switch dbBackend {
+	case config.MySQLBackend, config.SQLiteBackend:
+		return sql.NewTeamManager(dbCfg)
+	default:
+		return nil, fmt.Errorf("no team manager backend available for db backend %s", dbBackend)
 	}
 }

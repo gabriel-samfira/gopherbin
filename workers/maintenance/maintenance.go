@@ -15,8 +15,8 @@ var _ = (common.Worker)(&maintenanceWorker{})
 var log = loggo.GetLogger("gopherbin.workers.maintenance")
 
 // NewMaintenanceWorker returns a new maintenance worker
-func NewMaintenanceWorker(cfg config.Database, defCfg config.Default) (common.Worker, error) {
-	mgr, err := admin.GetUserManager(cfg, defCfg)
+func NewMaintenanceWorker(cfg config.Database) (common.Worker, error) {
+	mgr, err := admin.GetUserManager(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +46,6 @@ func (m *maintenanceWorker) Stop() error {
 	case <-time.After(5 * time.Minute):
 		return fmt.Errorf("time out waiting for maintenance worker to exit")
 	}
-	return nil
 }
 
 func (m *maintenanceWorker) loop() {

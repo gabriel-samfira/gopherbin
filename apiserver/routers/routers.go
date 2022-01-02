@@ -52,10 +52,43 @@ func AddAPIURLs(router *mux.Router, han *controllers.APIController, authMiddlewa
 	apiRouter.Use(initMiddleware.Middleware)
 	apiRouter.Use(authMiddleware.Middleware)
 	// Duplicate the route to allow fetching a paste, both with and without a traling slash.
-	// StrictSlashes generates an extra request, which I am not willing to add. There is no
-	// good way to match both cases where you have a trailing slash and one where you don't.
-	// It is beyond me why this was never added, but i'd rather duplicate the route then
-	// use StrictSlashes.
+	// StrictSlashes generates an extra request. There is no good way to match both cases
+	// where you have a trailing slash and one where you don't.
+
+	// Teams handlers
+	// Remove team member
+	apiRouter.Handle("/teams/{teamName}/members/{member}", log(os.Stdout, http.HandlerFunc(han.RemoveTeamMemberHandler))).Methods("DELETE", "OPTIONS")
+	apiRouter.Handle("/teams/{teamName}/members/{member}/", log(os.Stdout, http.HandlerFunc(han.RemoveTeamMemberHandler))).Methods("DELETE", "OPTIONS")
+	// Add team member
+	apiRouter.Handle("/teams/{teamName}/members", log(os.Stdout, http.HandlerFunc(han.AddTeamMemberHandler))).Methods("POST", "OPTIONS")
+	apiRouter.Handle("/teams/{teamName}/members/", log(os.Stdout, http.HandlerFunc(han.AddTeamMemberHandler))).Methods("POST", "OPTIONS")
+	// List team members
+	apiRouter.Handle("/teams/{teamName}/members", log(os.Stdout, http.HandlerFunc(han.ListTeamMembersHandler))).Methods("POST", "OPTIONS")
+	apiRouter.Handle("/teams/{teamName}/members/", log(os.Stdout, http.HandlerFunc(han.ListTeamMembersHandler))).Methods("POST", "OPTIONS")
+	// Get team
+	apiRouter.Handle("/teams/{teamName}", log(os.Stdout, http.HandlerFunc(han.GetTeamHandler))).Methods("GET", "OPTIONS")
+	apiRouter.Handle("/teams/{teamName}/", log(os.Stdout, http.HandlerFunc(han.GetTeamHandler))).Methods("GET", "OPTIONS")
+	// Delete team
+	apiRouter.Handle("/teams/{teamName}", log(os.Stdout, http.HandlerFunc(han.DeleteTeamHandler))).Methods("DELETE", "OPTIONS")
+	apiRouter.Handle("/teams/{teamName}/", log(os.Stdout, http.HandlerFunc(han.DeleteTeamHandler))).Methods("DELETE", "OPTIONS")
+	// List teams
+	apiRouter.Handle("/teams", log(os.Stdout, http.HandlerFunc(han.ListTeamsHandler))).Methods("GET", "OPTIONS")
+	apiRouter.Handle("/teams/", log(os.Stdout, http.HandlerFunc(han.ListTeamsHandler))).Methods("GET", "OPTIONS")
+	// Create teams
+	apiRouter.Handle("/teams", log(os.Stdout, http.HandlerFunc(han.NewTeamHandler))).Methods("POST", "OPTIONS")
+	apiRouter.Handle("/teams/", log(os.Stdout, http.HandlerFunc(han.NewTeamHandler))).Methods("POST", "OPTIONS")
+
+	// Paste handlers
+	// Unshare paste
+	apiRouter.Handle("/paste/{pasteID}/sharing/{userID}", log(os.Stdout, http.HandlerFunc(han.UnsharePasteHandler))).Methods("DELETE", "OPTIONS")
+	apiRouter.Handle("/paste/{pasteID}/sharing/{userID}/", log(os.Stdout, http.HandlerFunc(han.PasteViewHandler))).Methods("DELETE", "OPTIONS")
+	// Share paste
+	apiRouter.Handle("/paste/{pasteID}/sharing", log(os.Stdout, http.HandlerFunc(han.SharePasteHandler))).Methods("POST", "OPTIONS")
+	apiRouter.Handle("/paste/{pasteID}/sharing/", log(os.Stdout, http.HandlerFunc(han.SharePasteHandler))).Methods("POST", "OPTIONS")
+	// List shares
+	apiRouter.Handle("/paste/{pasteID}/sharing", log(os.Stdout, http.HandlerFunc(han.ListSharesHandler))).Methods("GET", "OPTIONS")
+	apiRouter.Handle("/paste/{pasteID}/sharing/", log(os.Stdout, http.HandlerFunc(han.ListSharesHandler))).Methods("GET", "OPTIONS")
+	// Get paste
 	apiRouter.Handle("/paste/{pasteID}", log(os.Stdout, http.HandlerFunc(han.PasteViewHandler))).Methods("GET", "OPTIONS")
 	apiRouter.Handle("/paste/{pasteID}/", log(os.Stdout, http.HandlerFunc(han.PasteViewHandler))).Methods("GET", "OPTIONS")
 	// Update paste
