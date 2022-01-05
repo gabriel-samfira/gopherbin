@@ -37,7 +37,7 @@ const (
 	SQLiteBackend DBBackendType = "sqlite3"
 	// DefaultJWTTTL is the default duration in seconds a JWT token
 	// will be valid.
-	DefaultJWTTTL time.Duration = 60 * time.Second
+	DefaultJWTTTL time.Duration = 24 * time.Hour
 )
 
 // NewConfig returns a new Config
@@ -54,8 +54,8 @@ func NewConfig(cfgFile string) (*Config, error) {
 
 // Config represents the configuration of gopherbin
 type Config struct {
-	APIServer APIServer
-	Database  Database
+	APIServer APIServer `toml:"apiserver" json:"apiserver"`
+	Database  Database  `toml:"database" json:"database"`
 }
 
 // Validate validates the config
@@ -72,10 +72,10 @@ func (c *Config) Validate() error {
 
 // Database is the database config entry
 type Database struct {
-	Debug     bool          `toml:"debug"`
-	DbBackend DBBackendType `toml:"backend"`
-	MySQL     MySQL         `toml:"mysql"`
-	SQLite    SQLite        `toml:"sqlite3"`
+	Debug     bool          `toml:"debug" json:"debug"`
+	DbBackend DBBackendType `toml:"backend" json:"backend"`
+	MySQL     MySQL         `toml:"mysql" json:"mysql"`
+	SQLite    SQLite        `toml:"sqlite3" json:"sqlite3"`
 }
 
 // GormParams returns the database type and connection URI
@@ -123,7 +123,7 @@ func (d *Database) Validate() error {
 
 // SQLite is the config entry for the sqlite3 section
 type SQLite struct {
-	DBFile string `toml:"db_file"`
+	DBFile string `toml:"db_file" json:"db-file"`
 }
 
 func (s *SQLite) Validate() error {
@@ -148,10 +148,10 @@ func (s *SQLite) ConnectionString() (string, error) {
 
 // MySQL is the config entry for the mysql section
 type MySQL struct {
-	Username     string
-	Password     string
-	Hostname     string
-	DatabaseName string `toml:"database"`
+	Username     string `toml:"username" json:"username"`
+	Password     string `toml:"password" json:"password"`
+	Hostname     string `toml:"hostname" json:"hostname"`
+	DatabaseName string `toml:"database" json:"database"`
 }
 
 // Validate validates a Database config entry
@@ -179,9 +179,9 @@ func (m *MySQL) ConnectionString() (string, error) {
 
 // TLSConfig is the API server TLS config
 type TLSConfig struct {
-	CRT    string `toml:"certificate"`
-	Key    string `toml:"key"`
-	CACert string `toml:"ca_certificate"`
+	CRT    string `toml:"certificate" json:"certificate"`
+	Key    string `toml:"key" json:"key"`
+	CACert string `toml:"ca_certificate" json:"ca-certificate"`
 }
 
 // TLSConfig returns a new TLSConfig suitable for use in the
@@ -223,30 +223,37 @@ func (t *TLSConfig) Validate() error {
 	return nil
 }
 
-type duration struct {
-	time.Duration
+type timeToLive string
+
+func (d *timeToLive) Duration() time.Duration {
+	duration, err := time.ParseDuration(string(*d))
+	if err != nil {
+		return DefaultJWTTTL
+	}
+	return duration
 }
 
-func (d *duration) UnmarshalText(text []byte) error {
-	var err error
-	d.Duration, err = time.ParseDuration(string(text))
+func (d *timeToLive) UnmarshalText(text []byte) error {
+	_, err := time.ParseDuration(string(text))
 	if err != nil {
 		return errors.Wrap(err, "parsing time_to_live")
 	}
+
+	*d = timeToLive(text)
 	return nil
 }
 
 // JWTAuth holds settings used to generate JWT tokens
 type JWTAuth struct {
-	Secret     string   `toml:"secret"`
-	TimeToLive duration `toml:"time_to_live"`
+	Secret     string     `toml:"secret" json:"secret"`
+	TimeToLive timeToLive `toml:"time_to_live" json:"time-to-live"`
 }
 
 // Validate validates the JWTAuth config
 func (j *JWTAuth) Validate() error {
 	// TODO: Set defaults somewhere else.
-	if j.TimeToLive.Duration < DefaultJWTTTL {
-		j.TimeToLive.Duration = DefaultJWTTTL
+	if j.TimeToLive.Duration() < DefaultJWTTTL {
+		j.TimeToLive = timeToLive(DefaultJWTTTL.String())
 	}
 	if j.Secret == "" {
 		return fmt.Errorf("invalid JWT secret")
@@ -257,12 +264,12 @@ func (j *JWTAuth) Validate() error {
 // APIServer holds configuration for the API server
 // worker
 type APIServer struct {
-	Bind        string
-	Port        int
-	UseTLS      bool
-	JWTAuth     JWTAuth   `toml:"jwt_auth"`
-	TLSConfig   TLSConfig `toml:"tls"`
-	CORSOrigins []string  `toml:"cors_origins"`
+	Bind        string    `toml:"bind" json:"bind"`
+	Port        int       `toml:"port" json:"port"`
+	UseTLS      bool      `toml:"use_tls" json:"use_tls"`
+	JWTAuth     JWTAuth   `toml:"jwt_auth" json:"jwt-auth"`
+	TLSConfig   TLSConfig `toml:"tls" json:"tls"`
+	CORSOrigins []string  `toml:"cors_origins" json:"cors-origins"`
 }
 
 // Validate validates the API server config

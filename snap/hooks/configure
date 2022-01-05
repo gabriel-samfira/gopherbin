@@ -1,0 +1,4 @@
+#!/bin/bash
+
+/snap/gopherbin/current/bin/gconfig
+snapctl restart gopherbin

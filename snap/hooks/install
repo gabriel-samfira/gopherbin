@@ -1,0 +1,31 @@
+#!/bin/bash
+
+function getRandomString() {
+    tr -dc 'a-zA-Z0-9@#%^_`;' </dev/urandom | head -c 64
+    echo ''
+}
+
+mkdir -p "$SNAP_COMMON/etc"
+
+# Set default config values
+snapctl set config.apiserver.bind="0.0.0.0"
+snapctl set config.apiserver.port=9997
+snapctl set config.apiserver.usetls=false
+snapctl set config.apiserver.cors-origins='[]'
+snapctl set config.apiserver.jwt-auth.secret=$(getRandomString)
+snapctl set config.apiserver.jwt-auth.time-to-live=48h
+snapctl set config.apiserver.tls.certificate=""
+snapctl set config.apiserver.tls.key=""
+snapctl set config.apiserver.tls.ca-certificate=""
+
+snapctl set config.database.debug=false
+snapctl set config.database.backend="sqlite3"
+
+snapctl set config.database.sqlite3.db-file="$SNAP_COMMON/etc/gopherbin.db"
+
+snapctl set config.database.mysql.username=""
+snapctl set config.database.mysql.password=""
+snapctl set config.database.mysql.hostname=""
+snapctl set config.database.mysql.database=""
+
+/snap/gopherbin/current/bin/gconfig
