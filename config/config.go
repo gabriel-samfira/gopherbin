@@ -266,7 +266,7 @@ func (j *JWTAuth) Validate() error {
 type APIServer struct {
 	Bind        string    `toml:"bind" json:"bind"`
 	Port        int       `toml:"port" json:"port"`
-	UseTLS      bool      `toml:"use_tls" json:"use_tls"`
+	UseTLS      bool      `toml:"use_tls" json:"use-tls"`
 	JWTAuth     JWTAuth   `toml:"jwt_auth" json:"jwt-auth"`
 	TLSConfig   TLSConfig `toml:"tls" json:"tls"`
 	CORSOrigins []string  `toml:"cors_origins" json:"cors-origins"`

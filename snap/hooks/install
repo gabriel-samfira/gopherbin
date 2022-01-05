@@ -10,7 +10,7 @@ mkdir -p "$SNAP_COMMON/etc"
 # Set default config values
 snapctl set config.apiserver.bind="0.0.0.0"
 snapctl set config.apiserver.port=9997
-snapctl set config.apiserver.usetls=false
+snapctl set config.apiserver.use-tls=false
 snapctl set config.apiserver.cors-origins='[]'
 snapctl set config.apiserver.jwt-auth.secret=$(getRandomString)
 snapctl set config.apiserver.jwt-auth.time-to-live=48h
