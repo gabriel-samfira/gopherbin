@@ -36,10 +36,10 @@ buildUI:
 	cd webui/web && npm install && yarn build --production
 
 noUI:
-	go build -ldflags="-s -w" -o $(GOPATH)/bin/gopherbin cmd/gopherbin/gopherbin.go
+	go install -mod vendor -ldflags="-s -w" ./cmd/...
 
 withUI:
-	go build -ldflags="-s -w" -o $(GOPATH)/bin/gopherbin -ldflags "-X 'gopherbin/webui.BuildTime=$(shell date +%s)'" -tags webui cmd/gopherbin/gopherbin.go
+	go install -mod vendor -ldflags="-s -w -X 'gopherbin/webui.BuildTime=$(shell date +%s)'" -tags webui ./cmd/...
 
 all-noui: fmt submodules noUI
 

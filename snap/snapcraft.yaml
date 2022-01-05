@@ -1,0 +1,37 @@
+name: gopherbin
+summary: Gopherbin - A private pastebin written in Go and React
+description: |
+        Gopherbin is a simple, password protected paste-like service, that you can self host.
+        You can create secret or public pastes or share pastes with other users.
+
+type: app
+confinement: strict
+grade: stable
+base: core20
+
+adopt-info: gopherbin
+
+apps:
+    gopherbin:
+        command: bin/gopherbin -config $SNAP_COMMON/gopherbin.toml
+        daemon: simple
+        plugs: [network, network-bind]
+
+parts:
+    gopherbin:
+        plugin: nil
+        source: .
+        source-type: git
+        build-snaps: ["node/16/stable", go]
+        build-packages: [build-essential, libsqlite3-dev, libmysqlclient-dev]
+        override-pull: |
+            snapcraftctl pull
+            VERSION=$(git describe --always --dirty)
+            snapcraftctl set-version ${VERSION}
+        override-build: |
+            mkdir -p /tmp/gopherbin
+            mkdir -p $SNAPCRAFT_PART_INSTALL/bin
+            export GOPATH=/tmp/gopherbin
+            make all
+            cp /tmp/gopherbin/bin/gopherbin $SNAPCRAFT_PART_INSTALL/bin
+            cp /tmp/gopherbin/bin/gconfig $SNAPCRAFT_PART_INSTALL/bin

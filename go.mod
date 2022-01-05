@@ -3,7 +3,7 @@ module gopherbin
 go 1.16
 
 require (
-	github.com/BurntSushi/toml v0.4.1
+	github.com/BurntSushi/toml v0.4.2-0.20211125115023-7d0236fe7476
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/cespare/xxhash v1.1.0
 	github.com/felixge/httpsnoop v1.0.2 // indirect

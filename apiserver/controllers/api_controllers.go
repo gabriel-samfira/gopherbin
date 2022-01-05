@@ -121,7 +121,7 @@ func (p *APIController) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		handleError(w, err)
 		return
 	}
-	expireToken := time.Now().Add(p.cfg.TimeToLive.Duration).Unix()
+	expireToken := time.Now().Add(p.cfg.TimeToLive.Duration()).Unix()
 	claims := auth.JWTClaims{
 		StandardClaims: jwt.StandardClaims{
 			ExpiresAt: expireToken,
