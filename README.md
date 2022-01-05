@@ -2,6 +2,9 @@
 
 Welcome to Gopherbin. This project offers a simple password protected, paste-like service, that you can self host. This is an initial release, so expect bugs.
 
+[![Get it from the Snap Store](https://snapcraft.io/static/images/badges/en/snap-store-black.svg)](https://snapcraft.io/gopherbin)
+
+
 ## Building
 
 ### Using Go
@@ -112,6 +115,7 @@ curl -0 -X POST http://127.0.0.1:9997/api/v1/first-run/ \
 	--data-binary @- << EOF
 	{
 		"email": "example@example.com",
+		"username": "john",
 		"full_name": "John Doe",
 		"password": "ubdyweercivIch"
 	}
