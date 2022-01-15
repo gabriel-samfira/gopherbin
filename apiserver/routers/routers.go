@@ -91,6 +91,9 @@ func AddAPIURLs(router *mux.Router, han *controllers.APIController, authMiddlewa
 	// Get paste
 	apiRouter.Handle("/paste/{pasteID}", log(os.Stdout, http.HandlerFunc(han.PasteViewHandler))).Methods("GET", "OPTIONS")
 	apiRouter.Handle("/paste/{pasteID}/", log(os.Stdout, http.HandlerFunc(han.PasteViewHandler))).Methods("GET", "OPTIONS")
+	// Download paste
+	apiRouter.Handle("/paste/{pasteID}/download", log(os.Stdout, http.HandlerFunc(han.PasteDownloadHandler))).Methods("GET", "OPTIONS")
+	apiRouter.Handle("/paste/{pasteID}/download/", log(os.Stdout, http.HandlerFunc(han.PasteDownloadHandler))).Methods("GET", "OPTIONS")
 	// Update paste
 	apiRouter.Handle("/paste/{pasteID}", log(os.Stdout, http.HandlerFunc(han.UpdatePasteHandler))).Methods("PUT", "OPTIONS")
 	apiRouter.Handle("/paste/{pasteID}/", log(os.Stdout, http.HandlerFunc(han.UpdatePasteHandler))).Methods("PUT", "OPTIONS")

@@ -175,6 +175,30 @@ func (p *APIController) PasteViewHandler(w http.ResponseWriter, r *http.Request)
 	json.NewEncoder(w).Encode(pasteInfo)
 }
 
+// PasteDownloadHandler serves a paste as a downloadable file.
+func (p *APIController) PasteDownloadHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	vars := mux.Vars(r)
+	pasteID, ok := vars["pasteID"]
+
+	if !ok {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	pasteInfo, err := p.paster.Get(ctx, pasteID)
+	if err != nil {
+		handleError(w, err)
+		return
+	}
+
+	w.Header().Set("Access-Control-Expose-Headers", "x-suggested-filename, Content-Disposition")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", pasteInfo.Name))
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("x-suggested-filename", pasteInfo.Name)
+	w.Write(pasteInfo.Data)
+}
+
 // PublicPasteViewHandler returns details about a single public paste
 func (p *APIController) PublicPasteViewHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
