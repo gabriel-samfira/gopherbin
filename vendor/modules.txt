@@ -26,7 +26,6 @@ github.com/gorilla/mux
 # github.com/jinzhu/inflection v1.0.0
 github.com/jinzhu/inflection
 # github.com/jinzhu/now v1.1.4
-## explicit
 github.com/jinzhu/now
 # github.com/juju/loggo v0.0.0-20210728185423-eebad3a902c4
 ## explicit
@@ -48,20 +47,20 @@ github.com/nbutton23/zxcvbn-go/utils/math
 # github.com/pkg/errors v0.9.1
 ## explicit
 github.com/pkg/errors
-# golang.org/x/crypto v0.0.0-20211215153901-e495a2d5b3d3
+# golang.org/x/crypto v0.0.0-20220214200702-86341886e292
 ## explicit
 golang.org/x/crypto/bcrypt
 golang.org/x/crypto/blowfish
-# gorm.io/datatypes v1.0.4
+# gorm.io/datatypes v1.0.6
 ## explicit
 gorm.io/datatypes
-# gorm.io/driver/mysql v1.2.2
+# gorm.io/driver/mysql v1.3.2
 ## explicit
 gorm.io/driver/mysql
-# gorm.io/driver/sqlite v1.2.6
+# gorm.io/driver/sqlite v1.3.1
 ## explicit
 gorm.io/driver/sqlite
-# gorm.io/gorm v1.22.4
+# gorm.io/gorm v1.23.2
 ## explicit
 gorm.io/gorm
 gorm.io/gorm/callbacks

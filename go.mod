@@ -11,14 +11,13 @@ require (
 	github.com/golang-jwt/jwt v3.2.2+incompatible
 	github.com/gorilla/handlers v1.5.1
 	github.com/gorilla/mux v1.8.0
-	github.com/jinzhu/now v1.1.4 // indirect
 	github.com/juju/loggo v0.0.0-20210728185423-eebad3a902c4
 	github.com/mattn/go-sqlite3 v2.0.1+incompatible // indirect
 	github.com/nbutton23/zxcvbn-go v0.0.0-20210217022336-fa2cb2858354
 	github.com/pkg/errors v0.9.1
-	golang.org/x/crypto v0.0.0-20211215153901-e495a2d5b3d3
-	gorm.io/datatypes v1.0.4
-	gorm.io/driver/mysql v1.2.2
-	gorm.io/driver/sqlite v1.2.6
-	gorm.io/gorm v1.22.4
+	golang.org/x/crypto v0.0.0-20220214200702-86341886e292
+	gorm.io/datatypes v1.0.6
+	gorm.io/driver/mysql v1.3.2
+	gorm.io/driver/sqlite v1.3.1
+	gorm.io/gorm v1.23.2
 )

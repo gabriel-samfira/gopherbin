@@ -12,7 +12,7 @@ func ConvertMapToValuesForCreate(stmt *gorm.Statement, mapValue map[string]inter
 	values.Columns = make([]clause.Column, 0, len(mapValue))
 	selectColumns, restricted := stmt.SelectAndOmitColumns(true, false)
 
-	var keys = make([]string, 0, len(mapValue))
+	keys := make([]string, 0, len(mapValue))
 	for k := range mapValue {
 		keys = append(keys, k)
 	}
@@ -40,9 +40,7 @@ func ConvertMapToValuesForCreate(stmt *gorm.Statement, mapValue map[string]inter
 
 // ConvertSliceOfMapToValuesForCreate convert slice of map to values
 func ConvertSliceOfMapToValuesForCreate(stmt *gorm.Statement, mapValues []map[string]interface{}) (values clause.Values) {
-	var (
-		columns = make([]string, 0, len(mapValues))
-	)
+	columns := make([]string, 0, len(mapValues))
 
 	// when the length of mapValues is zero,return directly here
 	// no need to call stmt.SelectAndOmitColumns method
@@ -105,4 +103,20 @@ func hasReturning(tx *gorm.DB, supportReturning bool) (bool, gorm.ScanMode) {
 		}
 	}
 	return false, 0
+}
+
+func checkMissingWhereConditions(db *gorm.DB) {
+	if !db.AllowGlobalUpdate && db.Error == nil {
+		where, withCondition := db.Statement.Clauses["WHERE"]
+		if withCondition {
+			if _, withSoftDelete := db.Statement.Clauses["soft_delete_enabled"]; withSoftDelete {
+				whereClause, _ := where.Expression.(clause.Where)
+				withCondition = len(whereClause.Exprs) > 1
+			}
+		}
+		if !withCondition {
+			db.AddError(gorm.ErrMissingWhereClause)
+		}
+		return
+	}
 }
