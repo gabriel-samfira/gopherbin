@@ -47,7 +47,7 @@ github.com/nbutton23/zxcvbn-go/utils/math
 # github.com/pkg/errors v0.9.1
 ## explicit
 github.com/pkg/errors
-# golang.org/x/crypto v0.0.0-20220214200702-86341886e292
+# golang.org/x/crypto v0.1.0
 ## explicit
 golang.org/x/crypto/bcrypt
 golang.org/x/crypto/blowfish
