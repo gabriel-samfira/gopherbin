@@ -143,7 +143,7 @@ func (s *SQLite) Validate() error {
 }
 
 func (s *SQLite) ConnectionString() (string, error) {
-	return s.DBFile, nil
+	return fmt.Sprintf("%s?_journal_mode=WAL&_foreign_keys=ON", s.DBFile), nil
 }
 
 // MySQL is the config entry for the mysql section
@@ -170,7 +170,7 @@ func (m *MySQL) ConnectionString() (string, error) {
 	}
 
 	connString := fmt.Sprintf(
-		"%s:%s@tcp(%s)/%s?charset=utf8&parseTime=True&loc=Local&timeout=5s",
+		"%s:%s@tcp(%s)/%s?charset=utf8mb4&parseTime=True&loc=Local&timeout=5s",
 		m.Username, m.Password,
 		m.Hostname, m.DatabaseName,
 	)
