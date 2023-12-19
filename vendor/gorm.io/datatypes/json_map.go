@@ -1,6 +1,7 @@
 package datatypes
 
 import (
+	"bytes"
 	"context"
 	"database/sql/driver"
 	"encoding/json"
@@ -14,7 +15,7 @@ import (
 	"gorm.io/gorm/schema"
 )
 
-// JSONMap defiend JSON data type, need to implements driver.Valuer, sql.Scanner interface
+// JSONMap defined JSON data type, need to implements driver.Valuer, sql.Scanner interface
 type JSONMap map[string]interface{}
 
 // Value return json value, implement driver.Valuer interface
@@ -42,7 +43,10 @@ func (m *JSONMap) Scan(val interface{}) error {
 		return errors.New(fmt.Sprint("Failed to unmarshal JSONB value:", val))
 	}
 	t := map[string]interface{}{}
-	err := json.Unmarshal(ba, &t)
+	rd := bytes.NewReader(ba)
+	decoder := json.NewDecoder(rd)
+	decoder.UseNumber()
+	err := decoder.Decode(&t)
 	*m = t
 	return err
 }
