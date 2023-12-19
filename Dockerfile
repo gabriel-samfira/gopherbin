@@ -1,7 +1,7 @@
 FROM golang:1.16-rc AS builder
 LABEL stage=builder
 
-RUN curl -sL https://deb.nodesource.com/setup_15.x > /tmp/setup_node.sh
+RUN curl -sL https://deb.nodesource.com/setup_18.x > /tmp/setup_node.sh
 RUN /bin/bash /tmp/setup_node.sh
 RUN apt-get update && apt-get -y install git make nodejs apt-utils
 RUN npm install --global yarn

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/jinzhu/now"
+	"gorm.io/gorm/clause"
 	"gorm.io/gorm/utils"
 )
 
@@ -86,6 +87,10 @@ type Field struct {
 	Set                    func(context.Context, reflect.Value, interface{}) error
 	Serializer             SerializerInterface
 	NewValuePool           FieldNewValuePool
+}
+
+func (field *Field) BindName() string {
+	return strings.Join(field.BindNames, ".")
 }
 
 // ParseField parses reflect.StructField to Field
@@ -173,7 +178,7 @@ func (schema *Schema) ParseField(fieldStruct reflect.StructField) *Field {
 		field.DataType = String
 		field.Serializer = v
 	} else {
-		var serializerName = field.TagSettings["JSON"]
+		serializerName := field.TagSettings["JSON"]
 		if serializerName == "" {
 			serializerName = field.TagSettings["SERIALIZER"]
 		}
@@ -259,6 +264,11 @@ func (schema *Schema) ParseField(fieldStruct reflect.StructField) *Field {
 		} else if fieldValue.Type().ConvertibleTo(TimePtrReflectType) {
 			field.DataType = Time
 		}
+		if field.HasDefaultValue && !skipParseDefaultValue && field.DataType == Time {
+			if t, err := now.Parse(field.DefaultValue); err == nil {
+				field.DefaultValueInterface = t
+			}
+		}
 	case reflect.Array, reflect.Slice:
 		if reflect.Indirect(fieldValue).Type().Elem() == ByteReflectType && field.DataType == "" {
 			field.DataType = Bytes
@@ -269,7 +279,7 @@ func (schema *Schema) ParseField(fieldStruct reflect.StructField) *Field {
 		field.DataType = DataType(dataTyper.GormDataType())
 	}
 
-	if v, ok := field.TagSettings["AUTOCREATETIME"]; ok || (field.Name == "CreatedAt" && (field.DataType == Time || field.DataType == Int || field.DataType == Uint)) {
+	if v, ok := field.TagSettings["AUTOCREATETIME"]; (ok && utils.CheckTruth(v)) || (!ok && field.Name == "CreatedAt" && (field.DataType == Time || field.DataType == Int || field.DataType == Uint)) {
 		if field.DataType == Time {
 			field.AutoCreateTime = UnixTime
 		} else if strings.ToUpper(v) == "NANO" {
@@ -281,7 +291,7 @@ func (schema *Schema) ParseField(fieldStruct reflect.StructField) *Field {
 		}
 	}
 
-	if v, ok := field.TagSettings["AUTOUPDATETIME"]; ok || (field.Name == "UpdatedAt" && (field.DataType == Time || field.DataType == Int || field.DataType == Uint)) {
+	if v, ok := field.TagSettings["AUTOUPDATETIME"]; (ok && utils.CheckTruth(v)) || (!ok && field.Name == "UpdatedAt" && (field.DataType == Time || field.DataType == Int || field.DataType == Uint)) {
 		if field.DataType == Time {
 			field.AutoUpdateTime = UnixTime
 		} else if strings.ToUpper(v) == "NANO" {
@@ -397,18 +407,14 @@ func (schema *Schema) ParseField(fieldStruct reflect.StructField) *Field {
 				}
 
 				if ef.PrimaryKey {
-					if val, ok := ef.TagSettings["PRIMARYKEY"]; ok && utils.CheckTruth(val) {
-						ef.PrimaryKey = true
-					} else if val, ok := ef.TagSettings["PRIMARY_KEY"]; ok && utils.CheckTruth(val) {
-						ef.PrimaryKey = true
-					} else {
+					if !utils.CheckTruth(ef.TagSettings["PRIMARYKEY"], ef.TagSettings["PRIMARY_KEY"]) {
 						ef.PrimaryKey = false
 
 						if val, ok := ef.TagSettings["AUTOINCREMENT"]; !ok || !utils.CheckTruth(val) {
 							ef.AutoIncrement = false
 						}
 
-						if ef.DefaultValue == "" {
+						if !ef.AutoIncrement && ef.DefaultValue == "" {
 							ef.HasDefaultValue = false
 						}
 					}
@@ -430,39 +436,7 @@ func (schema *Schema) ParseField(fieldStruct reflect.StructField) *Field {
 // create valuer, setter when parse struct
 func (field *Field) setupValuerAndSetter() {
 	// Setup NewValuePool
-	var fieldValue = reflect.New(field.FieldType).Interface()
-	if field.Serializer != nil {
-		field.NewValuePool = &sync.Pool{
-			New: func() interface{} {
-				return &serializer{
-					Field:      field,
-					Serializer: reflect.New(reflect.Indirect(reflect.ValueOf(field.Serializer)).Type()).Interface().(SerializerInterface),
-				}
-			},
-		}
-	} else if _, ok := fieldValue.(sql.Scanner); !ok {
-		// set default NewValuePool
-		switch field.IndirectFieldType.Kind() {
-		case reflect.String:
-			field.NewValuePool = stringPool
-		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-			field.NewValuePool = intPool
-		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-			field.NewValuePool = uintPool
-		case reflect.Float32, reflect.Float64:
-			field.NewValuePool = floatPool
-		case reflect.Bool:
-			field.NewValuePool = boolPool
-		default:
-			if field.IndirectFieldType == TimeReflectType {
-				field.NewValuePool = timePool
-			}
-		}
-	}
-
-	if field.NewValuePool == nil {
-		field.NewValuePool = poolInitializer(reflect.PtrTo(field.IndirectFieldType))
-	}
+	field.setupNewValuePool()
 
 	// ValueOf returns field's value and if it is zero
 	fieldIndex := field.StructField.Index[0]
@@ -498,22 +472,19 @@ func (field *Field) setupValuerAndSetter() {
 		oldValuerOf := field.ValueOf
 		field.ValueOf = func(ctx context.Context, v reflect.Value) (interface{}, bool) {
 			value, zero := oldValuerOf(ctx, v)
-			if zero {
-				return value, zero
-			}
 
 			s, ok := value.(SerializerValuerInterface)
 			if !ok {
 				s = field.Serializer
 			}
 
-			return serializer{
+			return &serializer{
 				Field:           field,
 				SerializeValuer: s,
 				Destination:     v,
 				Context:         ctx,
 				fieldValue:      value,
-			}, false
+			}, zero
 		}
 	}
 
@@ -554,6 +525,9 @@ func (field *Field) setupValuerAndSetter() {
 			reflectValType := reflectV.Type()
 
 			if reflectValType.AssignableTo(field.FieldType) {
+				if reflectV.Kind() == reflect.Ptr && reflectV.Elem().Kind() == reflect.Ptr {
+					reflectV = reflect.Indirect(reflectV)
+				}
 				field.ReflectValueOf(ctx, value).Set(reflectV)
 				return
 			} else if reflectValType.ConvertibleTo(field.FieldType) {
@@ -594,8 +568,8 @@ func (field *Field) setupValuerAndSetter() {
 				if v, err = valuer.Value(); err == nil {
 					err = setter(ctx, value, v)
 				}
-			} else {
-				return fmt.Errorf("failed to set value %+v to field %s", v, field.Name)
+			} else if _, ok := v.(clause.Expr); !ok {
+				return fmt.Errorf("failed to set value %#v to field %s", v, field.Name)
 			}
 		}
 
@@ -629,6 +603,22 @@ func (field *Field) setupValuerAndSetter() {
 			case **int64:
 				if data != nil && *data != nil {
 					field.ReflectValueOf(ctx, value).SetInt(**data)
+				}
+			case **int:
+				if data != nil && *data != nil {
+					field.ReflectValueOf(ctx, value).SetInt(int64(**data))
+				}
+			case **int8:
+				if data != nil && *data != nil {
+					field.ReflectValueOf(ctx, value).SetInt(int64(**data))
+				}
+			case **int16:
+				if data != nil && *data != nil {
+					field.ReflectValueOf(ctx, value).SetInt(int64(**data))
+				}
+			case **int32:
+				if data != nil && *data != nil {
+					field.ReflectValueOf(ctx, value).SetInt(int64(**data))
 				}
 			case int64:
 				field.ReflectValueOf(ctx, value).SetInt(data)
@@ -694,6 +684,22 @@ func (field *Field) setupValuerAndSetter() {
 				if data != nil && *data != nil {
 					field.ReflectValueOf(ctx, value).SetUint(**data)
 				}
+			case **uint:
+				if data != nil && *data != nil {
+					field.ReflectValueOf(ctx, value).SetUint(uint64(**data))
+				}
+			case **uint8:
+				if data != nil && *data != nil {
+					field.ReflectValueOf(ctx, value).SetUint(uint64(**data))
+				}
+			case **uint16:
+				if data != nil && *data != nil {
+					field.ReflectValueOf(ctx, value).SetUint(uint64(**data))
+				}
+			case **uint32:
+				if data != nil && *data != nil {
+					field.ReflectValueOf(ctx, value).SetUint(uint64(**data))
+				}
 			case uint64:
 				field.ReflectValueOf(ctx, value).SetUint(data)
 			case uint:
@@ -745,6 +751,10 @@ func (field *Field) setupValuerAndSetter() {
 			case **float64:
 				if data != nil && *data != nil {
 					field.ReflectValueOf(ctx, value).SetFloat(**data)
+				}
+			case **float32:
+				if data != nil && *data != nil {
+					field.ReflectValueOf(ctx, value).SetFloat(float64(**data))
 				}
 			case float64:
 				field.ReflectValueOf(ctx, value).SetFloat(data)
@@ -836,7 +846,7 @@ func (field *Field) setupValuerAndSetter() {
 			field.Set = func(ctx context.Context, value reflect.Value, v interface{}) error {
 				switch data := v.(type) {
 				case **time.Time:
-					if data != nil {
+					if data != nil && *data != nil {
 						field.ReflectValueOf(ctx, value).Set(reflect.ValueOf(*data))
 					}
 				case time.Time:
@@ -872,14 +882,12 @@ func (field *Field) setupValuerAndSetter() {
 					reflectV := reflect.ValueOf(v)
 					if !reflectV.IsValid() {
 						field.ReflectValueOf(ctx, value).Set(reflect.New(field.FieldType).Elem())
+					} else if reflectV.Kind() == reflect.Ptr && reflectV.IsNil() {
+						return
 					} else if reflectV.Type().AssignableTo(field.FieldType) {
 						field.ReflectValueOf(ctx, value).Set(reflectV)
 					} else if reflectV.Kind() == reflect.Ptr {
-						if reflectV.IsNil() || !reflectV.IsValid() {
-							field.ReflectValueOf(ctx, value).Set(reflect.New(field.FieldType).Elem())
-						} else {
-							return field.Set(ctx, value, reflectV.Elem().Interface())
-						}
+						return field.Set(ctx, value, reflectV.Elem().Interface())
 					} else {
 						fieldValue := field.ReflectValueOf(ctx, value)
 						if fieldValue.IsNil() {
@@ -900,14 +908,12 @@ func (field *Field) setupValuerAndSetter() {
 					reflectV := reflect.ValueOf(v)
 					if !reflectV.IsValid() {
 						field.ReflectValueOf(ctx, value).Set(reflect.New(field.FieldType).Elem())
+					} else if reflectV.Kind() == reflect.Ptr && reflectV.IsNil() {
+						return
 					} else if reflectV.Type().AssignableTo(field.FieldType) {
 						field.ReflectValueOf(ctx, value).Set(reflectV)
 					} else if reflectV.Kind() == reflect.Ptr {
-						if reflectV.IsNil() || !reflectV.IsValid() {
-							field.ReflectValueOf(ctx, value).Set(reflect.New(field.FieldType).Elem())
-						} else {
-							return field.Set(ctx, value, reflectV.Elem().Interface())
-						}
+						return field.Set(ctx, value, reflectV.Elem().Interface())
 					} else {
 						if valuer, ok := v.(driver.Valuer); ok {
 							v, _ = valuer.Value()
@@ -936,21 +942,47 @@ func (field *Field) setupValuerAndSetter() {
 			sameElemType = field.FieldType == reflect.ValueOf(field.Serializer).Type().Elem()
 		}
 
+		serializerValue := reflect.Indirect(reflect.ValueOf(field.Serializer))
+		serializerType := serializerValue.Type()
 		field.Set = func(ctx context.Context, value reflect.Value, v interface{}) (err error) {
 			if s, ok := v.(*serializer); ok {
-				if err = s.Serializer.Scan(ctx, field, value, s.value); err == nil {
+				if s.fieldValue != nil {
+					err = oldFieldSetter(ctx, value, s.fieldValue)
+				} else if err = s.Serializer.Scan(ctx, field, value, s.value); err == nil {
 					if sameElemType {
 						field.ReflectValueOf(ctx, value).Set(reflect.ValueOf(s.Serializer).Elem())
-						s.Serializer = reflect.New(reflect.Indirect(reflect.ValueOf(field.Serializer)).Type()).Interface().(SerializerInterface)
 					} else if sameType {
 						field.ReflectValueOf(ctx, value).Set(reflect.ValueOf(s.Serializer))
-						s.Serializer = reflect.New(reflect.Indirect(reflect.ValueOf(field.Serializer)).Type()).Interface().(SerializerInterface)
 					}
+					si := reflect.New(serializerType)
+					si.Elem().Set(serializerValue)
+					s.Serializer = si.Interface().(SerializerInterface)
 				}
 			} else {
 				err = oldFieldSetter(ctx, value, v)
 			}
 			return
 		}
+	}
+}
+
+func (field *Field) setupNewValuePool() {
+	if field.Serializer != nil {
+		serializerValue := reflect.Indirect(reflect.ValueOf(field.Serializer))
+		serializerType := serializerValue.Type()
+		field.NewValuePool = &sync.Pool{
+			New: func() interface{} {
+				si := reflect.New(serializerType)
+				si.Elem().Set(serializerValue)
+				return &serializer{
+					Field:      field,
+					Serializer: si.Interface().(SerializerInterface),
+				}
+			},
+		}
+	}
+
+	if field.NewValuePool == nil {
+		field.NewValuePool = poolInitializer(reflect.PtrTo(field.IndirectFieldType))
 	}
 }
