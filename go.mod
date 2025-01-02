@@ -13,7 +13,7 @@ require (
 	github.com/juju/loggo v1.0.0
 	github.com/nbutton23/zxcvbn-go v0.0.0-20210217022336-fa2cb2858354
 	github.com/pkg/errors v0.9.1
-	golang.org/x/crypto v0.17.0
+	golang.org/x/crypto v0.31.0
 	gorm.io/datatypes v1.2.0
 	gorm.io/driver/mysql v1.5.2
 	gorm.io/driver/sqlite v1.5.4
