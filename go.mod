@@ -9,7 +9,7 @@ require (
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/cespare/xxhash v1.1.0
 	github.com/go-sql-driver/mysql v1.9.3
-	github.com/golang-jwt/jwt v3.2.2+incompatible
+	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/gorilla/handlers v1.5.2
 	github.com/gorilla/mux v1.8.1
 	github.com/juju/loggo v1.0.0

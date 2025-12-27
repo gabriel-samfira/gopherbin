@@ -22,7 +22,7 @@ import (
 	"net/http"
 	"strings"
 
-	jwt "github.com/golang-jwt/jwt"
+	jwt "github.com/golang-jwt/jwt/v5"
 
 	adminCommon "gopherbin/admin/common"
 	"gopherbin/apiserver/responses"
@@ -37,7 +37,7 @@ type JWTClaims struct {
 	FullName    string `json:"full_name"`
 	IsAdmin     bool   `json:"is_admin"`
 	IsSuperUser bool   `json:"is_superuser"`
-	jwt.StandardClaims
+	jwt.RegisteredClaims
 }
 
 // jwtMiddleware is the authentication middleware

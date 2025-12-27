@@ -16,7 +16,7 @@ import (
 	"gopherbin/paste/common"
 	"gopherbin/util"
 
-	"github.com/golang-jwt/jwt"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 )
@@ -121,10 +121,13 @@ func (p *APIController) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		handleError(w, err)
 		return
 	}
-	expireToken := time.Now().Add(p.cfg.TimeToLive.Duration()).Unix()
+	expireToken := time.Now().Add(p.cfg.TimeToLive.Duration())
+	expires := &jwt.NumericDate{
+		Time: expireToken,
+	}
 	claims := auth.JWTClaims{
-		StandardClaims: jwt.StandardClaims{
-			ExpiresAt: expireToken,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: expires,
 			Issuer:    "gopherbin",
 		},
 		UserID:      auth.UserID(ctx),
@@ -148,7 +151,7 @@ func (p *APIController) LoginHandler(w http.ResponseWriter, r *http.Request) {
 func (p *APIController) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	claim := auth.JWTClaim(ctx)
-	err := p.manager.BlacklistToken(claim.TokenID, claim.StandardClaims.ExpiresAt)
+	err := p.manager.BlacklistToken(claim.TokenID, claim.RegisteredClaims.ExpiresAt.Unix())
 	if err != nil {
 		handleError(w, err)
 		return
