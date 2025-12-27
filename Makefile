@@ -30,7 +30,7 @@ fmt:
 	gofmt -s -l .
 
 buildUI:
-	cd webui/svelte-app && npm run build
+	cd webui/svelte-app && npm install && npm run build
 
 noUI:
 	go install -mod vendor -ldflags="-s -w" ./cmd/...
