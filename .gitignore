@@ -5,3 +5,34 @@ parts/*
 stage/*
 prime/*
 *.snap
+
+# Svelte app build artifacts
+webui/svelte-app/.svelte-kit/
+webui/svelte-app/build/
+webui/svelte-app/node_modules/
+webui/svelte-app/.env
+webui/svelte-app/.env.*
+!webui/svelte-app/.env.example
+
+# Old web UI (can be removed after migration)
+webui/web/node_modules/
+webui/web/build/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
