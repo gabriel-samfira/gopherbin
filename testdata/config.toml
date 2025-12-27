@@ -17,7 +17,7 @@ use_tls = false
 
 [database]
 # Valid options are: mysql, sqlite3
-backend = "mysql"
+backend = "sqlite3"
 
     [database.mysql]
     username = "pasteuser"
@@ -26,5 +26,5 @@ backend = "mysql"
     hostname = "192.168.100.10"
     database = "pastedb"
 
-#    [database.sqlite3]
-#    db_file = "/tmp/gopherbin.sql"
+    [database.sqlite3]
+    db_file = "/tmp/gopherbin.sql"

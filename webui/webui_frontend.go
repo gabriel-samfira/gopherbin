@@ -7,5 +7,5 @@ import (
 	"embed"
 )
 
-//go:embed web/build
+//go:embed all:svelte-app/build
 var webUI embed.FS

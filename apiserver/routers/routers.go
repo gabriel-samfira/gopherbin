@@ -79,6 +79,9 @@ func AddAPIURLs(router *mux.Router, han *controllers.APIController, authMiddlewa
 	apiRouter.Handle("/teams/", log(os.Stdout, http.HandlerFunc(han.NewTeamHandler))).Methods("POST", "OPTIONS")
 
 	// Paste handlers
+	// paste search
+	apiRouter.Handle("/paste/search/", log(os.Stdout, http.HandlerFunc(han.SearchPasteHandler))).Methods("GET", "OPTIONS")
+	apiRouter.Handle("/paste/search", log(os.Stdout, http.HandlerFunc(han.SearchPasteHandler))).Methods("GET", "OPTIONS")
 	// Unshare paste
 	apiRouter.Handle("/paste/{pasteID}/sharing/{userID}", log(os.Stdout, http.HandlerFunc(han.UnsharePasteHandler))).Methods("DELETE", "OPTIONS")
 	apiRouter.Handle("/paste/{pasteID}/sharing/{userID}/", log(os.Stdout, http.HandlerFunc(han.PasteViewHandler))).Methods("DELETE", "OPTIONS")
@@ -103,7 +106,8 @@ func AddAPIURLs(router *mux.Router, han *controllers.APIController, authMiddlewa
 	// paste list
 	apiRouter.Handle("/{paste:paste\\/?}", log(os.Stdout, http.HandlerFunc(han.PasteListHandler))).Methods("GET", "OPTIONS")
 	// Create paste
-	apiRouter.Handle("/{paste:paste\\/?}", log(os.Stdout, http.HandlerFunc(han.CreatePasteHandler))).Methods("POST", "OPTIONS")
+	apiRouter.Handle("/paste/", log(os.Stdout, http.HandlerFunc(han.CreatePasteHandler))).Methods("POST", "OPTIONS")
+	apiRouter.Handle("/paste", log(os.Stdout, http.HandlerFunc(han.CreatePasteHandler))).Methods("POST", "OPTIONS")
 	// logout
 	apiRouter.Handle("/{logout:logout\\/?}", log(os.Stdout, http.HandlerFunc(han.LogoutHandler))).Methods("GET", "OPTIONS")
 	// admin routes

@@ -32,6 +32,7 @@ type Paster interface {
 	Get(ctx context.Context, pasteID string) (paste params.Paste, err error)
 	GetPublicPaste(ctx context.Context, pasteID string) (paste params.Paste, err error)
 	List(ctx context.Context, page int64, results int64) (paste params.PasteListResult, err error)
+	Search(ctx context.Context, query string, page int64, results int64) (paste params.PasteListResult, err error)
 	Delete(ctx context.Context, pasteID string) error
 	SetPrivacy(ctx context.Context, pasteID string, public bool) (params.Paste, error)
 	ShareWithUser(ctx context.Context, pasteID string, userID string) (params.TeamMember, error)

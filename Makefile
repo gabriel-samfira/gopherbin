@@ -33,12 +33,12 @@ submodules:
 	git submodule update --init --recursive
 
 buildUI:
-	cd webui/web && npm install && yarn build --production
+	cd webui/svelte-app && npm run build
 
 noUI:
 	go install -mod vendor -ldflags="-s -w" ./cmd/...
 
-withUI:
+withUI: buildUI
 	go install -mod vendor -ldflags="-s -w -X 'gopherbin/webui.BuildTime=$(shell date +%s)'" -tags webui ./cmd/...
 
 all-noui: fmt submodules noUI

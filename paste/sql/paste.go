@@ -17,6 +17,7 @@ package sql
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"math"
 	"time"
 
@@ -160,6 +161,7 @@ func (p *paste) Create(
 	}
 	if len(data) == 0 || len(title) == 0 {
 		// TODO: create some custom error types
+		fmt.Printf("data --> %v --> title: %v\n", data, title)
 		return params.Paste{}, gErrors.ErrBadRequest
 	}
 
@@ -273,6 +275,61 @@ func (p *paste) Get(ctx context.Context, pasteID string) (paste params.Paste, er
 		return params.Paste{}, errors.Wrap(err, "fetching paste")
 	}
 	return p.sqlToCommonPaste(pst, false), nil
+}
+
+func (p *paste) Search(ctx context.Context, query string, page int64, results int64) (params.PasteListResult, error) {
+	user, err := p.getUserFromContext(ctx)
+	if err != nil {
+		return params.PasteListResult{}, errors.Wrap(err, "fetching user from DB")
+	}
+	if page == 0 {
+		page = 1
+	}
+	if results == 0 {
+		results = 1
+	}
+	var pasteResults []models.Paste
+	var cnt int64
+	now := time.Now()
+	startFrom := (page - 1) * results
+
+	// Search in paste name using LIKE
+	searchPattern := "%" + query + "%"
+	q := p.conn.Select(
+		"id, paste_id, language, name, description, metadata, owner_id as owner, created_at, expires, public, substr(`data`, 1, 512) as data",
+	).Where("owner_id = ? and name LIKE ? and (expires is NULL or expires >= ?)", user.ID, searchPattern, now).Order("id desc")
+
+	cntQ := q.Model(&models.Paste{}).Count(&cnt)
+	if cntQ.Error != nil {
+		return params.PasteListResult{}, errors.Wrap(cntQ.Error, "counting results")
+	}
+
+	resQ := q.Offset(int(startFrom)).Limit(int(results)).Find(&pasteResults)
+	if resQ.Error != nil {
+		if errors.Is(resQ.Error, gorm.ErrRecordNotFound) {
+			return params.PasteListResult{}, gErrors.ErrNotFound
+		}
+		return params.PasteListResult{}, errors.Wrap(resQ.Error, "fetching pastes from database")
+	}
+
+	asParams := make([]params.Paste, len(pasteResults))
+	for idx, val := range pasteResults {
+		asParams[idx] = p.sqlToCommonPaste(val, true)
+	}
+
+	totalPages := int64(math.Ceil(float64(cnt) / float64(results)))
+	if totalPages == 0 {
+		totalPages = 1
+	}
+
+	if totalPages < page {
+		page = totalPages
+	}
+	return params.PasteListResult{
+		Pastes:     asParams,
+		TotalPages: totalPages,
+		Page:       page,
+	}, nil
 }
 
 func (p *paste) Delete(ctx context.Context, pasteID string) error {

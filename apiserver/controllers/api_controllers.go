@@ -239,6 +239,36 @@ func (p *APIController) PasteListHandler(w http.ResponseWriter, r *http.Request)
 	json.NewEncoder(w).Encode(res)
 }
 
+// SearchPasteHandler searches for pastes by name
+func (p *APIController) SearchPasteHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	query := r.URL.Query().Get("q")
+	if query == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(responses.APIErrorResponse{
+			Error:   "Bad Request",
+			Details: "No search query specified",
+		})
+		return
+	}
+
+	page := r.URL.Query().Get("page")
+	pageInt, _ := strconv.ParseInt(page, 10, 64)
+	maxResultsOpt := r.URL.Query().Get("max_results")
+	maxResults, _ := strconv.ParseInt(maxResultsOpt, 10, 64)
+	if maxResults == 0 {
+		maxResults = 50
+	}
+
+	res, err := p.paster.Search(ctx, query, pageInt, maxResults)
+	if err != nil {
+		handleError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(res)
+}
+
 // DeletePasteHandler deletes a single paste
 func (p *APIController) DeletePasteHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -292,6 +322,7 @@ func (p *APIController) CreatePasteHandler(w http.ResponseWriter, r *http.Reques
 
 	var pasteData params.Paste
 	if err := json.NewDecoder(r.Body).Decode(&pasteData); err != nil {
+		fmt.Println(err)
 		handleError(w, gErrors.ErrBadRequest)
 		return
 	}
@@ -302,6 +333,7 @@ func (p *APIController) CreatePasteHandler(w http.ResponseWriter, r *http.Reques
 		pasteData.Expires, pasteData.Public, "",
 		pasteData.Metadata)
 	if err != nil {
+		fmt.Println(err)
 		handleError(w, err)
 		return
 	}

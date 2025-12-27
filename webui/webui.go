@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-const webDir = "web/build"
+const webDir = "svelte-app/build"
 
 // BuildTime can be set to enable Last-Modified and
 // If-Modified-Since functionality in the web UI handler.
