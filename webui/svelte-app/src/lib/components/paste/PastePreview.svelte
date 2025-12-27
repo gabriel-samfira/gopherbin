@@ -131,7 +131,8 @@
 						maxHeight: '250px'
 					},
 					'.cm-scroller': {
-						overflow: 'auto',
+						overflowY: 'auto',
+						overflowX: 'hidden',
 						fontSize: '13px'
 					},
 					'.cm-gutters': {

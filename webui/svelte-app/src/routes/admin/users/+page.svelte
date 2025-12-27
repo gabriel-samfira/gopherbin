@@ -4,8 +4,10 @@
 	import { auth } from '$lib/stores/auth';
 	import { listUsers, deleteUser } from '$lib/api/users';
 	import Button from '$lib/components/ui/Button.svelte';
+	import IconButton from '$lib/components/ui/IconButton.svelte';
 	import Spinner from '$lib/components/ui/Spinner.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
+	import { Trash2 } from 'lucide-svelte';
 	import type { User } from '$lib/types/user';
 	import { formatApiError } from '$lib/utils/errors';
 
@@ -72,9 +74,9 @@
 	</div>
 {:else}
 	<div class="space-y-6">
-		<div class="flex justify-between items-center">
-			<h1 class="text-3xl font-bold text-gray-900 dark:text-gray-100">User Management</h1>
-			<Button on:click={() => goto('/admin/users/new')} variant="primary">
+		<div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+			<h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100">User Management</h1>
+			<Button on:click={() => goto('/admin/users/new')} variant="primary" class="w-full sm:w-auto">
 				Create New User
 			</Button>
 		</div>
@@ -110,7 +112,8 @@
 				</div>
 			{/if}
 
-			<div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+			<!-- Desktop table view -->
+			<div class="hidden md:block bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
 				<table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
 					<thead class="bg-gray-50 dark:bg-gray-900">
 						<tr>
@@ -176,6 +179,54 @@
 						{/each}
 					</tbody>
 				</table>
+			</div>
+
+			<!-- Mobile card view -->
+			<div class="md:hidden space-y-3">
+				{#each users as user}
+					<div
+						class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md transition-shadow"
+					>
+						<div class="flex items-start justify-between gap-3">
+							<div
+								class="flex-1 cursor-pointer"
+								on:click={() => goto(`/admin/users/${user.id}`, { state: { user } })}
+								on:keydown={(e) => e.key === 'Enter' && goto(`/admin/users/${user.id}`, { state: { user } })}
+								role="button"
+								tabindex="0"
+							>
+								<div class="flex items-center gap-2 mb-2">
+									<span class="font-semibold text-gray-900 dark:text-gray-100">{user.username}</span>
+									{#if user.is_admin}
+										<span class="px-2 py-1 text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded">
+											Admin
+										</span>
+									{/if}
+								</div>
+								<div class="text-sm text-gray-600 dark:text-gray-400 mb-2">
+									<div>{user.full_name}</div>
+									<div>{user.email}</div>
+								</div>
+								<span
+									class="inline-block px-2 py-1 text-xs rounded {user.enabled
+										? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200'
+										: 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200'}"
+								>
+									{user.enabled ? 'Enabled' : 'Disabled'}
+								</span>
+							</div>
+							<div
+								on:click={(e) => e.stopPropagation()}
+								on:keydown={(e) => e.stopPropagation()}
+								role="none"
+							>
+								<IconButton title="Delete user" variant="danger" on:click={() => initDelete(user)}>
+									<Trash2 class="w-4 h-4" />
+								</IconButton>
+							</div>
+						</div>
+					</div>
+				{/each}
 			</div>
 
 			{#if totalPages > 1}

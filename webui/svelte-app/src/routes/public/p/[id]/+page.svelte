@@ -65,10 +65,10 @@
 	</div>
 {:else if paste}
 	<div class="space-y-4">
-		<div class="flex justify-between items-start">
-			<div>
-				<h1 class="text-3xl font-bold text-gray-900 dark:text-gray-100">{paste.name}</h1>
-				<p class="text-gray-600 dark:text-gray-400 mt-2">
+		<div class="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
+			<div class="flex-1">
+				<h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100 break-words">{paste.name}</h1>
+				<p class="text-sm sm:text-base text-gray-600 dark:text-gray-400 mt-2">
 					Created
 					{#if paste.created_by}
 						by <strong>{paste.created_by}</strong>
@@ -78,7 +78,7 @@
 			</div>
 
 			<div class="relative">
-				<Button on:click={copyToClipboard} variant="secondary">
+				<Button on:click={copyToClipboard} variant="secondary" class="w-full sm:w-auto">
 					Copy
 				</Button>
 				{#if showCopyTooltip}

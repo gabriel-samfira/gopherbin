@@ -59,7 +59,7 @@
 	</div>
 {:else}
 	<div class="max-w-2xl mx-auto">
-		<h1 class="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-6">Create New User</h1>
+		<h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100 mb-6">Create New User</h1>
 
 		{#if error}
 			<div class="mb-4 p-3 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded-md">
@@ -96,10 +96,10 @@
 					<label for="password" class="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
 						Password
 					</label>
-					<Input id="password" type="password" bind:value={password} placeholder="Enter password (min 6 characters)" />
+					<Input id="password" type="password" bind:value={password} placeholder="Min 6 characters" />
 				</div>
 
-				<div class="flex items-center gap-6">
+				<div class="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
 					<div class="flex items-center gap-2">
 						<input
 							id="enabled"
@@ -124,9 +124,9 @@
 					</div>
 				</div>
 
-				<div class="flex gap-2">
-					<Button type="submit" variant="success" disabled={!canSubmit}>Create User</Button>
-					<Button on:click={() => goto('/admin/users')} variant="secondary">Cancel</Button>
+				<div class="flex flex-col sm:flex-row gap-2">
+					<Button type="submit" variant="success" disabled={!canSubmit} class="w-full sm:w-auto">Create User</Button>
+					<Button on:click={() => goto('/admin/users')} variant="secondary" class="w-full sm:w-auto">Cancel</Button>
 				</div>
 			</form>
 		{/if}

@@ -159,14 +159,15 @@
 </svelte:head>
 
 <div class="space-y-6">
-	<div class="flex items-center justify-between gap-4">
-		<h1 class="text-3xl font-bold text-gray-900 dark:text-gray-100">My Pastes</h1>
+	<!-- Header with title and search -->
+	<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+		<h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100">My Pastes</h1>
 
-		<div class="flex gap-2 flex-1 max-w-md">
+		<div class="flex gap-2 w-full sm:flex-1 sm:max-w-md">
 			<div class="relative flex-1">
 				<Input
 					bind:value={searchQuery}
-					placeholder="Search pastes by name..."
+					placeholder="Search pastes..."
 					on:keydown={handleSearchKeyDown}
 				/>
 				{#if isSearching}
@@ -234,23 +235,25 @@
 					class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden hover:shadow-md transition-shadow"
 				>
 					<!-- Header -->
-					<div class="p-3 flex items-center justify-between gap-3">
+					<div class="p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
 						<!-- Left: Title and metadata -->
 						<div class="flex-1 min-w-0">
-							<div class="flex items-center gap-2">
+							<div class="flex items-center gap-2 flex-wrap">
 								<h3
 									class="text-base font-semibold text-gray-900 dark:text-gray-100 truncate"
 								>
 									{paste.name}
 								</h3>
-								{#if paste.public}
-									<Globe class="w-4 h-4 text-green-600 dark:text-green-500 flex-shrink-0" />
-								{:else}
-									<Lock class="w-4 h-4 text-gray-500 dark:text-gray-400 flex-shrink-0" />
-								{/if}
-								<span class="text-xs text-gray-500 dark:text-gray-400 px-2 py-0.5 bg-gray-100 dark:bg-gray-700 rounded">
-									{paste.language}
-								</span>
+								<div class="flex items-center gap-2">
+									{#if paste.public}
+										<Globe class="w-4 h-4 text-green-600 dark:text-green-500 flex-shrink-0" />
+									{:else}
+										<Lock class="w-4 h-4 text-gray-500 dark:text-gray-400 flex-shrink-0" />
+									{/if}
+									<span class="text-xs text-gray-500 dark:text-gray-400 px-2 py-0.5 bg-gray-100 dark:bg-gray-700 rounded">
+										{paste.language}
+									</span>
+								</div>
 							</div>
 							<p class="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
 								{timeAgo(paste.created_at)}

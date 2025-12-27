@@ -118,9 +118,9 @@
 	</div>
 {:else if user}
 	<div class="space-y-6">
-		<div class="flex items-center gap-4">
-			<Button on:click={() => goto('/admin/users')} variant="secondary">← Back to Users</Button>
-			<h1 class="text-3xl font-bold text-gray-900 dark:text-gray-100">
+		<div class="flex flex-col sm:flex-row sm:items-center gap-4">
+			<Button on:click={() => goto('/admin/users')} variant="secondary" class="w-full sm:w-auto">← Back</Button>
+			<h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100">
 				Edit User: {user?.username || `#${userId}`}
 			</h1>
 		</div>
@@ -132,8 +132,8 @@
 		{/if}
 
 		<!-- Update User Info -->
-		<div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
-			<h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mb-4">Update User Info</h2>
+		<div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 sm:p-6">
+			<h2 class="text-lg sm:text-xl font-bold text-gray-900 dark:text-gray-100 mb-4">Update User Info</h2>
 			<div class="space-y-4">
 				<div>
 					<span class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -153,19 +153,19 @@
 					</span>
 					<Input bind:value={email} type="email" placeholder="Enter email" />
 				</div>
-				<div class="flex items-center gap-6 pt-2">
+				<div class="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6 pt-2">
 					<Toggle bind:checked={enabled} label="Account Enabled" />
 					<Toggle bind:checked={isAdmin} label="Admin User" />
 				</div>
-				<Button on:click={handleUpdateUserInfo} variant="primary">
+				<Button on:click={handleUpdateUserInfo} variant="primary" class="w-full sm:w-auto">
 					Update User Info
 				</Button>
 			</div>
 		</div>
 
 		<!-- Reset Password -->
-		<div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
-			<h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 mb-4">Reset Password</h2>
+		<div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 sm:p-6">
+			<h2 class="text-lg sm:text-xl font-bold text-gray-900 dark:text-gray-100 mb-4">Reset Password</h2>
 			{#if passwordError}
 				<div class="p-3 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded-md mb-4">
 					{passwordError}
@@ -187,19 +187,19 @@
 				{#if newPassword && confirmPassword && !passwordsMatch}
 					<p class="text-sm text-red-600 dark:text-red-400">Passwords do not match or are too short (min 8 characters)</p>
 				{/if}
-				<Button on:click={handleResetPassword} variant="primary" disabled={!passwordsMatch}>
+				<Button on:click={handleResetPassword} variant="primary" disabled={!passwordsMatch} class="w-full sm:w-auto">
 					Reset Password
 				</Button>
 			</div>
 		</div>
 
 		<!-- Danger Zone -->
-		<div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-6">
-			<h2 class="text-xl font-bold text-red-900 dark:text-red-200 mb-4">Danger Zone</h2>
-			<p class="text-red-700 dark:text-red-300 mb-4">
+		<div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 sm:p-6">
+			<h2 class="text-lg sm:text-xl font-bold text-red-900 dark:text-red-200 mb-4">Danger Zone</h2>
+			<p class="text-sm sm:text-base text-red-700 dark:text-red-300 mb-4">
 				WARNING: This operation is permanent and will delete the user and all pastes created by this user.
 			</p>
-			<p class="text-red-700 dark:text-red-300 mb-4">
+			<p class="text-sm sm:text-base text-red-700 dark:text-red-300 mb-4">
 				To delete this user, type <strong>DELETE</strong> in the field below and click the delete button.
 			</p>
 			<div class="space-y-4">
@@ -211,6 +211,7 @@
 					on:click={() => (showDeleteModal = true)}
 					variant="danger"
 					disabled={deleteConfirmation !== 'DELETE'}
+					class="w-full sm:w-auto"
 				>
 					Delete User
 				</Button>

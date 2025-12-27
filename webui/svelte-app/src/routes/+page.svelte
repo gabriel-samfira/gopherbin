@@ -75,7 +75,7 @@
 	<Spinner />
 {:else}
 	<div class="space-y-6">
-		<h1 class="text-3xl font-bold text-gray-900 dark:text-gray-100">Create New Paste</h1>
+		<h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100">Create New Paste</h1>
 
 		{#if error}
 			<div class="p-3 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded-md">
@@ -87,22 +87,20 @@
 			<Spinner />
 		{:else}
 			<form on:submit={handleSubmit} class="space-y-4">
-				<div class="flex flex-wrap gap-4 items-center">
-					<div class="flex-1 min-w-[200px]">
+				<div class="flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:gap-4 sm:items-center">
+					<div class="flex-1 min-w-full sm:min-w-[200px]">
 						<Input
 							bind:value={filename}
-							placeholder="File name with extension (e.g., myfile.js)"
+							placeholder="File name (e.g., myfile.js)"
 						/>
 					</div>
 
-					<div>
+					<div class="flex gap-3 flex-wrap items-center">
 						<PrivacyToggle bind:isPublic />
-					</div>
 
-					<div>
 						<select
 							bind:value={$editorTheme}
-							class="px-3 py-2 border rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
+							class="px-3 py-2 border rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600 text-sm"
 						>
 							{#each editorThemes as themeOption}
 								<option value={themeOption}>
@@ -110,13 +108,11 @@
 								</option>
 							{/each}
 						</select>
-					</div>
 
-					<div>
 						<input
 							type="datetime-local"
 							bind:value={expiresDate}
-							class="px-3 py-2 border rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
+							class="px-3 py-2 border rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600 text-sm"
 							placeholder="Expires..."
 						/>
 					</div>
@@ -125,7 +121,7 @@
 				<CodeEditor value={content} mode={language} theme={$editorTheme} onChange={handleContentChange} />
 
 				<div>
-					<Button type="submit" variant="success" disabled={!canSubmit}>
+					<Button type="submit" variant="success" disabled={!canSubmit} class="w-full sm:w-auto">
 						Submit
 					</Button>
 				</div>

@@ -131,6 +131,7 @@
 					}
 				}),
 				EditorState.readOnly.of(readOnly),
+				EditorView.lineWrapping,
 				EditorView.theme({
 					'&': { height: '450px' },
 					'.cm-scroller': { overflow: 'auto' }
