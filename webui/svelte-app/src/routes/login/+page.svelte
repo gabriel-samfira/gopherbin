@@ -50,7 +50,7 @@
 <div class="max-w-md mx-auto mt-8 sm:mt-16">
 	<div class="bg-white dark:bg-gray-800 shadow-md rounded-lg p-6 sm:p-8">
 		<div class="flex flex-col items-center mb-6">
-			<img src="/logo.svg" alt="GopherBin" class="h-20 sm:h-24 w-auto mb-4" />
+			<img src="/logo.svg" alt="GopherBin" class="h-48 sm:h-56 w-auto mb-4" />
 			<h1 class="text-xl sm:text-2xl font-bold text-center text-gray-900 dark:text-gray-100">
 				Welcome to GopherBin
 			</h1>

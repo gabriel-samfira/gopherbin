@@ -8,11 +8,13 @@
 	export let theme = 'monokai';
 	export let readOnly = false;
 	export let onChange: (value: string) => void = () => {};
+	export let dynamicHeight = false; // Enable dynamic height for read-only views
 
 	let editorContainer: HTMLDivElement;
 	let editorView: EditorView | null = null;
 	let languageCompartment = new Compartment();
 	let themeCompartment = new Compartment();
+	let viewportHeight = 0;
 
 	// Dynamic language loader
 	async function loadLanguage(lang: string) {
@@ -121,6 +123,26 @@
 			const languageExt = await loadLanguage(mode);
 			const themeExt = await loadTheme(theme);
 
+			// Configure height based on dynamicHeight prop
+			let heightConfig;
+			if (dynamicHeight) {
+				// Calculate viewport height minus header and padding for dynamic mode
+				viewportHeight = window.innerHeight - 225; // Reserve space for header and margins
+				heightConfig = {
+					'&': {
+						height: 'auto',
+						maxHeight: `${viewportHeight}px`
+					},
+					'.cm-scroller': { overflow: 'auto' }
+				};
+			} else {
+				// Fixed height for editing mode
+				heightConfig = {
+					'&': { height: '450px' },
+					'.cm-scroller': { overflow: 'auto' }
+				};
+			}
+
 			const extensions = [
 				basicSetup,
 				themeCompartment.of(themeExt),
@@ -132,10 +154,7 @@
 				}),
 				EditorState.readOnly.of(readOnly),
 				EditorView.lineWrapping,
-				EditorView.theme({
-					'&': { height: '450px' },
-					'.cm-scroller': { overflow: 'auto' }
-				})
+				EditorView.theme(heightConfig)
 			];
 
 			const state = EditorState.create({
@@ -148,6 +167,22 @@
 				parent: editorContainer
 			});
 		}
+
+		// Update viewport height on window resize (only for dynamic height mode)
+		const handleResize = () => {
+			if (dynamicHeight) {
+				viewportHeight = window.innerHeight - 225;
+				if (editorView) {
+					editorView.dom.style.maxHeight = `${viewportHeight}px`;
+				}
+			}
+		};
+
+		window.addEventListener('resize', handleResize);
+
+		return () => {
+			window.removeEventListener('resize', handleResize);
+		};
 	});
 
 	onDestroy(() => {

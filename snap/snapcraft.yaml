@@ -7,7 +7,7 @@ description: |
 type: app
 confinement: strict
 grade: stable
-base: core20
+base: core24
 
 adopt-info: gopherbin
 
@@ -22,7 +22,7 @@ parts:
         plugin: nil
         source: .
         source-type: git
-        build-snaps: ["node/16/stable", go]
+        build-snaps: ["node/24/stable", go]
         build-packages: [build-essential, libsqlite3-dev, libmysqlclient-dev]
         override-pull: |
             snapcraftctl pull

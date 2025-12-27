@@ -29,9 +29,6 @@ help :
 fmt:
 	gofmt -s -l .
 
-submodules:
-	git submodule update --init --recursive
-
 buildUI:
 	cd webui/svelte-app && npm run build
 
@@ -41,9 +38,9 @@ noUI:
 withUI: buildUI
 	go install -mod vendor -ldflags="-s -w -X 'gopherbin/webui.BuildTime=$(shell date +%s)'" -tags webui ./cmd/...
 
-all-noui: fmt submodules noUI
+all-noui: fmt noUI
 
-all: fmt submodules buildUI withUI
+all: fmt withUI
 
 build-image:
 	docker build --no-cache --tag $(IMAGE_NAME) .

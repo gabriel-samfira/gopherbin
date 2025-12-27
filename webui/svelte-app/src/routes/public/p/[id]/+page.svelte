@@ -96,6 +96,7 @@
 			mode={resolveSyntax(paste.language)}
 			theme={$editorTheme}
 			readOnly={true}
+			dynamicHeight={true}
 		/>
 	</div>
 {/if}
