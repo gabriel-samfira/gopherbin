@@ -10,8 +10,9 @@
 	import Spinner from '$lib/components/ui/Spinner.svelte';
 	import { resolveSyntax } from '$lib/utils/syntax';
 	import { timeAgo } from '$lib/utils/date';
+	import { copyToClipboard as copyText } from '$lib/utils/clipboard';
+	import { formatApiError } from '$lib/utils/errors';
 	import type { Paste } from '$lib/types/paste';
-	import type { ApiError } from '$lib/types/api';
 
 	let paste: Paste | null = null;
 	let loading = true;
@@ -23,7 +24,15 @@
 
 	onMount(async () => {
 		if (!$auth.token) {
-			goto('/login');
+			// Redirect to login with next parameter
+			const currentPath = encodeURIComponent(window.location.pathname);
+			goto(`/login?next=${currentPath}`);
+			return;
+		}
+
+		if (!pasteId) {
+			error = 'Invalid paste ID';
+			loading = false;
 			return;
 		}
 
@@ -32,8 +41,7 @@
 			// Decode base64 content
 			pasteContent = atob(paste.data);
 		} catch (err) {
-			const apiError = err as ApiError;
-			error = apiError.details || apiError.error || 'Failed to load paste';
+			error = formatApiError(err);
 		} finally {
 			loading = false;
 		}
@@ -41,11 +49,15 @@
 
 	async function copyToClipboard() {
 		if (pasteContent) {
-			await navigator.clipboard.writeText(pasteContent);
-			showCopyTooltip = true;
-			setTimeout(() => {
-				showCopyTooltip = false;
-			}, 1000);
+			try {
+				await copyText(pasteContent);
+				showCopyTooltip = true;
+				setTimeout(() => {
+					showCopyTooltip = false;
+				}, 1000);
+			} catch (err) {
+				error = 'Failed to copy to clipboard';
+			}
 		}
 	}
 </script>

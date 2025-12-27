@@ -5,7 +5,7 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import Input from '$lib/components/ui/Input.svelte';
 	import Spinner from '$lib/components/ui/Spinner.svelte';
-	import type { ApiError } from '$lib/types/api';
+	import { formatApiError } from '$lib/utils/errors';
 
 	let username = '';
 	let email = '';
@@ -42,8 +42,7 @@
 
 			goto('/admin/users');
 		} catch (err) {
-			const apiError = err as ApiError;
-			error = apiError.details || apiError.error || 'Failed to create user';
+			error = formatApiError(err);
 		} finally {
 			loading = false;
 		}

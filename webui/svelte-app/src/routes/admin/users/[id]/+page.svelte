@@ -10,7 +10,7 @@
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import Toggle from '$lib/components/ui/Toggle.svelte';
 	import type { User, UserUpdate } from '$lib/types/user';
-	import type { ApiError } from '$lib/types/api';
+	import { formatApiError } from '$lib/utils/errors';
 
 	let user: User | null = null;
 	let error = '';
@@ -75,8 +75,7 @@
 				user.is_admin = isAdmin;
 			}
 		} catch (err) {
-			const apiError = err as ApiError;
-			error = apiError.details || apiError.error || 'Failed to update user info';
+			error = formatApiError(err);
 		}
 	}
 
@@ -93,8 +92,7 @@
 			confirmPassword = '';
 			toast.show('Password reset successfully', 'success');
 		} catch (err) {
-			const apiError = err as ApiError;
-			passwordError = apiError.details || apiError.error || 'Failed to reset password';
+			passwordError = formatApiError(err);
 		}
 	}
 
@@ -105,8 +103,7 @@
 			await deleteUser(userId, $auth.token);
 			goto('/admin/users');
 		} catch (err) {
-			const apiError = err as ApiError;
-			error = apiError.details || apiError.error || 'Failed to delete user';
+			error = formatApiError(err);
 		}
 	}
 </script>

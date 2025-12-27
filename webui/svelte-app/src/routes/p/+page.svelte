@@ -11,8 +11,9 @@
 	import SharePasteModal from '$lib/components/paste/SharePasteModal.svelte';
 	import PastePreview from '$lib/components/paste/PastePreview.svelte';
 	import { timeAgo } from '$lib/utils/date';
+	import { copyToClipboard } from '$lib/utils/clipboard';
+	import { formatApiError } from '$lib/utils/errors';
 	import type { Paste } from '$lib/types/paste';
-	import type { ApiError } from '$lib/types/api';
 	import {
 		Eye,
 		EyeOff,
@@ -39,7 +40,8 @@
 
 	async function loadPastes() {
 		if (!$auth.token) {
-			goto('/login');
+			const currentPath = encodeURIComponent(window.location.pathname);
+			goto(`/login?next=${currentPath}`);
 			return;
 		}
 
@@ -56,8 +58,7 @@
 			pastes = response.pastes || [];
 			totalPages = response.total_pages;
 		} catch (err) {
-			const apiError = err as ApiError;
-			error = apiError.details || apiError.error || 'Failed to load pastes';
+			error = formatApiError(err);
 		} finally {
 			loading = false;
 		}
@@ -109,8 +110,7 @@
 			deletingPaste = null;
 			await loadPastes();
 		} catch (err) {
-			const apiError = err as ApiError;
-			error = apiError.details || apiError.error || 'Failed to delete paste';
+			error = formatApiError(err);
 		}
 	}
 
@@ -122,8 +122,7 @@
 			await updatePaste(paste.paste_id, { public: !paste.public }, $auth.token);
 			loadPastes();
 		} catch (err) {
-			const apiError = err as ApiError;
-			error = apiError.details || apiError.error || 'Failed to update paste';
+			error = formatApiError(err);
 		}
 	}
 
@@ -138,11 +137,15 @@
 			? `${window.location.origin}/public/p/${paste.paste_id}`
 			: `${window.location.origin}/p/${paste.paste_id}`;
 
-		await navigator.clipboard.writeText(url);
-		copyTooltip = paste.paste_id;
-		setTimeout(() => {
-			copyTooltip = null;
-		}, 2000);
+		try {
+			await copyToClipboard(url);
+			copyTooltip = paste.paste_id;
+			setTimeout(() => {
+				copyTooltip = null;
+			}, 2000);
+		} catch (err) {
+			error = 'Failed to copy URL to clipboard';
+		}
 	}
 
 	function handleDelete(paste: Paste, event: Event) {

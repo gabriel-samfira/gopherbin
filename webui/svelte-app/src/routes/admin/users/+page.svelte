@@ -7,7 +7,7 @@
 	import Spinner from '$lib/components/ui/Spinner.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import type { User } from '$lib/types/user';
-	import type { ApiError } from '$lib/types/api';
+	import { formatApiError } from '$lib/utils/errors';
 
 	let users: User[] = [];
 	let loading = true;
@@ -31,8 +31,7 @@
 			users = response.users || [];
 			totalPages = response.total_pages;
 		} catch (err) {
-			const apiError = err as ApiError;
-			error = apiError.details || apiError.error || 'Failed to load users';
+			error = formatApiError(err);
 		} finally {
 			loading = false;
 		}
@@ -58,8 +57,7 @@
 			deletingUser = null;
 			loadUsers();
 		} catch (err) {
-			const apiError = err as ApiError;
-			error = apiError.details || apiError.error || 'Failed to delete user';
+			error = formatApiError(err);
 		}
 	}
 </script>

@@ -5,8 +5,8 @@
 	import Input from '$lib/components/ui/Input.svelte';
 	import { toast } from '$lib/stores/toast';
 	import { listPasteShares, sharePaste, unsharePaste } from '$lib/api/pastes';
+	import { formatApiError } from '$lib/utils/errors';
 	import type { PasteShare } from '$lib/types/paste';
-	import type { ApiError } from '$lib/types/api';
 
 	export let pasteId: string | null = null;
 	export let pasteName: string = '';
@@ -33,8 +33,7 @@
 		try {
 			shares = await listPasteShares(pasteId, token);
 		} catch (err) {
-			const apiError = err as ApiError;
-			error = apiError.details || apiError.error || 'Failed to load shares';
+			error = formatApiError(err);
 		} finally {
 			loading = false;
 		}
@@ -54,8 +53,7 @@
 			toast.show('Paste shared successfully', 'success');
 			await loadShares();
 		} catch (err) {
-			const apiError = err as ApiError;
-			error = apiError.details || apiError.error || 'Failed to share paste';
+			error = formatApiError(err);
 			toast.show(error, 'error', 5000);
 		} finally {
 			sharingInProgress = false;
@@ -69,8 +67,7 @@
 			await unsharePaste(pasteId, username, token);
 			await loadShares();
 		} catch (err) {
-			const apiError = err as ApiError;
-			error = apiError.details || apiError.error || 'Failed to remove share';
+			error = formatApiError(err);
 		}
 	}
 

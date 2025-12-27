@@ -1,11 +1,12 @@
 <script lang="ts">
+	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { auth } from '$lib/stores/auth';
 	import { login } from '$lib/api/auth';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Input from '$lib/components/ui/Input.svelte';
 	import Spinner from '$lib/components/ui/Spinner.svelte';
-	import type { ApiError } from '$lib/types/api';
+	import { formatApiError } from '$lib/utils/errors';
 
 	let username = '';
 	let password = '';
@@ -13,6 +14,7 @@
 	let error = '';
 
 	$: canSubmit = username.length > 0 && password.length >= 6;
+	$: nextUrl = $page.url.searchParams.get('next');
 
 	async function handleSubmit(e: Event) {
 		e.preventDefault();
@@ -25,10 +27,11 @@
 		try {
 			const response = await login({ username, password });
 			auth.login(response);
-			goto('/');
+
+			// Redirect to the next URL if provided, otherwise to home
+			goto(nextUrl || '/');
 		} catch (err) {
-			const apiError = err as ApiError;
-			error = apiError.details || apiError.error || 'Login failed';
+			error = formatApiError(err);
 		} finally {
 			loading = false;
 		}
@@ -36,7 +39,7 @@
 
 	// Redirect if already authenticated
 	$: if ($auth.isAuthenticated) {
-		goto('/');
+		goto(nextUrl || '/');
 	}
 </script>
 

@@ -9,7 +9,7 @@
 	import PrivacyToggle from '$lib/components/ui/PrivacyToggle.svelte';
 	import Spinner from '$lib/components/ui/Spinner.svelte';
 	import { getLanguageFromFilename, editorThemes } from '$lib/utils/syntax';
-	import type { ApiError } from '$lib/types/api';
+	import { formatApiError } from '$lib/utils/errors';
 
 	let filename = '';
 	let content = '';
@@ -54,8 +54,7 @@
 			const redirectPath = isPublic ? `/public/p/${response.paste_id}` : `/p/${response.paste_id}`;
 			goto(redirectPath);
 		} catch (err) {
-			const apiError = err as ApiError;
-			error = apiError.details || apiError.error || 'Failed to create paste';
+			error = formatApiError(err);
 		} finally {
 			loading = false;
 		}
@@ -63,7 +62,8 @@
 
 	// Redirect if not authenticated
 	$: if (!$auth.isAuthenticated) {
-		goto('/login');
+		const currentPath = encodeURIComponent(window.location.pathname);
+		goto(`/login?next=${currentPath}`);
 	}
 </script>
 
