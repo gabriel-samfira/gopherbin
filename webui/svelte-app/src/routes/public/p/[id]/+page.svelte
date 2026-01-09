@@ -10,6 +10,7 @@
 	import { timeAgo } from '$lib/utils/date';
 	import { copyToClipboard as copyText } from '$lib/utils/clipboard';
 	import { formatApiError } from '$lib/utils/errors';
+	import { decodeBase64 } from '$lib/utils/base64';
 	import type { Paste } from '$lib/types/paste';
 
 	let paste: Paste | null = null;
@@ -30,7 +31,7 @@
 		try {
 			paste = await getPublicPaste(pasteId);
 			// Decode base64 content
-			pasteContent = atob(paste.data);
+			pasteContent = decodeBase64(paste.data);
 		} catch (err) {
 			error = formatApiError(err);
 		} finally {

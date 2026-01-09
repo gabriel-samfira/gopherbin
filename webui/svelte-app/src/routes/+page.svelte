@@ -10,6 +10,7 @@
 	import Spinner from '$lib/components/ui/Spinner.svelte';
 	import { getLanguageFromFilename, editorThemes } from '$lib/utils/syntax';
 	import { formatApiError } from '$lib/utils/errors';
+	import { encodeBase64 } from '$lib/utils/base64';
 
 	let filename = '';
 	let content = '';
@@ -42,7 +43,7 @@
 			const pasteData = {
 				name: filename,
 				language: language,
-				data: btoa(content), // Base64 encode the content
+				data: encodeBase64(content),
 				public: isPublic,
 				description: '',
 				...(expiresDate && { expires: new Date(expiresDate) })

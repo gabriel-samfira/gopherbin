@@ -42,7 +42,8 @@ func NewPaster(dbCfg config.Database) (common.Paster, error) {
 	}
 
 	p := &paste{
-		conn: db,
+		conn:      db,
+		dbBackend: dbCfg.DbBackend,
 		teamMgr: &teamManager{
 			conn: db,
 		},
@@ -54,8 +55,9 @@ func NewPaster(dbCfg config.Database) (common.Paster, error) {
 }
 
 type paste struct {
-	conn    *gorm.DB
-	teamMgr common.TeamManager
+	conn      *gorm.DB
+	dbBackend config.DBBackendType
+	teamMgr   common.TeamManager
 }
 
 func (p *paste) migrateDB() error {
@@ -66,6 +68,108 @@ func (p *paste) migrateDB() error {
 		&models.JWTBacklist{},
 	); err != nil {
 		return err
+	}
+
+	// Setup full-text search based on database backend
+	switch p.dbBackend {
+	case config.SQLiteBackend:
+		// Create FTS5 virtual table for SQLite full-text search
+		var count int64
+		if err := p.conn.Raw("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='pastes_fts'").Scan(&count).Error; err != nil {
+			return errors.Wrap(err, "checking for FTS5 table existence")
+		}
+
+		if count == 0 {
+			// Create FTS5 virtual table
+			if err := p.conn.Exec(`
+				CREATE VIRTUAL TABLE IF NOT EXISTS pastes_fts USING fts5(
+					paste_id UNINDEXED,
+					name,
+					data,
+					content=pastes,
+					content_rowid=id
+				)
+			`).Error; err != nil {
+				return errors.Wrap(err, "creating FTS5 virtual table")
+			}
+
+			// Create triggers to keep FTS table in sync
+			// Drop triggers if they exist (for idempotency)
+			p.conn.Exec("DROP TRIGGER IF EXISTS pastes_ai")
+			p.conn.Exec("DROP TRIGGER IF EXISTS pastes_ad")
+			p.conn.Exec("DROP TRIGGER IF EXISTS pastes_au")
+
+			if err := p.conn.Exec(`
+				CREATE TRIGGER pastes_ai AFTER INSERT ON pastes BEGIN
+					INSERT INTO pastes_fts(rowid, paste_id, name, data)
+					VALUES (new.id, new.paste_id, new.name, new.data);
+				END
+			`).Error; err != nil {
+				return errors.Wrap(err, "creating FTS5 insert trigger")
+			}
+
+			if err := p.conn.Exec(`
+				CREATE TRIGGER pastes_ad AFTER DELETE ON pastes BEGIN
+					INSERT INTO pastes_fts(pastes_fts, rowid, paste_id, name, data)
+					VALUES('delete', old.id, old.paste_id, old.name, old.data);
+				END
+			`).Error; err != nil {
+				return errors.Wrap(err, "creating FTS5 delete trigger")
+			}
+
+			if err := p.conn.Exec(`
+				CREATE TRIGGER pastes_au AFTER UPDATE ON pastes BEGIN
+					INSERT INTO pastes_fts(pastes_fts, rowid, paste_id, name, data)
+					VALUES('delete', old.id, old.paste_id, old.name, old.data);
+					INSERT INTO pastes_fts(rowid, paste_id, name, data)
+					VALUES (new.id, new.paste_id, new.name, new.data);
+				END
+			`).Error; err != nil {
+				return errors.Wrap(err, "creating FTS5 update trigger")
+			}
+
+			// Populate existing data (only if there are pastes)
+			var pasteCount int64
+			if err := p.conn.Model(&models.Paste{}).Count(&pasteCount).Error; err != nil {
+				return errors.Wrap(err, "counting existing pastes")
+			}
+
+			if pasteCount > 0 {
+				if err := p.conn.Exec(`
+					INSERT INTO pastes_fts(rowid, paste_id, name, data)
+					SELECT id, paste_id, name, data FROM pastes
+				`).Error; err != nil {
+					return errors.Wrap(err, "populating FTS5 table with existing data")
+				}
+			}
+		}
+
+	case config.MySQLBackend:
+		// Create FULLTEXT indexes for MySQL
+		// Check if indexes already exist
+		var indexCount int64
+		if err := p.conn.Raw(`
+			SELECT COUNT(*)
+			FROM information_schema.STATISTICS
+			WHERE table_schema = DATABASE()
+			AND table_name = 'pastes'
+			AND index_name = 'idx_pastes_fulltext'
+		`).Scan(&indexCount).Error; err != nil {
+			return errors.Wrap(err, "checking for MySQL FULLTEXT index existence")
+		}
+
+		if indexCount == 0 {
+			// Create FULLTEXT index on name and data columns
+			// Note: This may take time on large tables
+			if err := p.conn.Exec(`
+				ALTER TABLE pastes
+				ADD FULLTEXT INDEX idx_pastes_fulltext (name, data)
+			`).Error; err != nil {
+				// Log warning but don't fail - LIKE search will still work
+				// FULLTEXT requires InnoDB in MySQL 5.6+ or MyISAM
+				fmt.Printf("Warning: Failed to create FULLTEXT index (will use LIKE search): %v\n", err)
+			}
+		}
 	}
 
 	return nil
@@ -293,11 +397,59 @@ func (p *paste) Search(ctx context.Context, query string, page int64, results in
 	now := time.Now()
 	startFrom := (page - 1) * results
 
-	// Search in paste name using LIKE
+	// Build full-text search query based on database backend
+	var q *gorm.DB
 	searchPattern := "%" + query + "%"
-	q := p.conn.Select(
-		"id, paste_id, language, name, description, metadata, owner_id as owner, created_at, expires, public, substr(`data`, 1, 512) as data",
-	).Where("owner_id = ? and name LIKE ? and (expires is NULL or expires >= ?)", user.ID, searchPattern, now).Order("id desc")
+
+	switch p.dbBackend {
+	case config.MySQLBackend:
+		// MySQL: Try to use FULLTEXT search if index exists, fallback to LIKE
+		// Check if FULLTEXT index exists
+		var indexCount int64
+		p.conn.Raw(`
+			SELECT COUNT(*)
+			FROM information_schema.STATISTICS
+			WHERE table_schema = DATABASE()
+			AND table_name = 'pastes'
+			AND index_name = 'idx_pastes_fulltext'
+		`).Scan(&indexCount)
+
+		if indexCount > 0 {
+			// Use FULLTEXT search with MATCH...AGAINST
+			// IN BOOLEAN MODE allows for more flexible searching
+			q = p.conn.Select(
+				"id, paste_id, language, name, description, metadata, owner_id as owner, created_at, expires, public, substr(`data`, 1, 512) as data",
+			).Where(
+				"owner_id = ? AND MATCH(name, `data`) AGAINST(? IN BOOLEAN MODE) AND (expires IS NULL OR expires >= ?)",
+				user.ID, query, now,
+			).Order("id desc")
+		} else {
+			// Fallback to LIKE search
+			q = p.conn.Select(
+				"id, paste_id, language, name, description, metadata, owner_id as owner, created_at, expires, public, substr(`data`, 1, 512) as data",
+			).Where(
+				"owner_id = ? AND (name LIKE ? OR `data` LIKE ?) AND (expires IS NULL OR expires >= ?)",
+				user.ID, searchPattern, searchPattern, now,
+			).Order("id desc")
+		}
+
+	case config.SQLiteBackend:
+		// SQLite: Use FTS5 for full-text search
+		// Join with FTS table and use MATCH for efficient full-text search
+		q = p.conn.Table("pastes").
+			Select(
+				"pastes.id, pastes.paste_id, pastes.language, pastes.name, pastes.description, pastes.metadata, pastes.owner_id as owner, pastes.created_at, pastes.expires, pastes.public, substr(pastes.`data`, 1, 512) as data",
+			).
+			Joins("INNER JOIN pastes_fts ON pastes.id = pastes_fts.rowid").
+			Where("pastes_fts MATCH ? AND pastes.owner_id = ? AND (pastes.expires IS NULL OR pastes.expires >= ?)", query, user.ID, now).
+			Order("pastes.id desc")
+
+	default:
+		// Default fallback: search only in name
+		q = p.conn.Select(
+			"id, paste_id, language, name, description, metadata, owner_id as owner, created_at, expires, public, substr(`data`, 1, 512) as data",
+		).Where("owner_id = ? and name LIKE ? and (expires is NULL or expires >= ?)", user.ID, searchPattern, now).Order("id desc")
+	}
 
 	cntQ := q.Model(&models.Paste{}).Count(&cnt)
 	if cntQ.Error != nil {

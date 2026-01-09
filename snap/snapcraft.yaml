@@ -1,8 +1,13 @@
 name: gopherbin
+title: gopherbin
+license: Apache-2.0
+issues: https://github.com/gabriel-samfira/gopherbin/issues
+source-code: https://github.com/gabriel-samfira/gopherbin
 summary: Gopherbin - A private pastebin written in Go and React
 description: |
         Gopherbin is a simple, password protected paste-like service, that you can self host.
         You can create secret or public pastes or share pastes with other users.
+website: https://github.com/gabriel-samfira/gopherbin
 
 type: app
 confinement: strict

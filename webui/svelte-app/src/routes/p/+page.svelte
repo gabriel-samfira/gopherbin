@@ -13,6 +13,7 @@
 	import { timeAgo } from '$lib/utils/date';
 	import { copyToClipboard } from '$lib/utils/clipboard';
 	import { formatApiError } from '$lib/utils/errors';
+	import { decodeBase64 } from '$lib/utils/base64';
 	import type { Paste } from '$lib/types/paste';
 	import {
 		Eye,
@@ -167,7 +168,7 @@
 			<div class="relative flex-1">
 				<Input
 					bind:value={searchQuery}
-					placeholder="Search pastes..."
+					placeholder="Search by name or content..."
 					on:keydown={handleSearchKeyDown}
 				/>
 				{#if isSearching}
@@ -309,7 +310,7 @@
 							role="button"
 							tabindex="0"
 						>
-							<PastePreview content={atob(paste.preview)} language={paste.language} />
+							<PastePreview content={decodeBase64(paste.preview)} language={paste.language} />
 						</div>
 					{/if}
 				</div>
