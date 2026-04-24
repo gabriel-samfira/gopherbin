@@ -26,7 +26,7 @@ func NewAPIController(paster common.Paster, teamManager common.TeamManager, mgr 
 	return &APIController{
 		paster:      paster,
 		manager:     mgr,
-		teamManager: nil,
+		teamManager: teamManager,
 		cfg:         cfg,
 	}
 }

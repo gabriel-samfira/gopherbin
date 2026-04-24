@@ -1,6 +1,6 @@
 SHELL := bash
 
-.PHONY : help fmt test build-image container-start app
+.PHONY : help fmt tests build-image container-start app
 .DEFAULT_GOAL := help
 
 IMAGE_NAME = gopherbin
@@ -16,7 +16,7 @@ help :
 	@echo
 	@echo "Usage:"
 	@echo "	make fmt			-> running gofmt with options -s(simplify code) and -l (list files)"
-	@echo "	make test			-> run all tests"
+	@echo "	make tests			-> run all tests"
 	@echo "	make submodules			-> initialize the web UI submodule"
 	@echo "	make noUI			-> build gopherbin without the web UI"
 	@echo "	make withUI			-> build gopherbin with the web UI (requires nodejs and yarn to be installed)"
@@ -30,7 +30,7 @@ help :
 fmt:
 	gofmt -s -l .
 
-test:
+tests:
 	go test -mod vendor -tags fts5 ./...
 
 buildUI:
