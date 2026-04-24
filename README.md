@@ -44,6 +44,14 @@ make start-container
 
 ```
 
+## Testing
+
+```bash
+make test
+```
+
+Tests use an in-memory SQLite database and require no external services. The `-tags fts5` flag is applied automatically to enable SQLite full-text search support.
+
 ## Creating a database
 
 Gopherbin can use either MySQL/MariaDB or SQLite3.

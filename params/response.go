@@ -73,8 +73,9 @@ type Paste struct {
 	Language    string            `json:"language"`
 	Name        string            `json:"name"`
 	Description string            `json:"description"`
-	Expires     *time.Time        `json:"expires,omitempty"`
-	Public      bool              `json:"public"`
+	Expires        *time.Time        `json:"expires,omitempty"`
+	ViewsRemaining *int              `json:"views_remaining,omitempty"`
+	Public         bool              `json:"public"`
 	CreatedAt   time.Time         `json:"created_at"`
 	CreatedBy   string            `json:"created_by"`
 	Metadata    map[string]string `json:"metadata"`

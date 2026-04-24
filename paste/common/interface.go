@@ -28,6 +28,7 @@ type Paster interface {
 		title, language, description string,
 		expires *time.Time,
 		isPublic bool, team string,
+		selfDestructAfterViews *int,
 		metadata map[string]string) (paste params.Paste, err error)
 	Get(ctx context.Context, pasteID string) (paste params.Paste, err error)
 	GetPublicPaste(ctx context.Context, pasteID string) (paste params.Paste, err error)

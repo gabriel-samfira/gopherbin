@@ -228,16 +228,17 @@ func (p *paste) sqlToCommonPaste(modelPaste models.Paste, withPreview bool) para
 	}
 
 	paste := params.Paste{
-		ID:          modelPaste.ID,
-		PasteID:     modelPaste.PasteID,
-		Language:    modelPaste.Language,
-		Name:        modelPaste.Name,
-		Description: modelPaste.Description,
-		Public:      modelPaste.Public,
-		CreatedAt:   modelPaste.CreatedAt,
-		Expires:     modelPaste.Expires,
-		CreatedBy:   modelPaste.Owner.FullName,
-		Metadata:    metadata,
+		ID:             modelPaste.ID,
+		PasteID:        modelPaste.PasteID,
+		Language:       modelPaste.Language,
+		Name:           modelPaste.Name,
+		Description:    modelPaste.Description,
+		Public:         modelPaste.Public,
+		CreatedAt:      modelPaste.CreatedAt,
+		Expires:        modelPaste.Expires,
+		ViewsRemaining: modelPaste.ViewsRemaining,
+		CreatedBy:      modelPaste.Owner.FullName,
+		Metadata:       metadata,
 	}
 	if withPreview {
 		paste.Preview = modelPaste.Data
@@ -252,6 +253,7 @@ func (p *paste) Create(
 	title, language, description string,
 	expires *time.Time,
 	isPublic bool, team string,
+	selfDestructAfterViews *int,
 	metadata map[string]string) (paste params.Paste, err error) {
 
 	pasteID, err := util.GetRandomString(24)
@@ -278,16 +280,17 @@ func (p *paste) Create(
 	}
 
 	newPaste := models.Paste{
-		PasteID:     pasteID,
-		Owner:       user,
-		CreatedAt:   time.Now(),
-		Data:        data,
-		Expires:     expires,
-		Language:    language,
-		Public:      isPublic,
-		Name:        title,
-		Description: description,
-		Metadata:    encodedMetadata,
+		PasteID:        pasteID,
+		Owner:          user,
+		CreatedAt:      time.Now(),
+		Data:           data,
+		Expires:        expires,
+		ViewsRemaining: selfDestructAfterViews,
+		Language:       language,
+		Public:         isPublic,
+		Name:           title,
+		Description:    description,
+		Metadata:       encodedMetadata,
 	}
 	q := p.conn.Create(&newPaste)
 	if q.Error != nil {
@@ -330,6 +333,17 @@ func (p *paste) canAccess(paste models.Paste, user models.Users) bool {
 	return false
 }
 
+func (p *paste) handleViewCount(pst models.Paste) {
+	if pst.ViewsRemaining == nil {
+		return
+	}
+	if *pst.ViewsRemaining <= 1 {
+		p.conn.Unscoped().Delete(&pst)
+		return
+	}
+	p.conn.Model(&pst).Update("views_remaining", gorm.Expr("views_remaining - 1"))
+}
+
 func (p *paste) GetPublicPaste(ctx context.Context, pasteID string) (params.Paste, error) {
 	var tmpPaste models.Paste
 	now := time.Now()
@@ -341,7 +355,9 @@ func (p *paste) GetPublicPaste(ctx context.Context, pasteID string) (params.Past
 		}
 		return params.Paste{}, errors.Wrap(q.Error, "fetching paste from database")
 	}
-	return p.sqlToCommonPaste(tmpPaste, false), nil
+	result := p.sqlToCommonPaste(tmpPaste, false)
+	p.handleViewCount(tmpPaste)
+	return result, nil
 }
 
 func (p *paste) getPaste(pasteID string, user models.Users) (models.Paste, error) {
@@ -373,12 +389,14 @@ func (p *paste) get(ctx context.Context, pasteID string) (models.Paste, error) {
 	return pst, nil
 }
 
-func (p *paste) Get(ctx context.Context, pasteID string) (paste params.Paste, err error) {
+func (p *paste) Get(ctx context.Context, pasteID string) (params.Paste, error) {
 	pst, err := p.get(ctx, pasteID)
 	if err != nil {
 		return params.Paste{}, errors.Wrap(err, "fetching paste")
 	}
-	return p.sqlToCommonPaste(pst, false), nil
+	result := p.sqlToCommonPaste(pst, false)
+	p.handleViewCount(pst)
+	return result, nil
 }
 
 func (p *paste) Search(ctx context.Context, query string, page int64, results int64) (params.PasteListResult, error) {

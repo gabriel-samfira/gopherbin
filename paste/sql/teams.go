@@ -42,7 +42,7 @@ func (t *teamManager) getUserByUsernameOrEmail(userID string) (models.Users, err
 		queryString = "email = ?"
 	}
 
-	q := t.conn.Preload("Teams").Where(queryString, userID).First(&tmpUser)
+	q := t.conn.Where(queryString, userID).First(&tmpUser)
 	if q.Error != nil {
 		if errors.Is(q.Error, gorm.ErrRecordNotFound) {
 			return models.Users{}, gErrors.ErrNotFound
@@ -55,7 +55,7 @@ func (t *teamManager) getUserByUsernameOrEmail(userID string) (models.Users, err
 func (t *teamManager) getUser(userID uint) (models.Users, error) {
 	// TODO: abstract this into a common interface
 	var tmpUser models.Users
-	q := t.conn.Preload("Teams").Where("id = ?", userID).First(&tmpUser)
+	q := t.conn.Where("id = ?", userID).First(&tmpUser)
 	if q.Error != nil {
 		if errors.Is(q.Error, gorm.ErrRecordNotFound) {
 			return models.Users{}, gErrors.ErrNotFound
