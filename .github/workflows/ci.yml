@@ -21,7 +21,7 @@ jobs:
 
       - name: Check formatting
         run: |
-          unformatted=$(gofmt -s -l .)
+          unformatted=$(find . -name "*.go" -not -path "./vendor/*" | xargs gofmt -s -l)
           if [ -n "$unformatted" ]; then
             echo "Unformatted files:"
             echo "$unformatted"

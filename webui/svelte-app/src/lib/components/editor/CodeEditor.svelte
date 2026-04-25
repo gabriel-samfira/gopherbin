@@ -16,6 +16,15 @@
 	let themeCompartment = new Compartment();
 	let viewportHeight = 0;
 
+	const handleResize = () => {
+		if (dynamicHeight) {
+			viewportHeight = window.innerHeight - 225;
+			if (editorView) {
+				editorView.dom.style.maxHeight = `${viewportHeight}px`;
+			}
+		}
+	};
+
 	// Dynamic language loader
 	async function loadLanguage(lang: string) {
 		const langLower = lang.toLowerCase();
@@ -168,24 +177,11 @@
 			});
 		}
 
-		// Update viewport height on window resize (only for dynamic height mode)
-		const handleResize = () => {
-			if (dynamicHeight) {
-				viewportHeight = window.innerHeight - 225;
-				if (editorView) {
-					editorView.dom.style.maxHeight = `${viewportHeight}px`;
-				}
-			}
-		};
-
 		window.addEventListener('resize', handleResize);
-
-		return () => {
-			window.removeEventListener('resize', handleResize);
-		};
 	});
 
 	onDestroy(() => {
+		window.removeEventListener('resize', handleResize);
 		editorView?.destroy();
 	});
 

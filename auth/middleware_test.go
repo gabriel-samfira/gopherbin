@@ -49,7 +49,7 @@ func (m *mockManager) CreateSuperUser(_ params.NewUserParams) (params.Users, err
 	return params.Users{}, nil
 }
 func (m *mockManager) BlacklistToken(_ string, _ int64) error { return nil }
-func (m *mockManager) CleanTokens() error                    { return nil }
+func (m *mockManager) CleanTokens() error                     { return nil }
 
 var _ adminCommon.UserManager = (*mockManager)(nil)
 
