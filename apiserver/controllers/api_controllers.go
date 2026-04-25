@@ -334,6 +334,7 @@ func (p *APIController) CreatePasteHandler(w http.ResponseWriter, r *http.Reques
 		ctx, pasteData.Data, pasteData.Name,
 		pasteData.Language, pasteData.Description,
 		pasteData.Expires, pasteData.Public, "",
+		pasteData.ViewsRemaining,
 		pasteData.Metadata)
 	if err != nil {
 		fmt.Println(err)
