@@ -1,6 +1,6 @@
 SHELL := bash
 
-.PHONY: help fmt tests build build-ui no-ui with-ui all-no-ui all build-image container-start app
+.PHONY: help fmt fmt-check tests build build-ui no-ui with-ui all-no-ui all build-image container-start app
 .DEFAULT_GOAL := help
 
 IMAGE_NAME    = gopherbin
@@ -15,8 +15,9 @@ help:
 	@echo "  CONFIG_FILE      -> config file mounted into the container"
 	@echo
 	@echo "Usage:"
-	@echo "  make fmt          -> run gofmt -s -l"
-	@echo "  make tests        -> run all tests (requires SQLite FTS5)"
+	@echo "  make fmt          -> run gofmt -s -l (excluding vendor)"
+	@echo "  make fmt-check    -> fail if any non-vendor Go file is unformatted"
+	@echo "  make tests        -> fmt-check + run all tests (requires SQLite FTS5)"
 	@echo "  make build        -> build gopherbin with embedded web UI"
 	@echo "  make no-ui        -> build gopherbin without web UI"
 	@echo "  make with-ui      -> build gopherbin with embedded web UI (requires Node.js)"
@@ -26,10 +27,20 @@ help:
 	@echo "  make container-start -> start gopherbin container"
 	@echo "  make app          -> build-image + container-start"
 
-fmt:
-	gofmt -s -l .
+GO_FILES = $(shell find . -name "*.go" -not -path "./vendor/*")
 
-tests:
+fmt:
+	gofmt -s -l $(GO_FILES)
+
+fmt-check:
+	@unformatted=$$(gofmt -s -l $(GO_FILES)); \
+	if [ -n "$$unformatted" ]; then \
+		echo "Unformatted files:"; \
+		echo "$$unformatted"; \
+		exit 1; \
+	fi
+
+tests: fmt-check
 	go test -mod vendor -tags fts5 ./...
 
 build-ui:

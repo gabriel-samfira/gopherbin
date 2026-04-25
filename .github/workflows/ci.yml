@@ -20,16 +20,10 @@ jobs:
           cache: false
 
       - name: Check formatting
-        run: |
-          unformatted=$(find . -name "*.go" -not -path "./vendor/*" | xargs gofmt -s -l)
-          if [ -n "$unformatted" ]; then
-            echo "Unformatted files:"
-            echo "$unformatted"
-            exit 1
-          fi
+        run: make fmt-check
 
       - name: Run tests
-        run: go test -mod vendor -tags fts5 ./...
+        run: make tests
 
       - name: Build binary
         run: go build -mod vendor -tags fts5 ./cmd/...
