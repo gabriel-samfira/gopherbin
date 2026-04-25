@@ -1,0 +1,16 @@
+with-expecter: true
+resolve-type-alias: false
+disable-version-string: true
+issue-845-fix: true
+dir: "{{.InterfaceDir}}/mocks"
+outpkg: mocks
+mockname: "Mock{{.InterfaceName}}"
+filename: "mock_{{.InterfaceName}}.go"
+packages:
+  gopherbin/paste/common:
+    interfaces:
+      Paster:
+      TeamManager:
+  gopherbin/admin/common:
+    interfaces:
+      UserManager:
