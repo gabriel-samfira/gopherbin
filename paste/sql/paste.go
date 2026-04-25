@@ -333,30 +333,41 @@ func (p *paste) canAccess(paste models.Paste, user models.Users) bool {
 	return false
 }
 
-func (p *paste) handleViewCount(pst models.Paste) {
+func (p *paste) handleViewCount(tx *gorm.DB, pst models.Paste) error {
 	if pst.ViewsRemaining == nil {
-		return
+		return nil
 	}
 	if *pst.ViewsRemaining <= 1 {
-		p.conn.Unscoped().Delete(&pst)
-		return
+		if err := tx.Unscoped().Delete(&pst).Error; err != nil {
+			return errors.Wrap(err, "deleting paste")
+		}
+		return nil
 	}
-	p.conn.Model(&pst).Update("views_remaining", gorm.Expr("views_remaining - 1"))
+	if err := tx.Model(&pst).Update("views_remaining", gorm.Expr("views_remaining - 1")).Error; err != nil {
+		return errors.Wrap(err, "updating view count")
+	}
+	return nil
 }
 
 func (p *paste) GetPublicPaste(ctx context.Context, pasteID string) (params.Paste, error) {
-	var tmpPaste models.Paste
-	now := time.Now()
-	q := p.conn.Where(
-		"paste_id = ? and (expires is NULL or expires >= ?) and public = ?", pasteID, now, true).First(&tmpPaste)
-	if q.Error != nil {
-		if errors.Is(q.Error, gorm.ErrRecordNotFound) {
-			return params.Paste{}, gErrors.ErrNotFound
+	var result params.Paste
+	err := p.conn.Transaction(func(tx *gorm.DB) error {
+		var tmpPaste models.Paste
+		now := time.Now()
+		q := tx.Where(
+			"paste_id = ? and (expires is NULL or expires >= ?) and public = ?", pasteID, now, true).First(&tmpPaste)
+		if q.Error != nil {
+			if errors.Is(q.Error, gorm.ErrRecordNotFound) {
+				return gErrors.ErrNotFound
+			}
+			return errors.Wrap(q.Error, "fetching paste from database")
 		}
-		return params.Paste{}, errors.Wrap(q.Error, "fetching paste from database")
+		result = p.sqlToCommonPaste(tmpPaste, false)
+		return p.handleViewCount(tx, tmpPaste)
+	})
+	if err != nil {
+		return params.Paste{}, err
 	}
-	result := p.sqlToCommonPaste(tmpPaste, false)
-	p.handleViewCount(tmpPaste)
 	return result, nil
 }
 
@@ -390,12 +401,18 @@ func (p *paste) get(ctx context.Context, pasteID string) (models.Paste, error) {
 }
 
 func (p *paste) Get(ctx context.Context, pasteID string) (params.Paste, error) {
-	pst, err := p.get(ctx, pasteID)
+	var result params.Paste
+	err := p.conn.Transaction(func(tx *gorm.DB) error {
+		pst, err := p.get(ctx, pasteID)
+		if err != nil {
+			return errors.Wrap(err, "fetching paste")
+		}
+		result = p.sqlToCommonPaste(pst, false)
+		return p.handleViewCount(tx, pst)
+	})
 	if err != nil {
-		return params.Paste{}, errors.Wrap(err, "fetching paste")
+		return params.Paste{}, err
 	}
-	result := p.sqlToCommonPaste(pst, false)
-	p.handleViewCount(pst)
 	return result, nil
 }
 
