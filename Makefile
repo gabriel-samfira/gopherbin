@@ -51,6 +51,6 @@ build-image:
 	docker image prune -f --filter label=stage=builder
 
 container-start :
-	docker run -p 9997:9997 --name $(CONTAINER_NAME) -v $(CONFIG_FILE):/etc/gopherbin-config.toml -d $(IMAGE_NAME)
+	docker run --rm -p 9997:9997 --name $(CONTAINER_NAME) -v $(CONFIG_FILE):/etc/gopherbin-config.toml -d $(IMAGE_NAME)
 
 app: build-image container-start
