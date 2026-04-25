@@ -1,0 +1,21 @@
+with-expecter: true
+packages:
+  gopherbin/paste/common:
+    interfaces:
+      Paster:
+        config:
+          dir: "{{.InterfaceDir}}/mocks"
+          outpkg: mocks
+          filename: "mock_{{.InterfaceName}}.go"
+      TeamManager:
+        config:
+          dir: "{{.InterfaceDir}}/mocks"
+          outpkg: mocks
+          filename: "mock_{{.InterfaceName}}.go"
+  gopherbin/admin/common:
+    interfaces:
+      UserManager:
+        config:
+          dir: "{{.InterfaceDir}}/mocks"
+          outpkg: mocks
+          filename: "mock_{{.InterfaceName}}.go"
