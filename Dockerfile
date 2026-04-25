@@ -13,8 +13,7 @@ ENV GOPATH=/tmp/go
 # build gopher binary
 RUN make all
 
-# creating a minimal image
-FROM scratch
+FROM gcr.io/distroless/base-debian12
 
 # Copy our binary to the image
 COPY --from=builder /tmp/go/bin/gopherbin /gopherbin

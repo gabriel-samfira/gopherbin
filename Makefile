@@ -37,10 +37,10 @@ buildUI:
 	cd webui/svelte-app && npm install && npm run build
 
 noUI:
-	go install -mod vendor -ldflags="-s -w" ./cmd/...
+	go install -mod vendor -ldflags="-s -w" -tags fts5 ./cmd/...
 
 withUI: buildUI
-	go install -mod vendor -ldflags="-s -w -X 'gopherbin/webui.BuildTime=$(shell date +%s)'" -tags webui ./cmd/...
+	go install -mod vendor -ldflags="-s -w -X 'gopherbin/webui.BuildTime=$(shell date +%s)'" -tags webui,fts5 ./cmd/...
 
 all-noui: fmt noUI
 
@@ -51,6 +51,6 @@ build-image:
 	docker image prune -f --filter label=stage=builder
 
 container-start :
-	docker run --rm -p 9997:9997 --name $(CONTAINER_NAME) -v $(CONFIG_FILE):/etc/gopherbin-config.toml -d $(IMAGE_NAME)
+	docker run -p 9997:9997 --name $(CONTAINER_NAME) -v $(CONFIG_FILE):/etc/gopherbin-config.toml -d $(IMAGE_NAME)
 
 app: build-image container-start
