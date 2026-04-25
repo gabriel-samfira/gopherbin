@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { page as appPage } from '$app/stores';
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { listPastes, searchPastes, deletePaste, updatePaste } from '$lib/api/pastes';
@@ -41,7 +42,7 @@
 
 	async function loadPastes() {
 		if (!$auth.token) {
-			const currentPath = encodeURIComponent(window.location.pathname);
+			const currentPath = encodeURIComponent($appPage.url.pathname);
 			goto(`/login?next=${currentPath}`);
 			return;
 		}
@@ -135,8 +136,8 @@
 	async function copyPasteUrl(paste: Paste, event: Event) {
 		event.stopPropagation();
 		const url = paste.public
-			? `${window.location.origin}/public/p/${paste.paste_id}`
-			: `${window.location.origin}/p/${paste.paste_id}`;
+			? `${$appPage.url.origin}/public/p/${paste.paste_id}`
+			: `${$appPage.url.origin}/p/${paste.paste_id}`;
 
 		try {
 			await copyToClipboard(url);

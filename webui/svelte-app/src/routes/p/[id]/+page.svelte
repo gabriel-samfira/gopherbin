@@ -26,7 +26,7 @@
 	onMount(async () => {
 		if (!$auth.token) {
 			// Redirect to login with next parameter
-			const currentPath = encodeURIComponent(window.location.pathname);
+			const currentPath = encodeURIComponent($page.url.pathname);
 			goto(`/login?next=${currentPath}`);
 			return;
 		}

@@ -19,7 +19,7 @@ Clone Gopherbin:
 git clone https://github.com/gabriel-samfira/gopherbin
 ```
 
-If you want to build the UI, you will need a recent version of nodejs and yarn. With those dependencies installed, simply run:
+If you want to build the UI, you will need a recent version of Node.js and npm. With those dependencies installed, simply run:
 
 ```bash
 make all
@@ -28,7 +28,7 @@ make all
 Building without a UI:
 
 ```bash
-make all-noui
+make all-no-ui
 ```
 
 ### Building a docker image
@@ -40,14 +40,14 @@ make all-noui
 make build-image
 
 # start a container using image previously built
-make start-container
+make container-start
 
 ```
 
 ## Testing
 
 ```bash
-make test
+make tests
 ```
 
 Tests use an in-memory SQLite database and require no external services. The `-tags fts5` flag is applied automatically to enable SQLite full-text search support.

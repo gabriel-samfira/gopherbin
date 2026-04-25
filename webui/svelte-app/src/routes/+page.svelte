@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { browser } from '$app/environment';
+	import { page } from '$app/stores';
 	import { auth } from '$lib/stores/auth';
 	import { editorTheme } from '$lib/stores/editorTheme';
 	import { createPaste } from '$lib/api/pastes';
@@ -62,8 +64,8 @@
 	}
 
 	// Redirect if not authenticated
-	$: if (!$auth.isAuthenticated) {
-		const currentPath = encodeURIComponent(window.location.pathname);
+	$: if (browser && !$auth.isAuthenticated) {
+		const currentPath = encodeURIComponent($page.url.pathname);
 		goto(`/login?next=${currentPath}`);
 	}
 </script>
