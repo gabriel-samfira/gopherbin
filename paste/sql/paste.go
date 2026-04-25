@@ -337,14 +337,11 @@ func (p *paste) handleViewCount(tx *gorm.DB, pst models.Paste) error {
 	if pst.ViewsRemaining == nil {
 		return nil
 	}
-	if *pst.ViewsRemaining <= 1 {
-		if err := tx.Unscoped().Delete(&pst).Error; err != nil {
-			return errors.Wrap(err, "deleting paste")
-		}
-		return nil
-	}
 	if err := tx.Model(&pst).Update("views_remaining", gorm.Expr("views_remaining - 1")).Error; err != nil {
 		return errors.Wrap(err, "updating view count")
+	}
+	if err := tx.Unscoped().Where("views_remaining IS NOT NULL AND views_remaining < 1").Delete(&models.Paste{}).Error; err != nil {
+		return errors.Wrap(err, "cleaning up expired pastes")
 	}
 	return nil
 }
