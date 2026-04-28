@@ -28,7 +28,8 @@ type Paster interface {
 		title, language, description string,
 		expires *time.Time,
 		isPublic bool, team string,
-		metadata map[string]string) (paste params.Paste, err error)
+		metadata map[string]string,
+		maxAccesses *int) (paste params.Paste, err error)
 	Get(ctx context.Context, pasteID string) (paste params.Paste, err error)
 	GetPublicPaste(ctx context.Context, pasteID string) (paste params.Paste, err error)
 	List(ctx context.Context, page int64, results int64) (paste params.PasteListResult, err error)

@@ -34,6 +34,8 @@ type Paste struct {
 	CreatedAt   time.Time
 	Expires     *time.Time `gorm:"index:expires"`
 	Public      bool
+	MaxAccesses *int `gorm:"default:NULL"`
+	AccessCount int  `gorm:"default:0"`
 	TeamID      *uint
 	Team        Teams   `gorm:"foreignKey:TeamID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 	Users       []Users `gorm:"many2many:paste_users;constraint:OnDelete:CASCADE"`

@@ -74,6 +74,8 @@ type Paste struct {
 	Name        string            `json:"name"`
 	Description string            `json:"description"`
 	Expires     *time.Time        `json:"expires,omitempty"`
+	MaxAccesses *int              `json:"max_accesses,omitempty"`
+	AccessCount int               `json:"access_count,omitempty"`
 	Public      bool              `json:"public"`
 	CreatedAt   time.Time         `json:"created_at"`
 	CreatedBy   string            `json:"created_by"`

@@ -30,6 +30,7 @@ import (
 	"gopherbin/util"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/pkg/errors"
 )
@@ -218,6 +219,23 @@ func (p *paste) getUserByUsernameOrEmail(userID string) (models.Users, error) {
 	return tmpUser, nil
 }
 
+// incrementAndMaybeDestroy increments the access counter and, if the paste has
+// reached its access limit, hard-deletes it. Must be called inside a transaction.
+func (p *paste) incrementAndMaybeDestroy(tx *gorm.DB, pst *models.Paste) error {
+	if err := tx.Model(pst).UpdateColumn(
+		"access_count", gorm.Expr("access_count + 1"),
+	).Error; err != nil {
+		return errors.Wrap(err, "incrementing access count")
+	}
+	pst.AccessCount++
+	if pst.AccessCount >= *pst.MaxAccesses {
+		if err := tx.Unscoped().Delete(pst).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return errors.Wrap(err, "deleting exhausted paste")
+		}
+	}
+	return nil
+}
+
 func (p *paste) sqlToCommonPaste(modelPaste models.Paste, withPreview bool) params.Paste {
 	metadata := make(map[string]string)
 	if modelPaste.Metadata != nil {
@@ -236,6 +254,8 @@ func (p *paste) sqlToCommonPaste(modelPaste models.Paste, withPreview bool) para
 		Public:      modelPaste.Public,
 		CreatedAt:   modelPaste.CreatedAt,
 		Expires:     modelPaste.Expires,
+		MaxAccesses: modelPaste.MaxAccesses,
+		AccessCount: modelPaste.AccessCount,
 		CreatedBy:   modelPaste.Owner.FullName,
 		Metadata:    metadata,
 	}
@@ -252,7 +272,8 @@ func (p *paste) Create(
 	title, language, description string,
 	expires *time.Time,
 	isPublic bool, team string,
-	metadata map[string]string) (paste params.Paste, err error) {
+	metadata map[string]string,
+	maxAccesses *int) (paste params.Paste, err error) {
 
 	pasteID, err := util.GetRandomString(24)
 	if err != nil {
@@ -288,6 +309,7 @@ func (p *paste) Create(
 		Name:        title,
 		Description: description,
 		Metadata:    encodedMetadata,
+		MaxAccesses: maxAccesses,
 	}
 	q := p.conn.Create(&newPaste)
 	if q.Error != nil {
@@ -332,31 +354,49 @@ func (p *paste) canAccess(paste models.Paste, user models.Users) bool {
 
 func (p *paste) GetPublicPaste(ctx context.Context, pasteID string) (params.Paste, error) {
 	var tmpPaste models.Paste
-	now := time.Now()
-	q := p.conn.Where(
-		"paste_id = ? and (expires is NULL or expires >= ?) and public = ?", pasteID, now, true).First(&tmpPaste)
-	if q.Error != nil {
-		if errors.Is(q.Error, gorm.ErrRecordNotFound) {
-			return params.Paste{}, gErrors.ErrNotFound
+	err := p.conn.Transaction(func(tx *gorm.DB) error {
+		now := time.Now()
+		q := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where(
+			"paste_id = ? and (expires is NULL or expires >= ?) and public = ?", pasteID, now, true).First(&tmpPaste)
+		if q.Error != nil {
+			if errors.Is(q.Error, gorm.ErrRecordNotFound) {
+				return gErrors.ErrNotFound
+			}
+			return errors.Wrap(q.Error, "fetching paste from database")
 		}
-		return params.Paste{}, errors.Wrap(q.Error, "fetching paste from database")
+		if tmpPaste.MaxAccesses != nil {
+			return p.incrementAndMaybeDestroy(tx, &tmpPaste)
+		}
+		return nil
+	})
+	if err != nil {
+		return params.Paste{}, err
 	}
 	return p.sqlToCommonPaste(tmpPaste, false), nil
 }
 
 func (p *paste) getPaste(pasteID string, user models.Users) (models.Paste, error) {
 	var tmpPaste models.Paste
-	now := time.Now()
-	q := p.conn.Preload("Users").Preload("Owner").Where(
-		"paste_id = ? and (expires is NULL or expires >= ?)", pasteID, now).First(&tmpPaste)
-	if q.Error != nil {
-		if errors.Is(q.Error, gorm.ErrRecordNotFound) {
-			return models.Paste{}, gErrors.ErrNotFound
+	err := p.conn.Transaction(func(tx *gorm.DB) error {
+		now := time.Now()
+		q := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Preload("Users").Preload("Owner").Where(
+			"paste_id = ? and (expires is NULL or expires >= ?)", pasteID, now).First(&tmpPaste)
+		if q.Error != nil {
+			if errors.Is(q.Error, gorm.ErrRecordNotFound) {
+				return gErrors.ErrNotFound
+			}
+			return errors.Wrap(q.Error, "fetching paste from database")
 		}
-		return models.Paste{}, errors.Wrap(q.Error, "fetching paste from database")
-	}
-	if canAccess := p.canAccess(tmpPaste, user); !canAccess {
-		return models.Paste{}, gErrors.ErrNotFound
+		if canAccess := p.canAccess(tmpPaste, user); !canAccess {
+			return gErrors.ErrNotFound
+		}
+		if tmpPaste.MaxAccesses != nil {
+			return p.incrementAndMaybeDestroy(tx, &tmpPaste)
+		}
+		return nil
+	})
+	if err != nil {
+		return models.Paste{}, err
 	}
 	return tmpPaste, nil
 }
