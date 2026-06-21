@@ -16,6 +16,8 @@ package params
 
 import (
 	"fmt"
+	"time"
+
 	"gopherbin/errors"
 	"gopherbin/util"
 
@@ -113,9 +115,23 @@ func (p PasswordLoginParams) Validate() error {
 	return nil
 }
 
-// UpdatePasteParams is the payload we can send to update a paste.
+// UpdatePasteParams is the payload we can send to update a paste. All fields
+// are optional; only fields explicitly set in the payload are applied.
 type UpdatePasteParams struct {
-	Public bool `json:"public"`
+	Public   *bool      `json:"public,omitempty"`
+	Expires  *time.Time `json:"expires,omitempty"`
+	Language *string    `json:"language,omitempty"`
+	// ClearExpiration removes the expiration date when true. Takes precedence
+	// over Expires.
+	ClearExpiration bool `json:"clear_expiration,omitempty"`
+}
+
+// Validate checks the update payload for obvious errors.
+func (u UpdatePasteParams) Validate() error {
+	if u.Language != nil && len(*u.Language) > 64 {
+		return errors.NewBadRequestError("language name too long")
+	}
+	return nil
 }
 
 // NewTeamParams holds information needed to create a new team.
