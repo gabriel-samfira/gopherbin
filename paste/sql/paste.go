@@ -672,12 +672,26 @@ func (p *paste) ListShares(ctx context.Context, pasteID string) (params.PasteSha
 	}, nil
 }
 
-func (p *paste) SetPrivacy(ctx context.Context, pasteID string, public bool) (params.Paste, error) {
+func (p *paste) UpdatePaste(ctx context.Context, pasteID string, updateParams params.UpdatePasteParams) (params.Paste, error) {
+	if err := updateParams.Validate(); err != nil {
+		return params.Paste{}, err
+	}
 	pst, err := p.get(ctx, pasteID)
 	if err != nil {
 		return params.Paste{}, errors.Wrap(err, "fetching paste")
 	}
-	pst.Public = public
+	if updateParams.Public != nil {
+		pst.Public = *updateParams.Public
+	}
+	if updateParams.Language != nil {
+		pst.Language = *updateParams.Language
+	}
+	if updateParams.ClearExpiration {
+		pst.Expires = nil
+	} else if updateParams.Expires != nil {
+		exp := *updateParams.Expires
+		pst.Expires = &exp
+	}
 	q := p.conn.Save(&pst)
 	if q.Error != nil {
 		return params.Paste{}, errors.Wrap(q.Error, "saving paste to DB")

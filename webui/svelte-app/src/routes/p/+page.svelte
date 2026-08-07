@@ -15,6 +15,7 @@
 	import { copyToClipboard } from '$lib/utils/clipboard';
 	import { formatApiError } from '$lib/utils/errors';
 	import { decodeBase64 } from '$lib/utils/base64';
+	import { extensionToLanguage } from '$lib/utils/syntax';
 	import type { Paste } from '$lib/types/paste';
 	import {
 		Eye,
@@ -25,8 +26,11 @@
 		Lock,
 		Trash2,
 		Search,
-		X
+		X,
+		Pencil
 	} from 'lucide-svelte';
+
+	const availableLanguages = Array.from(new Set(Object.values(extensionToLanguage))).sort();
 
 	let pastes: Paste[] = [];
 	let loading = true;
@@ -35,6 +39,12 @@
 	let totalPages = 1;
 	let maxResults = 20;
 	let deletingPaste: Paste | null = null;
+	let editingPaste: Paste | null = null;
+	let editLanguage = '';
+	let editExpires = '';
+	let editPublic = false;
+	let editSaving = false;
+	let editError = '';
 	let sharingPaste: { id: string; name: string } | null = null;
 	let copyTooltip: string | null = null;
 	let searchQuery = '';
@@ -125,6 +135,49 @@
 			loadPastes();
 		} catch (err) {
 			error = formatApiError(err);
+		}
+	}
+
+	function initEdit(paste: Paste, event: Event) {
+		event.stopPropagation();
+		editingPaste = paste;
+		editLanguage = paste.language || '';
+		editPublic = paste.public;
+		editError = '';
+		if (paste.expires) {
+			// Convert ISO string to value accepted by datetime-local input.
+			const d = new Date(paste.expires);
+			const pad = (n: number) => String(n).padStart(2, '0');
+			editExpires = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+		} else {
+			editExpires = '';
+		}
+	}
+
+	async function saveEdit() {
+		if (!editingPaste || !$auth.token) return;
+		editSaving = true;
+		editError = '';
+		try {
+			const payload: Record<string, unknown> = {
+				public: editPublic,
+				language: editLanguage
+			};
+			const original = editingPaste.expires ?? '';
+			if (!editExpires) {
+				if (original) {
+					payload.clear_expiration = true;
+				}
+			} else {
+				payload.expires = new Date(editExpires).toISOString();
+			}
+			await updatePaste(editingPaste.paste_id, payload, $auth.token);
+			editingPaste = null;
+			await loadPastes();
+		} catch (err) {
+			editError = formatApiError(err);
+		} finally {
+			editSaving = false;
 		}
 	}
 
@@ -277,6 +330,10 @@
 								{/if}
 							</div>
 
+							<IconButton title="Edit paste" on:click={(e) => initEdit(paste, e)}>
+								<Pencil class="w-4 h-4" />
+							</IconButton>
+
 							<IconButton title="Share paste" on:click={(e) => initShare(paste, e)}>
 								<Share2 class="w-4 h-4" />
 							</IconButton>
@@ -352,6 +409,58 @@
 		<div class="flex justify-end gap-2">
 			<Button on:click={() => (deletingPaste = null)} variant="secondary">Cancel</Button>
 			<Button on:click={confirmDelete} variant="danger">Delete</Button>
+		</div>
+	</div>
+</Modal>
+
+<!-- Edit Modal -->
+<Modal show={!!editingPaste} onClose={() => (editingPaste = null)}>
+	<div class="space-y-4">
+		<h2 class="text-xl font-bold text-gray-900 dark:text-gray-100">Edit paste</h2>
+		<p class="text-sm text-gray-600 dark:text-gray-400 truncate">
+			<strong>{editingPaste?.name}</strong>
+		</p>
+
+		{#if editError}
+			<div class="p-2 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded-md text-sm">
+				{editError}
+			</div>
+		{/if}
+
+		<div class="space-y-3">
+			<label class="block">
+				<span class="text-sm text-gray-700 dark:text-gray-300">Language</span>
+				<select
+					bind:value={editLanguage}
+					class="mt-1 w-full px-3 py-2 border rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600 text-sm"
+				>
+					{#each availableLanguages as lang}
+						<option value={lang}>{lang}</option>
+					{/each}
+				</select>
+			</label>
+
+			<label class="block">
+				<span class="text-sm text-gray-700 dark:text-gray-300">Expires</span>
+				<div class="flex gap-2 mt-1">
+					<input
+						type="datetime-local"
+						bind:value={editExpires}
+						class="flex-1 px-3 py-2 border rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600 text-sm"
+					/>
+					<Button type="button" variant="secondary" on:click={() => (editExpires = '')}>Clear</Button>
+				</div>
+			</label>
+
+			<label class="flex items-center gap-2">
+				<input type="checkbox" bind:checked={editPublic} />
+				<span class="text-sm text-gray-700 dark:text-gray-300">Public</span>
+			</label>
+		</div>
+
+		<div class="flex justify-end gap-2">
+			<Button on:click={() => (editingPaste = null)} variant="secondary" disabled={editSaving}>Cancel</Button>
+			<Button on:click={saveEdit} variant="primary" disabled={editSaving}>Save</Button>
 		</div>
 	</div>
 </Modal>

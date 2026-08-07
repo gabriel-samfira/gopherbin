@@ -23,6 +23,9 @@ export interface PasteCreate {
 
 export interface PasteUpdate {
 	public?: boolean;
+	expires?: string | null;
+	language?: string;
+	clear_expiration?: boolean;
 }
 
 export interface PasteList {

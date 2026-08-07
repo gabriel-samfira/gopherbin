@@ -364,7 +364,7 @@ func (p *APIController) UpdatePasteHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	pasteInfo, err := p.paster.SetPrivacy(ctx, pasteID, pasteData.Public)
+	pasteInfo, err := p.paster.UpdatePaste(ctx, pasteID, pasteData)
 	if err != nil {
 		handleError(w, err)
 		return
