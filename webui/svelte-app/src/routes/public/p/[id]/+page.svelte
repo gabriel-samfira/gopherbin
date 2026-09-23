@@ -31,7 +31,7 @@
 		try {
 			paste = await getPublicPaste(pasteId);
 			// Decode base64 content
-			pasteContent = decodeBase64(paste.data);
+			pasteContent = paste.data ? decodeBase64(paste.data) : '';
 		} catch (err) {
 			error = formatApiError(err);
 		} finally {
