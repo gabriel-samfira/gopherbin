@@ -2,7 +2,9 @@ package sql_test
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -103,6 +105,72 @@ func TestCreateSuperUser_FailsIfAlreadyExists(t *testing.T) {
 	}
 }
 
+// TestCreateSuperUser_ConcurrentFirstRunCreatesExactlyOne reproduces the
+// first-run TOCTOU: N goroutines race to bootstrap the superuser and exactly
+// one must win, leaving exactly one superuser row behind.
+func TestCreateSuperUser_ConcurrentFirstRunCreatesExactlyOne(t *testing.T) {
+	dbCfg := testDBConfig(t)
+	if _, err := pasteSQL.NewPaster(dbCfg); err != nil {
+		t.Fatalf("migrations: %v", err)
+	}
+	mgr, err := adminSQL.NewUserManager(dbCfg)
+	if err != nil {
+		t.Fatalf("NewUserManager: %v", err)
+	}
+
+	const goroutines = 10
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var successes int
+	errs := make([]error, goroutines)
+
+	start := make(chan struct{})
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			<-start // maximize the race window
+			_, err := mgr.CreateSuperUser(params.NewUserParams{
+				Email:    fmt.Sprintf("super%d@example.com", i),
+				Username: fmt.Sprintf("super%d", i),
+				FullName: fmt.Sprintf("Super %d", i),
+				Password: testPassword,
+			})
+			mu.Lock()
+			defer mu.Unlock()
+			if err == nil {
+				successes++
+			}
+			errs[i] = err
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+
+	if successes != 1 {
+		t.Fatalf("expected exactly 1 CreateSuperUser success, got %d (errs: %v)", successes, errs)
+	}
+
+	db, err := util.NewDBConn(dbCfg)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	var superCount int64
+	if err := db.Model(&models.Users{}).Where("is_super_user = ?", true).Count(&superCount).Error; err != nil {
+		t.Fatalf("count super users: %v", err)
+	}
+	if superCount != 1 {
+		t.Fatalf("expected exactly 1 row with is_super_user=1, got %d", superCount)
+	}
+	var total int64
+	if err := db.Model(&models.Users{}).Count(&total).Error; err != nil {
+		t.Fatalf("count users: %v", err)
+	}
+	if total != 1 {
+		t.Fatalf("expected exactly 1 user row overall, got %d", total)
+	}
+}
+
 // ── Authenticate ─────────────────────────────────────────────────────────────
 
 func TestAuthenticate_ValidCredentials(t *testing.T) {
@@ -159,6 +227,44 @@ func TestAuthenticate_DisabledUser(t *testing.T) {
 	})
 	if !isUnauthorized(err) {
 		t.Fatalf("expected UnauthorizedError for disabled user, got %v", err)
+	}
+}
+
+// TestAuthenticate_UniformFailureMessage verifies that every failed login
+// path returns the exact same error body, so accounts cannot be enumerated.
+func TestAuthenticate_UniformFailureMessage(t *testing.T) {
+	mgr, superCtx := newAdminFixture(t)
+
+	disabled, err := mgr.Create(superCtx, params.NewUserParams{
+		Email:    "off@example.com", Username: "offuser", FullName: "Off User",
+		Password: testPassword, Enabled: false,
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	const want = "invalid username or password"
+	cases := []struct {
+		name string
+		info params.PasswordLoginParams
+	}{
+		{"unknown user", params.PasswordLoginParams{Username: "ghost", Password: testPassword}},
+		{"unknown email", params.PasswordLoginParams{Username: "ghost@example.com", Password: testPassword}},
+		{"wrong password", params.PasswordLoginParams{Username: "super@example.com", Password: "wrong-password"}},
+		{"disabled user", params.PasswordLoginParams{Username: disabled.Email, Password: testPassword}},
+		{"empty password", params.PasswordLoginParams{Username: "super@example.com", Password: ""}},
+		{"empty username", params.PasswordLoginParams{Username: "", Password: testPassword}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := mgr.Authenticate(context.Background(), tc.info)
+			if !isUnauthorized(err) {
+				t.Fatalf("expected UnauthorizedError, got %v", err)
+			}
+			if got := pkgErrors.Cause(err).Error(); got != want {
+				t.Fatalf("message leak: want %q, got %q", want, got)
+			}
+		})
 	}
 }
 
@@ -445,6 +551,73 @@ func TestAdminCannotTakeOverSuperUser(t *testing.T) {
 }
 
 func ptr(s string) *string { return &s }
+
+// ── Self password change ─────────────────────────────────────────────────────
+
+func TestUpdate_SelfPasswordChangeRequiresCurrentPassword(t *testing.T) {
+	mgr, superCtx := newAdminFixture(t)
+
+	u, err := mgr.Create(superCtx, params.NewUserParams{
+		Email: "pw@example.com", Username: "pwuser", FullName: "Pw User",
+		Password: testPassword, Enabled: true,
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	selfCtx := auth.PopulateContext(context.Background(), u)
+	newPassword := "Rotated-Correct-Horse-Battery-Staple-G0pherbin-2026!"
+
+	// Missing current_password on a self change → Unauthorized.
+	if _, err := mgr.Update(selfCtx, u.ID, params.UpdateUserPayload{Password: &newPassword}); !isUnauthorized(err) {
+		t.Fatalf("self change without current password: want Unauthorized, got %v", err)
+	}
+	// Wrong current_password → Unauthorized.
+	if _, err := mgr.Update(selfCtx, u.ID, params.UpdateUserPayload{
+		Password: &newPassword, CurrentPassword: "Not-The-Current-Password-Xy9!",
+	}); !isUnauthorized(err) {
+		t.Fatalf("self change with wrong current password: want Unauthorized, got %v", err)
+	}
+	// The stored password must be untouched.
+	if _, err := mgr.Authenticate(context.Background(), params.PasswordLoginParams{
+		Username: u.Email, Password: testPassword,
+	}); err != nil {
+		t.Fatalf("login after rejected self change: %v", err)
+	}
+	// Correct current_password → accepted.
+	if _, err := mgr.Update(selfCtx, u.ID, params.UpdateUserPayload{
+		Password: &newPassword, CurrentPassword: testPassword,
+	}); err != nil {
+		t.Fatalf("self change with correct current password: %v", err)
+	}
+	if _, err := mgr.Authenticate(context.Background(), params.PasswordLoginParams{
+		Username: u.Email, Password: newPassword,
+	}); err != nil {
+		t.Fatalf("login with new password: %v", err)
+	}
+}
+
+func TestUpdate_AdminResetDoesNotRequireCurrentPassword(t *testing.T) {
+	mgr, superCtx := newAdminFixture(t)
+
+	u, err := mgr.Create(superCtx, params.NewUserParams{
+		Email: "reset@example.com", Username: "resetuser", FullName: "Reset User",
+		Password: testPassword, Enabled: true,
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	// Admin-initiated resets of other users keep working without
+	// current_password (the admin cannot know the helper password).
+	newPassword := "Admin-Set-Correct-Horse-Battery-Staple-G0pherbin-2026!"
+	if _, err := mgr.Update(superCtx, u.ID, params.UpdateUserPayload{Password: &newPassword}); err != nil {
+		t.Fatalf("admin reset without current password: %v", err)
+	}
+	if _, err := mgr.Authenticate(context.Background(), params.PasswordLoginParams{
+		Username: u.Email, Password: newPassword,
+	}); err != nil {
+		t.Fatalf("login after admin reset: %v", err)
+	}
+}
 
 func isConflict(err error) bool {
 	_, ok := pkgErrors.Cause(err).(*gErrors.ConflictError)

@@ -69,6 +69,11 @@ type UpdateUserPayload struct {
 	Enabled      *bool   `json:"enabled,omitempty"`
 	Email        *string `json:"email,omitempty"`
 	Discoverable *bool   `json:"discoverable,omitempty"`
+	// CurrentPassword is the account's existing password. It is required
+	// only when a user sets a new Password on their own account; optional
+	// so that admin-initiated resets of other users keep working. It is a
+	// raw existing secret, so it is deliberately not strength-checked.
+	CurrentPassword string `json:"current_password,omitempty"`
 }
 
 // Validate validates the object in order to determine

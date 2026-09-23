@@ -16,7 +16,6 @@ package sql
 
 import (
 	"context"
-	"fmt"
 	"math"
 	"strings"
 	"time"
@@ -101,13 +100,22 @@ func (u *userManager) sqlUserToParams(user models.Users) params.Users {
 	}
 }
 
+// invalidCredentialsMsg is returned by every failed Authenticate path so that
+// clients cannot enumerate accounts (unknown user, disabled account, wrong
+// password) from the response body.
+const invalidCredentialsMsg = "invalid username or password"
+
 func (u *userManager) Authenticate(ctx context.Context, info params.PasswordLoginParams) (context.Context, error) {
+	// All rejection paths return this identical error. The file has no
+	// logger to record the real reason server-side.
+	unauthorized := gErrors.NewUnauthorizedError(invalidCredentialsMsg)
+
 	if info.Username == "" {
-		return ctx, gErrors.ErrUnauthorized
+		return ctx, unauthorized
 	}
 
 	if info.Password == "" {
-		return ctx, gErrors.ErrUnauthorized
+		return ctx, unauthorized
 	}
 
 	isEmail := util.IsValidEmail(info.Username)
@@ -121,21 +129,25 @@ func (u *userManager) Authenticate(ctx context.Context, info params.PasswordLogi
 
 	if err != nil {
 		if err == gErrors.ErrNotFound {
-			return ctx, gErrors.NewUnauthorizedError("invalid username or password")
+			// Burn a comparable amount of CPU to a real bcrypt
+			// verification, so "no such account" cannot be told apart
+			// from "wrong password" by response timing.
+			if dummyHash, hashErr := util.PaswsordToBcrypt("x"); hashErr == nil {
+				_ = bcrypt.CompareHashAndPassword([]byte(dummyHash), []byte(info.Password))
+			}
+			return ctx, unauthorized
 		}
 		return ctx, err
 	}
-	if !modelUser.Enabled {
-		return ctx, gErrors.NewUnauthorizedError("user is disabled")
-	}
-	// If the user has an empty password saved in the
-	// database, it is implicitly disabled. This should not happen,
-	// but an extra check can't hurt.
-	if modelUser.Password == "" {
-		return ctx, gErrors.ErrUnauthorized
-	}
+	// The password comparison runs before the Enabled check so that a
+	// disabled account takes exactly as long as an active one. An empty
+	// stored hash always fails this comparison, which implicitly disables
+	// such accounts (this should not happen, but an extra check can't hurt).
 	if err := bcrypt.CompareHashAndPassword([]byte(modelUser.Password), []byte(info.Password)); err != nil {
-		return ctx, gErrors.ErrUnauthorized
+		return ctx, unauthorized
+	}
+	if !modelUser.Enabled {
+		return ctx, unauthorized
 	}
 	userParams := u.sqlUserToParams(modelUser)
 	return auth.PopulateContext(ctx, userParams), nil
@@ -191,11 +203,18 @@ func (u *userManager) Create(ctx context.Context, user params.NewUserParams) (pa
 	return u.sqlUserToParams(newUser), nil
 }
 
+// errSuperUserInsertSkipped is an internal sentinel returned from the
+// CreateSuperUser transaction when the conditional INSERT matched no rows,
+// i.e. a concurrent caller created the super user first.
+var errSuperUserInsertSkipped = errors.New("super user already exists")
+
 // CreateSuperUser creates a new super user. This function should never be called
 // from an API handler.
 func (u *userManager) CreateSuperUser(user params.NewUserParams) (params.Users, error) {
+	// Fast path only; this check is itself racy. The real guarantee is the
+	// conditional INSERT below, which runs inside a transaction.
 	if u.HasSuperUser() {
-		return params.Users{}, fmt.Errorf("super user already exists")
+		return params.Users{}, gErrors.NewConflictError("super user already exists")
 	}
 	newUser, err := u.newUserParamsToSQL(user)
 	if err != nil {
@@ -205,11 +224,62 @@ func (u *userManager) CreateSuperUser(user params.NewUserParams) (params.Users, 
 	newUser.IsAdmin = true
 	newUser.Enabled = true
 
-	err = u.conn.Create(&newUser).Error
-	if err != nil {
-		return params.Users{}, errors.Wrap(err, "creating new user")
+	// SQLite serializes writers, and the NOT EXISTS guard is evaluated by
+	// the INSERT statement itself while the write lock is held, so check
+	// and act are atomic: of N concurrent first-run callers at most one
+	// INSERT affects a row. The retry loop only exists so that a caller
+	// which lost the race (or hit a transient SQLITE_BUSY) settles on
+	// "super user already exists" instead of a raw driver error.
+	var created models.Users
+	const maxAttempts = 10
+	var txErr error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if attempt > 0 {
+			if u.HasSuperUser() {
+				return params.Users{}, gErrors.NewConflictError("super user already exists")
+			}
+			time.Sleep(time.Duration(attempt) * 20 * time.Millisecond)
+		}
+		txErr = u.conn.Transaction(func(tx *gorm.DB) error {
+			now := time.Now()
+			// Columns are listed explicitly because GORM's regular
+			// Create would auto-populate created_at/updated_at; on the
+			// raw path they must be set by hand.
+			q := tx.Exec(`INSERT INTO users (created_at, updated_at, username, full_name, email, password, is_admin, is_super_user, enabled, discoverable)
+	SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+	WHERE NOT EXISTS (SELECT 1 FROM users WHERE is_super_user = ?)`,
+				now, now,
+				newUser.Username, newUser.FullName, newUser.Email, newUser.Password,
+				newUser.IsAdmin, newUser.IsSuperUser, newUser.Enabled, newUser.Discoverable,
+				true)
+			if q.Error != nil {
+				return errors.Wrap(q.Error, "conditional super user insert")
+			}
+			if q.RowsAffected == 0 {
+				return errSuperUserInsertSkipped
+			}
+			// Still holding the write lock: verify that exactly one
+			// super user exists and fetch the row just inserted.
+			var count int64
+			if err := tx.Model(&models.Users{}).Where("is_super_user = ?", true).Count(&count).Error; err != nil {
+				return errors.Wrap(err, "counting super users")
+			}
+			if count != 1 {
+				return errors.Errorf("expected exactly one super user after insert, found %d", count)
+			}
+			if err := tx.Where("is_super_user = ?", true).First(&created).Error; err != nil {
+				return errors.Wrap(err, "fetching created super user")
+			}
+			return nil
+		})
+		if txErr == nil {
+			return u.sqlUserToParams(created), nil
+		}
+		if errors.Is(txErr, errSuperUserInsertSkipped) {
+			return params.Users{}, gErrors.NewConflictError("super user already exists")
+		}
 	}
-	return u.sqlUserToParams(newUser), nil
+	return params.Users{}, errors.Wrap(txErr, "creating new user")
 }
 
 func (u *userManager) Get(ctx context.Context, userID uint) (params.Users, error) {
@@ -304,6 +374,19 @@ func (u *userManager) Update(ctx context.Context, userID uint, update params.Upd
 	}
 
 	if update.Password != nil {
+		// A user changing their own password must prove knowledge of the
+		// current one: a stolen session token alone must not be enough to
+		// take over the account by setting a new password. Admin-initiated
+		// resets of other users (userID != caller) never carry the current
+		// password by design, so they are exempt.
+		if userID == user {
+			if update.CurrentPassword == "" {
+				return params.Users{}, gErrors.NewUnauthorizedError("current password is incorrect")
+			}
+			if err := bcrypt.CompareHashAndPassword([]byte(tmpUser.Password), []byte(update.CurrentPassword)); err != nil {
+				return params.Users{}, gErrors.NewUnauthorizedError("current password is incorrect")
+			}
+		}
 		hashed, err := util.PaswsordToBcrypt(*update.Password)
 		if err != nil {
 			return params.Users{}, errors.Wrap(err, "updating password")
