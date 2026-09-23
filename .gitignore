@@ -39,3 +39,9 @@ lerna-debug.log*
 
 # Claude
 CLAUDE.md
+
+# vite cache from tooling runs at repo root
+.vite/
+
+# developer working notes
+NOTES.md
