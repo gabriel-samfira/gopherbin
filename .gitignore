@@ -13,6 +13,8 @@ webui/svelte-app/node_modules/
 webui/svelte-app/.env
 webui/svelte-app/.env.*
 !webui/svelte-app/.env.example
+webui/svelte-app/.vitest-bin/
+webui/svelte-app/.vitest-harness.json
 
 # Old web UI (can be removed after migration)
 webui/web/node_modules/
