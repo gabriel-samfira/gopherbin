@@ -3,10 +3,13 @@ package controllers
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	adminCommon "gopherbin/admin/common"
 	"gopherbin/apiserver/responses"
@@ -25,10 +28,11 @@ import (
 // NewAPIController returns a new APIController
 func NewAPIController(paster common.Paster, teamManager common.TeamManager, mgr adminCommon.UserManager, cfg config.JWTAuth) *APIController {
 	return &APIController{
-		paster:      paster,
-		manager:     mgr,
-		teamManager: teamManager,
-		cfg:         cfg,
+		paster:       paster,
+		manager:      mgr,
+		teamManager:  teamManager,
+		cfg:          cfg,
+		loginLimiter: newLoginRateLimiter(nil),
 	}
 }
 
@@ -38,6 +42,22 @@ type APIController struct {
 	manager     adminCommon.UserManager
 	teamManager common.TeamManager
 	cfg         config.JWTAuth
+	// loginLimiter throttles failed login attempts per (clientIP, username)
+	// to blunt password brute-forcing. See ratelimit.go.
+	loginLimiter *loginRateLimiter
+}
+
+
+// decodeJSONError maps a JSON body decode failure to the client-facing error.
+// A body truncated by the transport-level size cap surfaces as an
+// http.MaxBytesError, which handleError renders as 413; anything else is a
+// plain malformed-request 400.
+func decodeJSONError(err error) error {
+	var maxBytes *http.MaxBytesError
+	if errors.As(err, &maxBytes) {
+		return err
+	}
+	return gErrors.ErrBadRequest
 }
 
 func handleError(w http.ResponseWriter, err error) {
@@ -61,8 +81,25 @@ func handleError(w http.ResponseWriter, err error) {
 		w.WriteHeader(http.StatusConflict)
 		apiErr.Error = "Conflict"
 	default:
+		// Transport-level body-size violations: the transport wraps request
+		// bodies in http.MaxBytesReader, whose errors surface as
+		// *http.MaxBytesError. They are client errors, mapped to 413 with a
+		// fixed message so no internal detail reaches the client. Checked
+		// against the original (possibly wrapped) err, not the Cause.
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			w.WriteHeader(http.StatusRequestEntityTooLarge)
+			apiErr.Error = "Payload Too Large"
+			apiErr.Details = "request body exceeds the server limit"
+			break
+		}
+		// Anything else is an unhandled internal error (SQL text, FTS
+		// syntax errors, driver output, ...). It must be logged server-side
+		// and never echoed to clients.
+		log.Printf("apiserver: unhandled internal error: %+v", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		apiErr.Error = "Server error"
+		apiErr.Details = "an internal error occurred"
 	}
 
 	json.NewEncoder(w).Encode(apiErr)
@@ -77,6 +114,78 @@ func parseScope(scope string) string {
 	default:
 		return common.ScopeAll
 	}
+}
+
+// Default and maximum values accepted for the max_results pagination
+// parameter.
+const (
+	defaultMaxResults = 50
+	maxMaxResults     = 100
+)
+
+// clampPagination normalizes the page and max_results query parameters before
+// they are handed to the manager layers. Page is clamped to >= 1 (a negative
+// page previously produced a negative OFFSET and a bogus total_pages).
+// maxResults is clamped to 1..100 because values such as -1 make GORM drop
+// the LIMIT clause entirely and return whole tables. A zero (absent or
+// unparsable) maxResults keeps the previous handler default of 50.
+func clampPagination(page, maxResults int64) (int64, int64) {
+	if page < 1 {
+		page = 1
+	}
+	if maxResults == 0 {
+		maxResults = defaultMaxResults
+	}
+	if maxResults < 1 {
+		maxResults = 1
+	}
+	if maxResults > maxMaxResults {
+		maxResults = maxMaxResults
+	}
+	return page, maxResults
+}
+
+// maxDownloadNameRunes caps the paste name as it appears in download headers.
+const maxDownloadNameRunes = 200
+
+// sanitizeDownloadName makes a paste name safe to place in response headers:
+// it strips the characters that would break out of an RFC 6266 quoted-string
+// (double quote, backslash) and all control and format characters (CR, LF,
+// DEL, C1 controls, zero-width and similar non-ASCII Cf characters), then
+// truncates on a rune boundary at 200 runes, replacing the tail with an
+// ellipsis. An empty result falls back to a generic name.
+func sanitizeDownloadName(name string) string {
+	var b strings.Builder
+	for _, r := range name {
+		if r == '"' || r == '\\' || unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+			continue
+		}
+		b.WriteRune(r)
+	}
+	clean := []rune(strings.TrimSpace(b.String()))
+	if len(clean) > maxDownloadNameRunes {
+		clean = append(clean[:maxDownloadNameRunes-1], '…')
+	}
+	if len(clean) == 0 {
+		return "paste"
+	}
+	return string(clean)
+}
+
+// rfc5987Rest escapes the few characters url.PathEscape leaves alone that are
+// not valid RFC 5987 attr-chars in an extended parameter value.
+var rfc5987Rest = strings.NewReplacer(
+	"(", "%28", ")", "%29", ",", "%2C", ":", "%3A", ";", "%3B", "?", "%3F", "@", "%40",
+)
+
+// contentDisposition builds an RFC 6266 Content-Disposition value for a paste
+// download. The sanitized name is quoted for the legacy filename parameter,
+// and an ASCII-only RFC 5987 filename* parameter (percent-encoded UTF-8) is
+// appended so Unicode names survive intact.
+func contentDisposition(name string) string {
+	safe := sanitizeDownloadName(name)
+	encoded := rfc5987Rest.Replace(url.PathEscape(safe))
+	return fmt.Sprintf(`attachment; filename="%s"; filename*=UTF-8''%s`, safe, encoded)
 }
 
 // NotFoundHandler is returned when an invalid URL is acccessed
@@ -96,7 +205,7 @@ func (p *APIController) FirstRunHandler(w http.ResponseWriter, r *http.Request) 
 
 	var newUserParams params.NewUserParams
 	if err := json.NewDecoder(r.Body).Decode(&newUserParams); err != nil {
-		handleError(w, gErrors.ErrBadRequest)
+		handleError(w, decodeJSONError(err))
 		return
 	}
 
@@ -113,7 +222,7 @@ func (p *APIController) FirstRunHandler(w http.ResponseWriter, r *http.Request) 
 func (p *APIController) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	var loginInfo params.PasswordLoginParams
 	if err := json.NewDecoder(r.Body).Decode(&loginInfo); err != nil {
-		handleError(w, gErrors.ErrBadRequest)
+		handleError(w, decodeJSONError(err))
 		return
 	}
 
@@ -121,12 +230,29 @@ func (p *APIController) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		handleError(w, err)
 		return
 	}
+	// Brute-force defense: while this (clientIP, username) pair is over the
+	// failure budget, answer with the exact body the manager produces for
+	// bad credentials, without calling it (no oracle, no timing
+	// difference). See ratelimit.go.
+	attemptKey := loginAttemptKey(r, loginInfo.Username)
+	if !p.loginLimiter.allow(attemptKey) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Retry-After", strconv.Itoa(p.loginLimiter.retryAfter(attemptKey)))
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(responses.APIErrorResponse{
+			Error:   "Not Authorized",
+			Details: "invalid username or password",
+		})
+		return
+	}
 	ctx := r.Context()
 	ctx, err := p.manager.Authenticate(ctx, loginInfo)
 	if err != nil {
+		p.loginLimiter.recordFailure(attemptKey)
 		handleError(w, err)
 		return
 	}
+	p.loginLimiter.recordSuccess(attemptKey)
 	tokenID, err := util.GetRandomString(16)
 	if err != nil {
 		handleError(w, err)
@@ -207,9 +333,9 @@ func (p *APIController) PasteDownloadHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	w.Header().Set("Access-Control-Expose-Headers", "x-suggested-filename, Content-Disposition")
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", pasteInfo.Name))
+	w.Header().Set("Content-Disposition", contentDisposition(pasteInfo.Name))
 	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("x-suggested-filename", pasteInfo.Name)
+	w.Header().Set("x-suggested-filename", sanitizeDownloadName(pasteInfo.Name))
 	w.Write(pasteInfo.Data)
 }
 
@@ -236,13 +362,9 @@ func (p *APIController) PublicPasteViewHandler(w http.ResponseWriter, r *http.Re
 // PasteListHandler returns a list of pastes
 func (p *APIController) PasteListHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	page := r.URL.Query().Get("page")
-	pageInt, _ := strconv.ParseInt(page, 10, 64)
-	maxResultsOpt := r.URL.Query().Get("max_results")
-	maxResults, _ := strconv.ParseInt(maxResultsOpt, 10, 64)
-	if maxResults == 0 {
-		maxResults = 50
-	}
+	pageInt, _ := strconv.ParseInt(r.URL.Query().Get("page"), 10, 64)
+	maxResults, _ := strconv.ParseInt(r.URL.Query().Get("max_results"), 10, 64)
+	pageInt, maxResults = clampPagination(pageInt, maxResults)
 	scope := parseScope(r.URL.Query().Get("scope"))
 
 	labels, team := parseListFilters(r)
@@ -282,13 +404,9 @@ func (p *APIController) SearchPasteHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	page := r.URL.Query().Get("page")
-	pageInt, _ := strconv.ParseInt(page, 10, 64)
-	maxResultsOpt := r.URL.Query().Get("max_results")
-	maxResults, _ := strconv.ParseInt(maxResultsOpt, 10, 64)
-	if maxResults == 0 {
-		maxResults = 50
-	}
+	pageInt, _ := strconv.ParseInt(r.URL.Query().Get("page"), 10, 64)
+	maxResults, _ := strconv.ParseInt(r.URL.Query().Get("max_results"), 10, 64)
+	pageInt, maxResults = clampPagination(pageInt, maxResults)
 	scope := parseScope(r.URL.Query().Get("scope"))
 
 	labels, team := parseListFilters(r)
@@ -331,13 +449,9 @@ func (p *APIController) UserListHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	page := r.URL.Query().Get("page")
-	pageInt, _ := strconv.ParseInt(page, 10, 64)
-	maxResultsOpt := r.URL.Query().Get("max_results")
-	maxResults, _ := strconv.ParseInt(maxResultsOpt, 10, 64)
-	if maxResults == 0 {
-		maxResults = 50
-	}
+	pageInt, _ := strconv.ParseInt(r.URL.Query().Get("page"), 10, 64)
+	maxResults, _ := strconv.ParseInt(r.URL.Query().Get("max_results"), 10, 64)
+	pageInt, maxResults = clampPagination(pageInt, maxResults)
 
 	res, err := p.manager.List(ctx, pageInt, maxResults)
 	if err != nil {
@@ -354,7 +468,7 @@ func (p *APIController) CreatePasteHandler(w http.ResponseWriter, r *http.Reques
 
 	var pasteData params.Paste
 	if err := json.NewDecoder(r.Body).Decode(&pasteData); err != nil {
-		handleError(w, gErrors.ErrBadRequest)
+		handleError(w, decodeJSONError(err))
 		return
 	}
 
@@ -394,7 +508,7 @@ func (p *APIController) UpdatePasteHandler(w http.ResponseWriter, r *http.Reques
 
 	var pasteData params.UpdatePasteParams
 	if err := json.NewDecoder(r.Body).Decode(&pasteData); err != nil {
-		handleError(w, gErrors.ErrBadRequest)
+		handleError(w, decodeJSONError(err))
 		return
 	}
 
@@ -423,7 +537,7 @@ func (p *APIController) TransferPasteHandler(w http.ResponseWriter, r *http.Requ
 
 	var transferParams params.UserActionRequest
 	if err := json.NewDecoder(r.Body).Decode(&transferParams); err != nil {
-		handleError(w, gErrors.ErrBadRequest)
+		handleError(w, decodeJSONError(err))
 		return
 	}
 
@@ -452,7 +566,7 @@ func (p *APIController) SharePasteHandler(w http.ResponseWriter, r *http.Request
 
 	var userID params.UserActionRequest
 	if err := json.NewDecoder(r.Body).Decode(&userID); err != nil {
-		handleError(w, gErrors.ErrBadRequest)
+		handleError(w, decodeJSONError(err))
 		return
 	}
 
@@ -519,7 +633,7 @@ func (p *APIController) NewUserHandler(w http.ResponseWriter, r *http.Request) {
 
 	var newUserParams params.NewUserParams
 	if err := json.NewDecoder(r.Body).Decode(&newUserParams); err != nil {
-		handleError(w, gErrors.ErrBadRequest)
+		handleError(w, decodeJSONError(err))
 		return
 	}
 
@@ -641,7 +755,7 @@ func (p *APIController) NewTeamHandler(w http.ResponseWriter, r *http.Request) {
 	var newTeamParams params.NewTeamParams
 
 	if err := json.NewDecoder(r.Body).Decode(&newTeamParams); err != nil {
-		handleError(w, gErrors.ErrBadRequest)
+		handleError(w, decodeJSONError(err))
 		return
 	}
 
@@ -698,13 +812,9 @@ func (p *APIController) GetTeamHandler(w http.ResponseWriter, r *http.Request) {
 
 func (p *APIController) ListTeamsHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	page := r.URL.Query().Get("page")
-	pageInt, _ := strconv.ParseInt(page, 10, 64)
-	maxResultsOpt := r.URL.Query().Get("max_results")
-	maxResults, _ := strconv.ParseInt(maxResultsOpt, 10, 64)
-	if maxResults == 0 {
-		maxResults = 50
-	}
+	pageInt, _ := strconv.ParseInt(r.URL.Query().Get("page"), 10, 64)
+	maxResults, _ := strconv.ParseInt(r.URL.Query().Get("max_results"), 10, 64)
+	pageInt, maxResults = clampPagination(pageInt, maxResults)
 
 	res, err := p.teamManager.List(ctx, pageInt, maxResults)
 	if err != nil {
@@ -730,7 +840,7 @@ func (p *APIController) AddTeamMemberHandler(w http.ResponseWriter, r *http.Requ
 
 	var addTeamMemberParams params.TeamMemberParams
 	if err := json.NewDecoder(r.Body).Decode(&addTeamMemberParams); err != nil {
-		handleError(w, gErrors.ErrBadRequest)
+		handleError(w, decodeJSONError(err))
 		return
 	}
 	if err := addTeamMemberParams.Validate(); err != nil {
@@ -857,7 +967,7 @@ func (p *APIController) UpdateTeamHandler(w http.ResponseWriter, r *http.Request
 	}
 	var updateParams params.UpdateTeamParams
 	if err := json.NewDecoder(r.Body).Decode(&updateParams); err != nil {
-		handleError(w, gErrors.ErrBadRequest)
+		handleError(w, decodeJSONError(err))
 		return
 	}
 	updated, err := p.teamManager.Update(ctx, teamName, updateParams)
@@ -878,7 +988,7 @@ func (p *APIController) SetTeamLabelsHandler(w http.ResponseWriter, r *http.Requ
 	}
 	var labelParams params.TeamLabelsParams
 	if err := json.NewDecoder(r.Body).Decode(&labelParams); err != nil {
-		handleError(w, gErrors.ErrBadRequest)
+		handleError(w, decodeJSONError(err))
 		return
 	}
 	updated, err := p.teamManager.SetLabels(ctx, teamName, labelParams.Labels)
@@ -904,7 +1014,7 @@ func (p *APIController) SetPasteLabelsHandler(w http.ResponseWriter, r *http.Req
 	}
 	var labelParams params.PasteLabelsParams
 	if err := json.NewDecoder(r.Body).Decode(&labelParams); err != nil {
-		handleError(w, gErrors.ErrBadRequest)
+		handleError(w, decodeJSONError(err))
 		return
 	}
 	updated, err := p.paster.SetLabels(ctx, pasteID, labelParams.Labels)
@@ -934,7 +1044,7 @@ func (p *APIController) SetTeamMemberRoleHandler(w http.ResponseWriter, r *http.
 	}
 	var roleParams params.SetTeamMemberRoleParams
 	if err := json.NewDecoder(r.Body).Decode(&roleParams); err != nil {
-		handleError(w, gErrors.ErrBadRequest)
+		handleError(w, decodeJSONError(err))
 		return
 	}
 	if err := roleParams.Validate(); err != nil {
@@ -959,7 +1069,7 @@ func (p *APIController) TransferTeamHandler(w http.ResponseWriter, r *http.Reque
 	}
 	var transferParams params.TeamTransferParams
 	if err := json.NewDecoder(r.Body).Decode(&transferParams); err != nil {
-		handleError(w, gErrors.ErrBadRequest)
+		handleError(w, decodeJSONError(err))
 		return
 	}
 	team, err := p.teamManager.RequestTransfer(ctx, teamName, transferParams.UserID)
@@ -1067,7 +1177,7 @@ func (p *APIController) UpdateLabelHandler(w http.ResponseWriter, r *http.Reques
 	}
 	var updateParams params.UpdateLabelParams
 	if err := json.NewDecoder(r.Body).Decode(&updateParams); err != nil {
-		handleError(w, gErrors.ErrBadRequest)
+		handleError(w, decodeJSONError(err))
 		return
 	}
 	if err := updateParams.Validate(); err != nil {
@@ -1145,7 +1255,7 @@ func (p *APIController) UpdateMeHandler(w http.ResponseWriter, r *http.Request) 
 	}
 	var settings params.MeSettingsParams
 	if err := json.NewDecoder(r.Body).Decode(&settings); err != nil {
-		handleError(w, gErrors.ErrBadRequest)
+		handleError(w, decodeJSONError(err))
 		return
 	}
 	if settings.Discoverable == nil {
