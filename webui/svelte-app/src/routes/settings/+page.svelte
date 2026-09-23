@@ -2,7 +2,8 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { auth } from '$lib/stores/auth';
-	import { getMe, updateMe } from '$lib/api/users';
+	import { login } from '$lib/api/auth';
+	import { getMe, updateMe, updateUser } from '$lib/api/users';
 	import { getMyLabels, updateLabel, deleteLabel } from '$lib/api/pastes';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Spinner from '$lib/components/ui/Spinner.svelte';
@@ -26,7 +27,16 @@
 	let busyId: number | null = null;
 	let confirmDeleteId: number | null = null;
 
+	let currentPassword = '';
+	let newPassword = '';
+	let confirmPassword = '';
+	let changingPassword = false;
+	let passwordError = '';
+
 	$: dirty = me !== null && discoverable !== me.discoverable;
+	$: passwordFormValid =
+		currentPassword !== '' && newPassword !== '' && newPassword === confirmPassword;
+	$: passwordMismatch = confirmPassword !== '' && newPassword !== confirmPassword;
 
 	onMount(async () => {
 		if (!$auth.token) {
@@ -120,6 +130,36 @@
 			saving = false;
 		}
 	}
+
+	async function changePassword() {
+		if (!$auth.token || !me || changingPassword || !passwordFormValid) return;
+		changingPassword = true;
+		passwordError = '';
+		try {
+			// The server does not require the old password on update, so
+			// verify it out of band before overwriting the credential.
+			await login({ username: me.username, password: currentPassword });
+		} catch {
+			passwordError = 'Current password is incorrect';
+			changingPassword = false;
+			return;
+		}
+		try {
+			await updateUser(me.id, { password: newPassword }, $auth.token);
+			currentPassword = '';
+			newPassword = '';
+			confirmPassword = '';
+			// The server bumps the account's update stamp, which invalidates the
+			// current token, so send the user back to the login screen.
+			toast.show('Password changed, please log in again', 'success');
+			auth.logout();
+			goto('/login');
+		} catch (err) {
+			passwordError = formatApiError(err);
+		} finally {
+			changingPassword = false;
+		}
+	}
 </script>
 
 <svelte:head>
@@ -158,6 +198,56 @@
 				<div class="flex justify-end">
 					<Button on:click={save} disabled={!dirty || saving}>
 						{saving ? 'Saving...' : 'Save'}
+					</Button>
+				</div>
+			</div>
+
+			<div class="p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg space-y-3">
+				<h2 class="font-semibold text-gray-900 dark:text-gray-100">Change password</h2>
+				<p class="text-xs text-gray-500 dark:text-gray-400">
+					Your current password is verified before the new one is saved. Passwords are checked for
+					strength; weak ones are rejected. You will be signed out after a successful change.
+				</p>
+				{#if passwordError}
+					<div class="p-2 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded-md text-sm">
+						{passwordError}
+					</div>
+				{/if}
+				<div class="grid gap-3 sm:grid-cols-3">
+					<label class="block">
+						<span class="text-xs text-gray-600 dark:text-gray-400">Current password</span>
+						<input
+							type="password"
+							autocomplete="current-password"
+							class="mt-1 w-full h-10 px-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+							bind:value={currentPassword}
+						/>
+					</label>
+					<label class="block">
+						<span class="text-xs text-gray-600 dark:text-gray-400">New password</span>
+						<input
+							type="password"
+							autocomplete="new-password"
+							class="mt-1 w-full h-10 px-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+							bind:value={newPassword}
+						/>
+					</label>
+					<label class="block">
+						<span class="text-xs text-gray-600 dark:text-gray-400">Confirm new password</span>
+						<input
+							type="password"
+							autocomplete="new-password"
+							class="mt-1 w-full h-10 px-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+							bind:value={confirmPassword}
+						/>
+					</label>
+				</div>
+				{#if passwordMismatch}
+					<p class="text-xs text-red-600 dark:text-red-300">The new passwords do not match.</p>
+				{/if}
+				<div class="flex justify-end">
+					<Button on:click={changePassword} disabled={!passwordFormValid || changingPassword}>
+						{changingPassword ? 'Changing...' : 'Change password'}
 					</Button>
 				</div>
 			</div>
