@@ -3,6 +3,7 @@ package sql_test
 import (
 	"context"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	adminSQL "gopherbin/admin/sql"
@@ -233,5 +234,238 @@ func TestDelete_RemovesPasteImmediately(t *testing.T) {
 	_, err := paster.Get(ctx, p.PasteID)
 	if !isNotFound(err) {
 		t.Fatalf("Get after Delete: want NotFound, got %v", err)
+	}
+}
+
+// ── Search: FTS5 expression sanitization ─────────────────────────────────────
+
+// newSearchFixture creates a DB with two ordinary users (alice, bob) and
+// returns a Paster plus an authenticated context for each.
+func newSearchFixture(t *testing.T) (pasteCommon.Paster, context.Context, context.Context) {
+	t.Helper()
+	dbCfg := testDBConfig(t)
+
+	paster, err := pasteSQL.NewPaster(dbCfg)
+	if err != nil {
+		t.Fatalf("NewPaster: %v", err)
+	}
+	mgr, err := adminSQL.NewUserManager(dbCfg)
+	if err != nil {
+		t.Fatalf("NewUserManager: %v", err)
+	}
+	super, err := mgr.CreateSuperUser(params.NewUserParams{
+		Email:    "super@example.com",
+		Username: "superadmin",
+		FullName: "Super Admin",
+		Password: testPassword,
+	})
+	if err != nil {
+		t.Fatalf("CreateSuperUser: %v", err)
+	}
+	superCtx := auth.PopulateContext(context.Background(), super)
+
+	alice, err := mgr.Create(superCtx, params.NewUserParams{
+		Email: "alice@example.com", Username: "alice", FullName: "Alice", Password: testPassword, Enabled: true,
+	})
+	if err != nil {
+		t.Fatalf("Create alice: %v", err)
+	}
+	bob, err := mgr.Create(superCtx, params.NewUserParams{
+		Email: "bob@example.com", Username: "bob", FullName: "Bob", Password: testPassword, Enabled: true,
+	})
+	if err != nil {
+		t.Fatalf("Create bob: %v", err)
+	}
+	return paster,
+		auth.PopulateContext(context.Background(), alice),
+		auth.PopulateContext(context.Background(), bob)
+}
+
+// The search string used to be bound verbatim as an FTS5 MATCH expression,
+// so quotes, column filters, NEAR and wildcards reached the FTS query
+// parser: unbalanced input aborted the statement (HTTP 500) and column
+// filters could reference other columns. All of it must now be neutralized
+// while ordinary text search keeps working.
+func TestSearch_FTSExpressionInjectionIsNeutralized(t *testing.T) {
+	paster, aliceCtx, bobCtx := newSearchFixture(t)
+
+	body := "hello world content foo unbalanced near x 4"
+	alicePaste, err := paster.Create(aliceCtx, []byte(body), "reactor notes", "text", "", nil, false, "", nil, nil, nil)
+	if err != nil {
+		t.Fatalf("Create alice: %v", err)
+	}
+	bobPaste, err := paster.Create(bobCtx, []byte(body), "secret notes", "text", "", nil, false, "", nil, nil, nil)
+	if err != nil {
+		t.Fatalf("Create bob: %v", err)
+	}
+
+	hostile := []string{`content:foo`, `"unbalanced`, `*`, `NEAR/4 x`, `hello "world`}
+	for _, q := range hostile {
+		res, err := paster.Search(aliceCtx, q, 1, 50, pasteCommon.ScopeAll, nil, "")
+		if err != nil {
+			t.Errorf("Search(%q): want no error, got %v", q, err)
+			continue
+		}
+		for _, got := range res.Pastes {
+			if got.PasteID == bobPaste.PasteID {
+				t.Errorf("Search(%q): foreign paste leaked into results", q)
+			}
+			if got.PasteID != alicePaste.PasteID {
+				t.Errorf("Search(%q): unexpected result %q", q, got.PasteID)
+			}
+		}
+	}
+
+	// The plain-text meaning of a hostile-looking query survives:
+	// `hello "world` becomes the implicit-AND phrase query and still
+	// matches Alice's paste, and Bob's never shows up.
+	res, err := paster.Search(aliceCtx, `hello "world`, 1, 50, pasteCommon.ScopeAll, nil, "")
+	if err != nil {
+		t.Fatalf("Search hello \"world: %v", err)
+	}
+	if len(res.Pastes) != 1 || res.Pastes[0].PasteID != alicePaste.PasteID {
+		t.Fatalf("want only alice's paste, got %+v", res.Pastes)
+	}
+}
+
+func TestSearch_MultiWordImplicitANDStillWorks(t *testing.T) {
+	paster, aliceCtx, _ := newSearchFixture(t)
+
+	both, err := paster.Create(aliceCtx, []byte("quantum flux capacitor"), "both.txt", "text", "", nil, false, "", nil, nil, nil)
+	if err != nil {
+		t.Fatalf("Create both: %v", err)
+	}
+	alphaOnly, err := paster.Create(aliceCtx, []byte("quantum entanglement"), "alpha.txt", "text", "", nil, false, "", nil, nil, nil)
+	if err != nil {
+		t.Fatalf("Create alphaOnly: %v", err)
+	}
+
+	// Two words are ANDed: only the paste containing both matches.
+	res, err := paster.Search(aliceCtx, "quantum flux", 1, 50, pasteCommon.ScopeAll, nil, "")
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(res.Pastes) != 1 || res.Pastes[0].PasteID != both.PasteID {
+		t.Fatalf("want only both.txt, got %+v", res.Pastes)
+	}
+	// AND is order-independent.
+	res, err = paster.Search(aliceCtx, "flux quantum", 1, 50, pasteCommon.ScopeAll, nil, "")
+	if err != nil {
+		t.Fatalf("Search reversed: %v", err)
+	}
+	if len(res.Pastes) != 1 || res.Pastes[0].PasteID != both.PasteID {
+		t.Fatalf("want only both.txt for reversed query, got %+v", res.Pastes)
+	}
+	// A single term still matches everything that contains it.
+	res, err = paster.Search(aliceCtx, "quantum", 1, 50, pasteCommon.ScopeAll, nil, "")
+	if err != nil {
+		t.Fatalf("Search single term: %v", err)
+	}
+	if len(res.Pastes) != 2 {
+		t.Fatalf("want both pastes for 'quantum', got %+v", res.Pastes)
+	}
+	seen := map[string]bool{}
+	for _, got := range res.Pastes {
+		seen[got.PasteID] = true
+	}
+	if !seen[both.PasteID] || !seen[alphaOnly.PasteID] {
+		t.Fatalf("want %q and %q, got %+v", both.PasteID, alphaOnly.PasteID, res.Pastes)
+	}
+}
+
+// ── Access-counter atomicity ─────────────────────────────────────────────────
+
+// Concurrent viewers must never over-serve an access-limited paste: the
+// counter is now consumed by a single conditional UPDATE, not a
+// read-then-increment that the sqlite driver leaves unlocked (it drops
+// SELECT ... FOR UPDATE).
+
+func TestGetPublicPaste_ConcurrentSingleAccessServesExactlyOne(t *testing.T) {
+	paster, ctx := newPasterFixture(t)
+	p := mustCreate(t, paster, ctx, "race-one-shot", true, pInt(1))
+
+	const workers = 8
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	errs := make([]error, workers)
+	data := make([]string, workers)
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			<-start
+			got, err := paster.GetPublicPaste(context.Background(), p.PasteID)
+			errs[idx] = err
+			if err == nil {
+				data[idx] = string(got.Data)
+			}
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+
+	served := 0
+	for i, err := range errs {
+		switch {
+		case err == nil:
+			served++
+			if data[i] != "paste content" {
+				t.Errorf("worker %d: want content, got %q", i, data[i])
+			}
+		case !isNotFound(err):
+			t.Errorf("worker %d: want content or NotFound, got %v", i, err)
+		}
+	}
+	if served != 1 {
+		t.Fatalf("MaxAccesses=1 with %d concurrent viewers: want exactly 1 served, got %d", workers, served)
+	}
+	// The exhausted paste must be destroyed, not merely over-drawn.
+	if _, err := paster.GetPublicPaste(ctx, p.PasteID); !isNotFound(err) {
+		t.Fatalf("after concurrent exhaustion: want NotFound, got %v", err)
+	}
+}
+
+func TestGetPublicPaste_ConcurrentBudgetServesExactlyN(t *testing.T) {
+	paster, ctx := newPasterFixture(t)
+	const budget = 3
+	p := mustCreate(t, paster, ctx, "race-three-shot", true, pInt(budget))
+
+	const workers = 12
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	errs := make([]error, workers)
+	data := make([]string, workers)
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			<-start
+			got, err := paster.GetPublicPaste(context.Background(), p.PasteID)
+			errs[idx] = err
+			if err == nil {
+				data[idx] = string(got.Data)
+			}
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+
+	served := 0
+	for i, err := range errs {
+		switch {
+		case err == nil:
+			served++
+			if data[i] != "paste content" {
+				t.Errorf("worker %d: want content, got %q", i, data[i])
+			}
+		case !isNotFound(err):
+			t.Errorf("worker %d: want content or NotFound, got %v", i, err)
+		}
+	}
+	if served != budget {
+		t.Fatalf("MaxAccesses=%d with %d concurrent viewers: want exactly %d served, got %d", budget, workers, budget, served)
+	}
+	if _, err := paster.GetPublicPaste(ctx, p.PasteID); !isNotFound(err) {
+		t.Fatalf("after concurrent exhaustion: want NotFound, got %v", err)
 	}
 }

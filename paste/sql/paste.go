@@ -31,7 +31,6 @@ import (
 	"gopherbin/util"
 
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 
 	"github.com/pkg/errors"
 )
@@ -258,19 +257,82 @@ func (p *paste) getUserByUsernameOrEmail(userID string) (models.Users, error) {
 	return tmpUser, nil
 }
 
-// incrementAndMaybeDestroy increments the access counter and, if the paste has
-// reached its access limit, hard-deletes it. Must be called inside a transaction.
-func (p *paste) incrementAndMaybeDestroy(tx *gorm.DB, pst *models.Paste) error {
-	if err := tx.Model(pst).UpdateColumn(
-		"access_count", gorm.Expr("access_count + 1"),
-	).Error; err != nil {
-		return errors.Wrap(err, "incrementing access count")
+// consumeAccess atomically consumes one of the paste's remaining accesses.
+// The read-modify-write it replaces was unprotected in practice: the sqlite
+// driver drops SELECT ... FOR UPDATE (vendor gorm.io/driver/sqlite, "FOR"
+// clause builder), so concurrent viewers could interleave and over-serve a
+// access-limited paste. The counter is bumped with a single conditional
+// UPDATE whose predicate the database evaluates against the current row,
+// which is race-free on both sqlite and MySQL.
+//
+// The UPDATE stays the FIRST statement of its transaction: on SQLite (WAL)
+// a write that upgrades a transaction already holding a read snapshot can
+// abort immediately with SQLITE_BUSY instead of waiting, so starting the
+// transaction with the write keeps that window as small as SQLite allows.
+// The remaining aborts are transient by nature and are retried by the
+// caller via transactionRetryingOnBusy.
+//
+// A budget of less than 1 behaves as exactly one remaining view: the legacy
+// path incremented unconditionally and destroyed when count >= max, so a
+// paste created with max_accesses <= 0 still served its content once before
+// destruction; the CASE preserves that observable behavior.
+//
+// It returns true when a slot was taken, and false when the UPDATE matched
+// nothing: either the paste has no access budget (or no longer exists),
+// which the caller's follow-up read resolves, or a concurrent viewer just
+// exhausted the budget. Must be called inside a transaction.
+func (p *paste) consumeAccess(tx *gorm.DB, pasteID string) (bool, error) {
+	res := tx.Model(&models.Paste{}).
+		Where("paste_id = ? AND max_accesses IS NOT NULL AND access_count < CASE WHEN max_accesses < 1 THEN 1 ELSE max_accesses END", pasteID).
+		UpdateColumn("access_count", gorm.Expr("access_count + 1"))
+	if res.Error != nil {
+		return false, errors.Wrap(res.Error, "consuming access")
 	}
-	pst.AccessCount++
-	if pst.AccessCount >= *pst.MaxAccesses {
-		if err := tx.Unscoped().Delete(pst).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-			return errors.Wrap(err, "deleting exhausted paste")
+	return res.RowsAffected == 1, nil
+}
+
+// isTransientLockError reports the SQLite driver messages that signal
+// transient write contention (SQLITE_BUSY, including the BUSY_SNAPSHOT
+// variant returned without consulting the busy timeout, and SQLITE_LOCKED).
+// Message matching is used because the sqlite driver is only an indirect
+// dependency; MySQL never produces these strings, so retrying on them is
+// inert there.
+func isTransientLockError(err error) bool {
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "database is locked") ||
+		strings.Contains(msg, "database table is locked")
+}
+
+// transactionRetryingOnBusy runs fn inside a database transaction, retrying
+// the whole unit of work a bounded number of times when SQLite aborts it
+// with transient lock contention. The retry is safe for the access-counter
+// transaction: an attempt that failed before committing consumed nothing,
+// and the next attempt re-evaluates the conditional UPDATE against the
+// freshly committed state, so no sequence of attempts can ever serve more
+// viewers than the budget allows.
+func (p *paste) transactionRetryingOnBusy(fn func(tx *gorm.DB) error) error {
+	const maxAttempts = 24
+	var err error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		err = p.conn.Transaction(fn)
+		if err == nil || !isTransientLockError(err) {
+			return err
 		}
+		// Linear backoff; the contending transactions are single-statement
+		// writes that drain in microseconds, so this stays far below a
+		// second even with a long queue of viewers.
+		time.Sleep(time.Duration(attempt+1) * 500 * time.Microsecond)
+	}
+	return errors.Wrap(err, "after retrying on lock contention")
+}
+
+// destroyExhaustedPaste hard-deletes a paste whose access budget is spent.
+// The viewer whose access exhausted the budget is served from the copy
+// loaded before the delete, matching the pre-existing destroy-at-limit
+// behavior. Must be called inside a transaction.
+func (p *paste) destroyExhaustedPaste(tx *gorm.DB, pst *models.Paste) error {
+	if err := tx.Unscoped().Delete(pst).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return errors.Wrap(err, "deleting exhausted paste")
 	}
 	return nil
 }
@@ -475,9 +537,19 @@ func (p *paste) loadPaste(pasteID string) (models.Paste, error) {
 
 func (p *paste) GetPublicPaste(ctx context.Context, pasteID string) (params.Paste, error) {
 	var tmpPaste models.Paste
-	err := p.conn.Transaction(func(tx *gorm.DB) error {
+	err := p.transactionRetryingOnBusy(func(tx *gorm.DB) error {
+		tmpPaste = models.Paste{}
 		now := time.Now()
-		q := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Preload("Labels").Preload("Team").Where(
+		// The conditional counter UPDATE runs first (see consumeAccess for
+		// why the order matters); the plain read afterwards sees our own
+		// increment. It needs no FOR UPDATE lock: the serve decision is
+		// made by the UPDATE predicate, not by row locking, and the sqlite
+		// driver would drop the lock clause anyway.
+		consumed, err := p.consumeAccess(tx, pasteID)
+		if err != nil {
+			return err
+		}
+		q := tx.Preload("Labels").Preload("Team").Where(
 			"paste_id = ? and (expires is NULL or expires >= ?) and public = ?", pasteID, now, true).First(&tmpPaste)
 		if q.Error != nil {
 			if errors.Is(q.Error, gorm.ErrRecordNotFound) {
@@ -486,7 +558,15 @@ func (p *paste) GetPublicPaste(ctx context.Context, pasteID string) (params.Past
 			return errors.Wrap(q.Error, "fetching paste from database")
 		}
 		if tmpPaste.MaxAccesses != nil {
-			return p.incrementAndMaybeDestroy(tx, &tmpPaste)
+			if !consumed {
+				// The paste has a budget but the UPDATE took no slot: a
+				// concurrent viewer just exhausted it. Serve nothing,
+				// exactly as if the destroyed row had already vanished.
+				return gErrors.ErrNotFound
+			}
+			if tmpPaste.AccessCount >= *tmpPaste.MaxAccesses {
+				return p.destroyExhaustedPaste(tx, &tmpPaste)
+			}
 		}
 		return nil
 	})
@@ -498,9 +578,15 @@ func (p *paste) GetPublicPaste(ctx context.Context, pasteID string) (params.Past
 
 func (p *paste) getPaste(pasteID string, user models.Users) (models.Paste, error) {
 	var tmpPaste models.Paste
-	err := p.conn.Transaction(func(tx *gorm.DB) error {
+	err := p.transactionRetryingOnBusy(func(tx *gorm.DB) error {
+		tmpPaste = models.Paste{}
 		now := time.Now()
-		q := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Preload("Users").Preload("Owner").Preload("Team").Preload("Labels").Where(
+		// Counter UPDATE first; see GetPublicPaste for the rationale.
+		consumed, err := p.consumeAccess(tx, pasteID)
+		if err != nil {
+			return err
+		}
+		q := tx.Preload("Users").Preload("Owner").Preload("Team").Preload("Labels").Where(
 			"paste_id = ? and (expires is NULL or expires >= ?)", pasteID, now).First(&tmpPaste)
 		if q.Error != nil {
 			if errors.Is(q.Error, gorm.ErrRecordNotFound) {
@@ -509,10 +595,18 @@ func (p *paste) getPaste(pasteID string, user models.Users) (models.Paste, error
 			return errors.Wrap(q.Error, "fetching paste from database")
 		}
 		if canAccess := p.canAccess(tmpPaste, user); !canAccess {
+			// Rolling the transaction back also undoes the increment above,
+			// so an inaccessible paste never consumes an access, as before.
 			return gErrors.ErrNotFound
 		}
 		if tmpPaste.MaxAccesses != nil {
-			return p.incrementAndMaybeDestroy(tx, &tmpPaste)
+			if !consumed {
+				// Budget exhausted by a concurrent viewer: gone.
+				return gErrors.ErrNotFound
+			}
+			if tmpPaste.AccessCount >= *tmpPaste.MaxAccesses {
+				return p.destroyExhaustedPaste(tx, &tmpPaste)
+			}
 		}
 		return nil
 	})
@@ -627,6 +721,50 @@ func mergeConds(parts ...string) string {
 	return strings.Join(kept, " AND ")
 }
 
+// sanitizeFTSQuery turns free-text search input into a safe SQLite FTS5
+// query expression. The value bound to `pastes_fts MATCH ?` is parsed by
+// the FTS5 query parser, where characters such as `"`, `*`, `(`, `)`, `:`,
+// `^`, `-`, `{`, `}` carry syntax meaning (phrases, prefixes, column
+// filters, negation, grouping) and unbalanced input aborts the statement
+// with a parse error that surfaces as an HTTP 500. Each whitespace-
+// separated token is stripped of those characters; the surviving tokens are
+// wrapped as double-quoted string phrases (any internal quote doubled,
+// defensively, though stripping leaves none) and joined with spaces, which
+// FTS5 treats as an implicit AND. Tokens emptied by the stripping are
+// dropped, so pure-syntax input yields the empty query rather than a
+// parser error, and column/wildcard/boolean injection is impossible.
+func sanitizeFTSQuery(query string) string {
+	syntax := strings.NewReplacer(`"`, ``, `*`, ``, `(`, ``, `)`, ``, `:`, ``, `^`, ``, `-`, ``, `{`, ``, `}`, ``)
+	var phrases []string
+	for _, token := range strings.Fields(query) {
+		token = syntax.Replace(token)
+		if token == "" {
+			continue
+		}
+		phrases = append(phrases, `"`+strings.ReplaceAll(token, `"`, `""`)+`"`)
+	}
+	return strings.Join(phrases, " ")
+}
+
+// escapeLikeWildcards escapes the LIKE wildcards (and the escape character
+// itself, first) so user input is matched literally instead of acting as a
+// pattern. Pair with `ESCAPE '\'` on every LIKE it is bound to, mirroring
+// the proven pattern in admin/sql's user search.
+func escapeLikeWildcards(query string) string {
+	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(query)
+}
+
+// stripMySQLBooleanOperators removes the operators that MySQL's
+// MATCH ... AGAINST(... IN BOOLEAN MODE) reserves as search syntax: +
+// (required), - (excluded), * (prefix wildcard), " (phrase) and grouping
+// parens. Raw user text bound into boolean mode would otherwise let these
+// characters silently change the result set or trigger a parse error;
+// stripping them degrades the input to plain terms, which is what the
+// search box intends.
+func stripMySQLBooleanOperators(query string) string {
+	return strings.NewReplacer(`+`, ` `, `-`, ` `, `*`, ` `, `"`, ` `, `(`, ` `, `)`, ` `).Replace(query)
+}
+
 func (p *paste) Search(ctx context.Context, query string, page int64, results int64, scope string, labels []string, team string) (params.PasteListResult, error) {
 	user, err := p.getUserFromContext(ctx)
 	if err != nil {
@@ -647,7 +785,10 @@ func (p *paste) Search(ctx context.Context, query string, page int64, results in
 
 	// Build full-text search query based on database backend
 	var q *gorm.DB
-	searchPattern := "%" + query + "%"
+	// User text is never bound raw into a LIKE pattern: %, _ and \ are LIKE
+	// syntax and would let input such as "%%" match every row. Escaping
+	// happens once here; every LIKE below declares the escape character.
+	searchPattern := "%" + escapeLikeWildcards(query) + "%"
 
 	switch p.dbBackend {
 	case config.MySQLBackend:
@@ -664,39 +805,56 @@ func (p *paste) Search(ctx context.Context, query string, page int64, results in
 
 		if indexCount > 0 {
 			// Use FULLTEXT search with MATCH...AGAINST
-			// IN BOOLEAN MODE allows for more flexible searching
+			// IN BOOLEAN MODE allows for more flexible searching. The
+			// bound query is parsed as boolean-mode *syntax* (+required,
+			// -excluded, *prefix, "phrase", grouping parens), so raw user
+			// text could change result semantics or hit a parse error;
+			// bind the operator-stripped form so it searches as plain terms.
 			q = p.conn.Select(
 				"id, paste_id, language, name, description, metadata, owner_id, team_id, created_at, expires, public, substr(`data`, 1, 512) as data",
 			).Where(
 				scopeCond+" AND MATCH(name, `data`) AGAINST(? IN BOOLEAN MODE) AND (expires IS NULL OR expires >= ?)",
-				append(scopeArgs, query, now)...,
+				append(scopeArgs, stripMySQLBooleanOperators(query), now)...,
 			).Order("id desc")
 		} else {
 			// Fallback to LIKE search
 			q = p.conn.Select(
 				"id, paste_id, language, name, description, metadata, owner_id, team_id, created_at, expires, public, substr(`data`, 1, 512) as data",
 			).Where(
-				scopeCond+" AND (name LIKE ? OR `data` LIKE ?) AND (expires IS NULL OR expires >= ?)",
+				scopeCond+" AND (name LIKE ? ESCAPE '\\' OR `data` LIKE ? ESCAPE '\\') AND (expires IS NULL OR expires >= ?)",
 				append(scopeArgs, searchPattern, searchPattern, now)...,
 			).Order("id desc")
 		}
 
 	case config.SQLiteBackend:
-		// SQLite: Use FTS5 for full-text search
-		// Join with FTS table and use MATCH for efficient full-text search
+		// SQLite: Use FTS5 for full-text search.
+		// Join with FTS table and use MATCH for efficient full-text search.
+		// The bound value is an FTS5 *query expression*, so raw user input
+		// must be sanitized first (see sanitizeFTSQuery); the scope clause
+		// still ANDs visibility on top of the text match.
+		ftsQuery := sanitizeFTSQuery(query)
+		if ftsQuery == "" {
+			// Input consisted solely of FTS5 syntax characters; no token
+			// can match it. Answer with an empty page instead of handing
+			// the FTS5 parser an empty expression.
+			if page > 1 {
+				page = 1
+			}
+			return params.PasteListResult{Pastes: []params.Paste{}, TotalPages: 1, Page: page}, nil
+		}
 		q = p.conn.Table("pastes").
 			Select(
 				"pastes.id, pastes.paste_id, pastes.language, pastes.name, pastes.description, pastes.metadata, pastes.owner_id, pastes.team_id, pastes.created_at, pastes.expires, pastes.public, substr(pastes.`data`, 1, 512) as data",
 			).
 			Joins("INNER JOIN pastes_fts ON pastes.id = pastes_fts.rowid").
-			Where("pastes_fts MATCH ? AND "+scopeCond+" AND (pastes.expires IS NULL OR pastes.expires >= ?)", append([]interface{}{query}, append(scopeArgs, now)...)...).
+			Where("pastes_fts MATCH ? AND "+scopeCond+" AND (pastes.expires IS NULL OR pastes.expires >= ?)", append([]interface{}{ftsQuery}, append(scopeArgs, now)...)...).
 			Order("pastes.id desc")
 
 	default:
 		// Default fallback: search only in name
 		q = p.conn.Select(
 			"id, paste_id, language, name, description, metadata, owner_id, team_id, created_at, expires, public, substr(`data`, 1, 512) as data",
-		).Where(scopeCond+" and name LIKE ? and (expires is NULL or expires >= ?)", append(scopeArgs, searchPattern, now)...).Order("id desc")
+		).Where(scopeCond+" and name LIKE ? ESCAPE '\\' and (expires is NULL or expires >= ?)", append(scopeArgs, searchPattern, now)...).Order("id desc")
 	}
 
 	cleanLabels, err := dedupeLabels(labels)
