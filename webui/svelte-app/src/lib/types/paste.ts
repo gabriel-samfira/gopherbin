@@ -1,3 +1,17 @@
+export interface PasteLabel {
+	name: string;
+	color?: string;
+	scope?: 'personal' | 'team';
+	team?: string;
+}
+
+export interface LabelInfo {
+	id: number;
+	name: string;
+	color?: string;
+	usage: number;
+}
+
 export interface Paste {
 	paste_id: string;
 	name: string;
@@ -9,6 +23,10 @@ export interface Paste {
 	updated_at: string;
 	expires?: string;
 	created_by?: string;
+	owner?: string;
+	owner_id?: number;
+	team?: string;
+	labels?: PasteLabel[];
 }
 
 export interface PasteCreate {
@@ -18,12 +36,16 @@ export interface PasteCreate {
 	public: boolean;
 	description?: string;
 	expires?: Date;
+	team?: string;
 	metadata?: Record<string, string>;
+	labels?: string[];
 }
 
 export interface PasteUpdate {
 	public?: boolean;
 }
+
+export type PasteScope = 'all' | 'mine' | 'shared';
 
 export interface PasteList {
 	pastes: Paste[];
