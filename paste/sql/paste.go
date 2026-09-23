@@ -62,7 +62,43 @@ type paste struct {
 	teamMgr   *teamManager
 }
 
+// suspendSQLiteForeignKeys disables foreign key enforcement on the SQLite
+// connection pool and returns a function which re-enables it. The pool is
+// pinned to a single connection so the PRAGMA (which is per-connection)
+// applies to every statement issued while the migration runs.
+func suspendSQLiteForeignKeys(conn *gorm.DB) (func(), error) {
+	sqlDB, err := conn.DB()
+	if err != nil {
+		return nil, err
+	}
+	prev := sqlDB.Stats().MaxOpenConnections
+	sqlDB.SetMaxOpenConns(1)
+	if err := conn.Exec("PRAGMA foreign_keys = OFF").Error; err != nil {
+		sqlDB.SetMaxOpenConns(prev)
+		return nil, err
+	}
+	return func() {
+		if err := conn.Exec("PRAGMA foreign_keys = ON").Error; err != nil {
+			fmt.Printf("warning: could not re-enable SQLite foreign keys: %v\n", err)
+		}
+		sqlDB.SetMaxOpenConns(prev)
+	}, nil
+}
+
 func (p *paste) migrateDB() error {
+	// The SQLite driver adds new foreign key constraints by rebuilding tables
+	// with DROP + recreate. With enforcement enabled on the DSN
+	// (_foreign_keys=ON), the DROP cascades into dependent rows (pastes and
+	// team_users reference teams with ON DELETE CASCADE), silently destroying
+	// data during startup migration. Suspend FK enforcement for the migration.
+	if p.conn.Dialector.Name() == "sqlite" {
+		restore, err := suspendSQLiteForeignKeys(p.conn)
+		if err != nil {
+			return errors.Wrap(err, "suspending foreign keys for migration")
+		}
+		defer restore()
+	}
+
 	if err := p.conn.AutoMigrate(
 		&models.Users{},
 		&models.Paste{},
