@@ -1,0 +1,2446 @@
+openapi: 3.0.0
+info:
+  description: The GopherBin REST API.
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+  title: GopherBin API.
+  version: "1.0"
+paths:
+  /admin/users:
+    get:
+      operationId: listUsers
+      parameters:
+        - description: Page number, starting at 1.
+          in: query
+          name: page
+          schema:
+            type: integer
+        - description: Maximum results per page.
+          in: query
+          name: max_results
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: UserListResult
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserListResult"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "403":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      summary: List all user accounts (admin only).
+      tags:
+        - admin
+    post:
+      operationId: createUser
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewUserParams"
+        description: New user.
+        required: true
+      responses:
+        "200":
+          description: Users
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Users"
+        "400":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "403":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      summary: Create a user account (admin only).
+      tags:
+        - admin
+  "/admin/users/{userID}":
+    delete:
+      operationId: deleteUser
+      parameters:
+        - description: Numeric user identifier.
+          in: path
+          name: userID
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "403":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "404":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      summary: Delete a user account (admin only).
+      tags:
+        - admin
+    get:
+      operationId: getUser
+      parameters:
+        - description: Numeric user identifier.
+          in: path
+          name: userID
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Users
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Users"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "403":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "404":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      summary: Fetch a single user account (admin only).
+      tags:
+        - admin
+    put:
+      operationId: updateUser
+      parameters:
+        - description: Numeric user identifier.
+          in: path
+          name: userID
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserPayload"
+        description: User fields to update.
+        required: true
+      responses:
+        "200":
+          description: Users
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Users"
+        "400":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "403":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "404":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      summary: Update a user account (admin only).
+      tags:
+        - admin
+  /auth/login:
+    post:
+      operationId: login
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordLoginParams"
+        description: Login credentials.
+        required: true
+      responses:
+        "200":
+          description: JWTResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JWTResponse"
+        "400":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      summary: Exchange username/email and password for a JWT token.
+      tags:
+        - auth
+  /first-run:
+    post:
+      description: >-
+        Bootstrap the installation by creating the initial superuser. Only
+        succeeds
+
+        while the instance has no superuser; every subsequent call returns 409.
+      operationId: firstRun
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewUserParams"
+        description: Initial superuser.
+        required: true
+      responses:
+        "200":
+          description: Users
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Users"
+        "400":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "409":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      tags:
+        - system
+  /labels:
+    get:
+      operationId: listLabels
+      responses:
+        "200":
+          description: LabelVocabulary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LabelVocabulary"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      summary: The label vocabulary visible to the caller, with usage counts.
+      tags:
+        - labels
+  "/labels/{labelID}":
+    delete:
+      operationId: deleteLabel
+      parameters:
+        - description: Numeric label identifier.
+          in: path
+          name: labelID
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "404":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      summary: Delete a label owned by the caller.
+      tags:
+        - labels
+    put:
+      operationId: updateLabel
+      parameters:
+        - description: Numeric label identifier.
+          in: path
+          name: labelID
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateLabelParams"
+        description: Label fields to update.
+        required: true
+      responses:
+        "200":
+          description: LabelInfo
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LabelInfo"
+        "400":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "404":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      summary: Rename a label or change its custom color.
+      tags:
+        - labels
+  /labels/mine:
+    get:
+      operationId: listOwnedLabels
+      responses:
+        "200":
+          description: LabelInfoArray
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LabelInfoArray"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      summary: Labels owned by the caller.
+      tags:
+        - labels
+  /logout:
+    get:
+      operationId: logout
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+      summary: Blacklist the caller's current JWT token, ending the session.
+      tags:
+        - auth
+  /me:
+    get:
+      operationId: getMe
+      responses:
+        "200":
+          description: Users
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Users"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      summary: The account record of the authenticated caller.
+      tags:
+        - users
+    put:
+      operationId: updateMe
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MeSettingsParams"
+        description: Settings to update.
+        required: true
+      responses:
+        "200":
+          description: Users
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Users"
+        "400":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      summary: Update the caller's own settings.
+      tags:
+        - users
+  /paste:
+    get:
+      description: |-
+        List pastes visible to the caller, filtered by the optional query
+        parameters.
+      operationId: listPastes
+      parameters:
+        - description: Page number, starting at 1.
+          in: query
+          name: page
+          schema:
+            type: integer
+        - description: Maximum results per page.
+          in: query
+          name: max_results
+          schema:
+            type: integer
+        - description: Restrict the listing to a scope (e.g. user or team).
+          in: query
+          name: scope
+          schema:
+            type: string
+        - description: Restrict the listing to a single team.
+          in: query
+          name: team
+          schema:
+            type: string
+        - description: Comma separated label names the pastes must carry.
+          in: query
+          name: labels
+          schema:
+            type: string
+      responses:
+        "200":
+          description: PasteListResult
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PasteListResult"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      tags:
+        - pastes
+    post:
+      operationId: createPaste
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Paste"
+        description: Paste payload.
+        required: true
+      responses:
+        "200":
+          description: Paste
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Paste"
+        "400":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      summary: Create a new paste. The content is provided base64 encoded.
+      tags:
+        - pastes
+  "/paste/{pasteID}":
+    delete:
+      operationId: deletePaste
+      parameters:
+        - description: Paste identifier.
+          in: path
+          name: pasteID
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "404":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      summary: Delete a paste the caller owns.
+      tags:
+        - pastes
+    get:
+      operationId: getPaste
+      parameters:
+        - description: Paste identifier.
+          in: path
+          name: pasteID
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Paste
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Paste"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "404":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      summary: Fetch a single paste the caller is allowed to see.
+      tags:
+        - pastes
+    put:
+      operationId: updatePaste
+      parameters:
+        - description: Paste identifier.
+          in: path
+          name: pasteID
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePasteParams"
+        description: Fields to update.
+        required: true
+      responses:
+        "200":
+          description: Paste
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Paste"
+        "400":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "404":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      summary: Update the mutable fields of an existing paste.
+      tags:
+        - pastes
+  "/paste/{pasteID}/download":
+    get:
+      operationId: downloadPaste
+      parameters:
+        - description: Paste identifier.
+          in: path
+          name: pasteID
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: "#/components/responses/file"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "404":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      summary: Download the raw paste content as an attachment.
+      tags:
+        - pastes
+  "/paste/{pasteID}/labels":
+    put:
+      operationId: setPasteLabels
+      parameters:
+        - description: Paste identifier.
+          in: path
+          name: pasteID
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasteLabelsParams"
+        description: Desired label names.
+        required: true
+      responses:
+        "200":
+          description: Paste
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Paste"
+        "400":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "404":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      summary: Replace the label set attached to a paste.
+      tags:
+        - pastes
+  "/paste/{pasteID}/sharing":
+    get:
+      operationId: listPasteShares
+      parameters:
+        - description: Paste identifier.
+          in: path
+          name: pasteID
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: PasteShareListResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PasteShareListResponse"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "404":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      summary: List the users a paste is shared with.
+      tags:
+        - pastes
+    post:
+      operationId: sharePaste
+      parameters:
+        - description: Paste identifier.
+          in: path
+          name: pasteID
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserActionRequest"
+        description: User to share with (username or email in userID).
+        required: true
+      responses:
+        "200":
+          description: TeamMember
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamMember"
+        "400":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "404":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      summary: Grant a user access to a private paste.
+      tags:
+        - pastes
+  "/paste/{pasteID}/sharing/{userID}":
+    delete:
+      operationId: unsharePaste
+      parameters:
+        - description: Paste identifier.
+          in: path
+          name: pasteID
+          required: true
+          schema:
+            type: string
+        - description: User identifier.
+          in: path
+          name: userID
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "404":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      summary: Revoke a user's access to a paste.
+      tags:
+        - pastes
+  "/paste/{pasteID}/transfer":
+    post:
+      operationId: transferPaste
+      parameters:
+        - description: Paste identifier.
+          in: path
+          name: pasteID
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserActionRequest"
+        description: Target user.
+        required: true
+      responses:
+        "200":
+          description: Paste
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Paste"
+        "400":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "404":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      summary: Transfer ownership of a paste to another user.
+      tags:
+        - pastes
+  /paste/search:
+    get:
+      operationId: searchPastes
+      parameters:
+        - description: Search query.
+          in: query
+          name: q
+          required: true
+          schema:
+            type: string
+        - description: Page number, starting at 1.
+          in: query
+          name: page
+          schema:
+            type: integer
+        - description: Maximum results per page.
+          in: query
+          name: max_results
+          schema:
+            type: integer
+        - description: Restrict the search to a scope (e.g. user or team).
+          in: query
+          name: scope
+          schema:
+            type: string
+        - description: Restrict the search to a single team.
+          in: query
+          name: team
+          schema:
+            type: string
+        - description: Comma separated label names the pastes must carry.
+          in: query
+          name: labels
+          schema:
+            type: string
+      responses:
+        "200":
+          description: PasteListResult
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PasteListResult"
+        "400":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      summary: Full-text search over the pastes visible to the caller.
+      tags:
+        - pastes
+  "/public/paste/{pasteID}":
+    get:
+      operationId: publicPasteView
+      parameters:
+        - description: Paste identifier.
+          in: path
+          name: pasteID
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Paste
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Paste"
+        "404":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      summary: Fetch a paste that has been marked public, without authentication.
+      tags:
+        - pastes
+  /teams:
+    get:
+      operationId: listTeams
+      parameters:
+        - description: Page number, starting at 1.
+          in: query
+          name: page
+          schema:
+            type: integer
+        - description: Maximum results per page.
+          in: query
+          name: max_results
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: TeamListResult
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamListResult"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      summary: List the teams the caller belongs to.
+      tags:
+        - teams
+    post:
+      operationId: createTeam
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewTeamParams"
+        description: Team name and description.
+        required: true
+      responses:
+        "200":
+          description: Teams
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Teams"
+        "400":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      summary: Create a new team owned by the caller.
+      tags:
+        - teams
+  "/teams/{teamName}":
+    delete:
+      operationId: deleteTeam
+      parameters:
+        - description: Team name.
+          in: path
+          name: teamName
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "404":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      summary: Delete a team (owner only).
+      tags:
+        - teams
+    get:
+      operationId: getTeam
+      parameters:
+        - description: Team name.
+          in: path
+          name: teamName
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Teams
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Teams"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "404":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      summary: Fetch a team the caller is a member of.
+      tags:
+        - teams
+    put:
+      operationId: updateTeam
+      parameters:
+        - description: Team name.
+          in: path
+          name: teamName
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTeamParams"
+        description: Team fields to update.
+        required: true
+      responses:
+        "200":
+          description: Teams
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Teams"
+        "400":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "404":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      summary: Rename a team or change its description (owner only).
+      tags:
+        - teams
+  "/teams/{teamName}/accept":
+    post:
+      operationId: acceptTeamInvite
+      parameters:
+        - description: Team name.
+          in: path
+          name: teamName
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Teams
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Teams"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "404":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      summary: Accept a pending team invitation addressed to the caller.
+      tags:
+        - teams
+  "/teams/{teamName}/decline":
+    post:
+      operationId: declineTeamInvite
+      parameters:
+        - description: Team name.
+          in: path
+          name: teamName
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "404":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      summary: Decline a pending team invitation addressed to the caller.
+      tags:
+        - teams
+  "/teams/{teamName}/labels":
+    put:
+      operationId: setTeamLabels
+      parameters:
+        - description: Team name.
+          in: path
+          name: teamName
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeamLabelsParams"
+        description: Desired label names.
+        required: true
+      responses:
+        "200":
+          description: Teams
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Teams"
+        "400":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "404":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      summary: Replace the label vocabulary of a team (owner or admin).
+      tags:
+        - teams
+  "/teams/{teamName}/leave":
+    post:
+      operationId: leaveTeam
+      parameters:
+        - description: Team name.
+          in: path
+          name: teamName
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "404":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      summary: Leave a team the caller belongs to.
+      tags:
+        - teams
+  "/teams/{teamName}/members":
+    get:
+      operationId: listTeamMembers
+      parameters:
+        - description: Team name.
+          in: path
+          name: teamName
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: TeamMemberArray
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamMemberArray"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "404":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      summary: List the members of a team, including pending invites.
+      tags:
+        - teams
+    post:
+      description: >-
+        Invite a user to the team (owner or admin). The invite is pending until
+        the
+
+        target user accepts it.
+      operationId: addTeamMember
+      parameters:
+        - description: Team name.
+          in: path
+          name: teamName
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeamMemberParams"
+        description: User (username/email) and role of the new member.
+        required: true
+      responses:
+        "200":
+          description: TeamMember
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamMember"
+        "400":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "404":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      tags:
+        - teams
+  "/teams/{teamName}/members/{member}":
+    delete:
+      operationId: removeTeamMember
+      parameters:
+        - description: Team name.
+          in: path
+          name: teamName
+          required: true
+          schema:
+            type: string
+        - description: Member username.
+          in: path
+          name: member
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "404":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      summary: Remove a member from the team (owner or admin, subject to role rules).
+      tags:
+        - teams
+    put:
+      operationId: setTeamMemberRole
+      parameters:
+        - description: Team name.
+          in: path
+          name: teamName
+          required: true
+          schema:
+            type: string
+        - description: Member username.
+          in: path
+          name: member
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetTeamMemberRoleParams"
+        description: New role.
+        required: true
+      responses:
+        "200":
+          description: TeamMember
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamMember"
+        "400":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "404":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      summary: Change a member's role (owner only).
+      tags:
+        - teams
+  "/teams/{teamName}/transfer":
+    post:
+      description: |-
+        Offer team ownership to one of the team members (owner only). The offer
+        takes effect only once the target accepts it.
+      operationId: transferTeam
+      parameters:
+        - description: Team name.
+          in: path
+          name: teamName
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeamTransferParams"
+        description: Offer target.
+        required: true
+      responses:
+        "200":
+          description: Teams
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Teams"
+        "400":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "404":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      tags:
+        - teams
+  "/teams/{teamName}/transfer/{action}":
+    post:
+      operationId: teamTransferAction
+      parameters:
+        - description: Team name.
+          in: path
+          name: teamName
+          required: true
+          schema:
+            type: string
+        - description: Transfer action.
+          in: path
+          name: action
+          required: true
+          schema:
+            type: string
+            enum:
+              - accept decline cancel
+      responses:
+        "200":
+          description: Teams
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Teams"
+        "400":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "404":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      summary: "Act on a pending ownership transfer: accept, decline or cancel."
+      tags:
+        - teams
+  /teams/invites:
+    get:
+      operationId: listTeamInvites
+      responses:
+        "200":
+          description: TeamInviteInfoArray
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamInviteInfoArray"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      summary: Team invitations currently pending on the caller.
+      tags:
+        - teams
+  /teams/transfers:
+    get:
+      operationId: listTeamTransfers
+      responses:
+        "200":
+          description: TeamTransferInfoArray
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamTransferInfoArray"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      summary: Pending team-ownership offers addressed to the caller.
+      tags:
+        - teams
+  /users/search:
+    get:
+      description: >-
+        Type-ahead search over discoverable users, optionally excluding the
+        members
+
+        of a team.
+      operationId: searchUsers
+      parameters:
+        - description: Username or email prefix to search for.
+          in: query
+          name: q
+          required: true
+          schema:
+            type: string
+        - description: Exclude members of this team from the results.
+          in: query
+          name: team
+          schema:
+            type: string
+      responses:
+        "200":
+          description: UserSearchResultArray
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserSearchResultArray"
+        "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+      tags:
+        - users
+security:
+  - Bearer: []
+servers:
+  - url: /api/v1
+components:
+  responses:
+    OK:
+      description: The operation completed successfully. No content is returned.
+      content:
+        application/json:
+          schema:
+            type: object
+    file:
+      description: Binary file download.
+      content:
+        application/json:
+          schema:
+            type: string
+            format: binary
+  securitySchemes:
+    Bearer:
+      description: 'The token with the `Bearer: ` prefix, e.g. "Bearer abcde12345".'
+      in: header
+      name: Authorization
+      type: apiKey
+  schemas:
+    APIErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        details:
+          type: string
+      required:
+        - error
+        - details
+    JWTResponse:
+      type: object
+      properties:
+        token:
+          type: string
+      required:
+        - token
+    LabelInfo:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        color:
+          type: string
+        usage:
+          type: integer
+      required:
+        - id
+        - name
+        - usage
+    LabelInfoArray:
+      items:
+        $ref: "#/components/schemas/LabelInfo"
+      type: array
+    LabelVocabulary:
+      type: object
+      properties:
+        personal:
+          type: array
+          items:
+            type: string
+        teams:
+          type: array
+          items:
+            type: object
+            properties:
+              team:
+                type: string
+              labels:
+                type: array
+                items:
+                  type: string
+            required:
+              - team
+              - labels
+        colors:
+          type: object
+          additionalProperties:
+            type: string
+      required:
+        - personal
+        - teams
+        - colors
+    MeSettingsParams:
+      type: object
+      properties:
+        discoverable:
+          type: boolean
+    NewTeamParams:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+      required:
+        - name
+    NewUserParams:
+      type: object
+      properties:
+        email:
+          type: string
+        username:
+          type: string
+        full_name:
+          type: string
+        password:
+          type: string
+        is_admin:
+          type: boolean
+        enabled:
+          type: boolean
+      required:
+        - email
+        - username
+        - full_name
+        - password
+        - is_admin
+        - enabled
+    PasswordLoginParams:
+      type: object
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+      required:
+        - username
+        - password
+    Paste:
+      type: object
+      properties:
+        id:
+          type: integer
+        paste_id:
+          type: string
+        data:
+          type: string
+          format: byte
+        preview:
+          type: string
+          format: byte
+        language:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        expires:
+          type: string
+          format: date-time
+        max_accesses:
+          type: integer
+        access_count:
+          type: integer
+        public:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        created_by:
+          type: string
+        owner:
+          type: string
+        owner_id:
+          type: integer
+        team:
+          type: string
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+        labels:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              color:
+                type: string
+              scope:
+                type: string
+              team:
+                type: string
+            required:
+              - name
+      required:
+        - id
+        - paste_id
+        - language
+        - name
+        - description
+        - public
+        - created_at
+        - created_by
+        - owner
+        - owner_id
+        - metadata
+    PasteLabelsParams:
+      type: object
+      properties:
+        labels:
+          type: array
+          items:
+            type: string
+      required:
+        - labels
+    PasteListResult:
+      type: object
+      properties:
+        total_pages:
+          type: integer
+        page:
+          type: integer
+        pastes:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              paste_id:
+                type: string
+              data:
+                type: string
+                format: byte
+              preview:
+                type: string
+                format: byte
+              language:
+                type: string
+              name:
+                type: string
+              description:
+                type: string
+              expires:
+                type: string
+                format: date-time
+              max_accesses:
+                type: integer
+              access_count:
+                type: integer
+              public:
+                type: boolean
+              created_at:
+                type: string
+                format: date-time
+              created_by:
+                type: string
+              owner:
+                type: string
+              owner_id:
+                type: integer
+              team:
+                type: string
+              metadata:
+                type: object
+                additionalProperties:
+                  type: string
+              labels:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                    color:
+                      type: string
+                    scope:
+                      type: string
+                    team:
+                      type: string
+                  required:
+                    - name
+            required:
+              - id
+              - paste_id
+              - language
+              - name
+              - description
+              - public
+              - created_at
+              - created_by
+              - owner
+              - owner_id
+              - metadata
+      required:
+        - total_pages
+        - page
+        - pastes
+    PasteShareListResponse:
+      type: object
+      properties:
+        users:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              username:
+                type: string
+              email:
+                type: string
+              full_name:
+                type: string
+              status:
+                type: string
+              role:
+                type: string
+              added_by_id:
+                type: integer
+              added_by:
+                type: string
+            required:
+              - id
+              - username
+              - email
+              - full_name
+      required:
+        - users
+    SetTeamMemberRoleParams:
+      type: object
+      properties:
+        role:
+          type: string
+      required:
+        - role
+    TeamInviteInfo:
+      type: object
+      properties:
+        team_id:
+          type: integer
+        team_name:
+          type: string
+        invited_by:
+          type: string
+      required:
+        - team_id
+        - team_name
+    TeamInviteInfoArray:
+      items:
+        $ref: "#/components/schemas/TeamInviteInfo"
+      type: array
+    TeamLabelGroup:
+      type: object
+      properties:
+        team:
+          type: string
+        labels:
+          type: array
+          items:
+            type: string
+      required:
+        - team
+        - labels
+    TeamLabelsParams:
+      type: object
+      properties:
+        labels:
+          type: array
+          items:
+            type: string
+      required:
+        - labels
+    TeamListResult:
+      type: object
+      properties:
+        total_pages:
+          type: integer
+        page:
+          type: integer
+        teams:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              name:
+                type: string
+              description:
+                type: string
+              owner:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  username:
+                    type: string
+                  email:
+                    type: string
+                  full_name:
+                    type: string
+                  status:
+                    type: string
+                  role:
+                    type: string
+                  added_by_id:
+                    type: integer
+                  added_by:
+                    type: string
+                required:
+                  - id
+                  - username
+                  - email
+                  - full_name
+              members:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                    username:
+                      type: string
+                    email:
+                      type: string
+                    full_name:
+                      type: string
+                    status:
+                      type: string
+                    role:
+                      type: string
+                    added_by_id:
+                      type: integer
+                    added_by:
+                      type: string
+                  required:
+                    - id
+                    - username
+                    - email
+                    - full_name
+              my_role:
+                type: string
+              labels:
+                type: array
+                items:
+                  type: string
+              label_details:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                    name:
+                      type: string
+                    color:
+                      type: string
+                    usage:
+                      type: integer
+                  required:
+                    - id
+                    - name
+                    - usage
+              transfer_to:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  username:
+                    type: string
+                  email:
+                    type: string
+                  full_name:
+                    type: string
+                  status:
+                    type: string
+                  role:
+                    type: string
+                  added_by_id:
+                    type: integer
+                  added_by:
+                    type: string
+                required:
+                  - id
+                  - username
+                  - email
+                  - full_name
+              my_pending_transfer:
+                type: boolean
+              stats:
+                type: object
+                properties:
+                  members:
+                    type: integer
+                  pending:
+                    type: integer
+                  pastes:
+                    type: integer
+                  contributors:
+                    type: integer
+                required:
+                  - members
+                  - pending
+                  - pastes
+                  - contributors
+              created_at:
+                type: string
+                format: date-time
+            required:
+              - id
+              - name
+              - owner
+      required:
+        - total_pages
+        - page
+        - teams
+    TeamMember:
+      type: object
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        email:
+          type: string
+        full_name:
+          type: string
+        status:
+          type: string
+        role:
+          type: string
+        added_by_id:
+          type: integer
+        added_by:
+          type: string
+      required:
+        - id
+        - username
+        - email
+        - full_name
+    TeamMemberArray:
+      items:
+        $ref: "#/components/schemas/TeamMember"
+      type: array
+    TeamMemberParams:
+      type: object
+      properties:
+        userID:
+          type: string
+        role:
+          type: string
+      required:
+        - userID
+    TeamStats:
+      type: object
+      properties:
+        members:
+          type: integer
+        pending:
+          type: integer
+        pastes:
+          type: integer
+        contributors:
+          type: integer
+      required:
+        - members
+        - pending
+        - pastes
+        - contributors
+    TeamTransferInfo:
+      type: object
+      properties:
+        team_id:
+          type: integer
+        team_name:
+          type: string
+        from_user:
+          type: string
+      required:
+        - team_id
+        - team_name
+    TeamTransferInfoArray:
+      items:
+        $ref: "#/components/schemas/TeamTransferInfo"
+      type: array
+    TeamTransferParams:
+      type: object
+      properties:
+        userID:
+          type: string
+      required:
+        - userID
+    Teams:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        owner:
+          type: object
+          properties:
+            id:
+              type: integer
+            username:
+              type: string
+            email:
+              type: string
+            full_name:
+              type: string
+            status:
+              type: string
+            role:
+              type: string
+            added_by_id:
+              type: integer
+            added_by:
+              type: string
+          required:
+            - id
+            - username
+            - email
+            - full_name
+        members:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              username:
+                type: string
+              email:
+                type: string
+              full_name:
+                type: string
+              status:
+                type: string
+              role:
+                type: string
+              added_by_id:
+                type: integer
+              added_by:
+                type: string
+            required:
+              - id
+              - username
+              - email
+              - full_name
+        my_role:
+          type: string
+        labels:
+          type: array
+          items:
+            type: string
+        label_details:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              name:
+                type: string
+              color:
+                type: string
+              usage:
+                type: integer
+            required:
+              - id
+              - name
+              - usage
+        transfer_to:
+          type: object
+          properties:
+            id:
+              type: integer
+            username:
+              type: string
+            email:
+              type: string
+            full_name:
+              type: string
+            status:
+              type: string
+            role:
+              type: string
+            added_by_id:
+              type: integer
+            added_by:
+              type: string
+          required:
+            - id
+            - username
+            - email
+            - full_name
+        my_pending_transfer:
+          type: boolean
+        stats:
+          type: object
+          properties:
+            members:
+              type: integer
+            pending:
+              type: integer
+            pastes:
+              type: integer
+            contributors:
+              type: integer
+          required:
+            - members
+            - pending
+            - pastes
+            - contributors
+        created_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - owner
+    UpdateLabelParams:
+      type: object
+      properties:
+        name:
+          type: string
+        color:
+          type: string
+    UpdatePasteParams:
+      type: object
+      properties:
+        public:
+          type: boolean
+      required:
+        - public
+    UpdateTeamParams:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+    UpdateUserPayload:
+      type: object
+      properties:
+        is_admin:
+          type: boolean
+        username:
+          type: string
+        password:
+          type: string
+        full_name:
+          type: string
+        enabled:
+          type: boolean
+        email:
+          type: string
+        discoverable:
+          type: boolean
+    UserActionRequest:
+      type: object
+      properties:
+        userID:
+          type: string
+      required:
+        - userID
+    UserListResult:
+      type: object
+      properties:
+        total_pages:
+          type: integer
+        users:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              created_at:
+                type: string
+                format: date-time
+              updated_at:
+                type: string
+                format: date-time
+              email:
+                type: string
+              username:
+                type: string
+              full_name:
+                type: string
+              enabled:
+                type: boolean
+              is_admin:
+                type: boolean
+              is_superuser:
+                type: boolean
+              discoverable:
+                type: boolean
+            required:
+              - id
+              - created_at
+              - updated_at
+              - email
+              - username
+              - full_name
+              - enabled
+              - is_admin
+              - is_superuser
+              - discoverable
+      required:
+        - total_pages
+        - users
+    UserSearchResult:
+      type: object
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        full_name:
+          type: string
+      required:
+        - id
+        - username
+        - full_name
+    UserSearchResultArray:
+      items:
+        $ref: "#/components/schemas/UserSearchResult"
+      type: array
+    Users:
+      type: object
+      properties:
+        id:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        email:
+          type: string
+        username:
+          type: string
+        full_name:
+          type: string
+        enabled:
+          type: boolean
+        is_admin:
+          type: boolean
+        is_superuser:
+          type: boolean
+        discoverable:
+          type: boolean
+      required:
+        - id
+        - created_at
+        - updated_at
+        - email
+        - username
+        - full_name
+        - enabled
+        - is_admin
+        - is_superuser
+        - discoverable

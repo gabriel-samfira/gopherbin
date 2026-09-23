@@ -137,7 +137,7 @@ type specDef struct {
 	Ref        string              `yaml:"$ref"`
 	Items      *specDef            `yaml:"items"`
 	GoType     specGoType          `yaml:"x-go-type"`
-	Properties map[string]specProp `yaml:"properties"`
+	Properties map[string]specDef `yaml:"properties"`
 }
 
 type specGoType struct {
@@ -421,9 +421,9 @@ func (c *contract) objOpts(o opts, method, specPath, actualPath, token string, b
 		c.t.Fatalf("%s %s: 200 body is not a JSON object (%v): %s", method, specPath, err, raw)
 	}
 	if len(def.Properties) == 0 && def.GoType.Type != "" {
-		// x-go-type alias: the spec carries no properties of its own, so
-		// the Go struct the spec points at must match both the wire and
-		// the type the contract expected.
+		// x-go-type alias without inlined schema (hand-written spec): the
+		// Go struct the spec points at must match both the wire and the
+		// type the contract expected.
 		alias := specGoTypes()[def.GoType.Type]
 		if goType != nil && alias != goType {
 			c.t.Errorf("%s %s: spec model %s aliases %s, contract expects %s", method, specPath, name, def.GoType.Type, goType)
@@ -441,17 +441,25 @@ func (c *contract) objOpts(o opts, method, specPath, actualPath, token string, b
 		}
 		return raw
 	}
+	// The spec carries the full property list (apigen inlines it from the
+	// Go struct): every key the wire returns must be documented, plus the
+	// always-present Go fields and any explicit expectations must be there.
+	// Optional spec properties the handler omits are tolerated.
 	specKeys := make([]string, 0, len(def.Properties))
 	for k := range def.Properties {
 		specKeys = append(specKeys, k)
 	}
 	sort.Strings(specKeys)
-	if !reflect.DeepEqual(keys, specKeys) {
-		c.t.Errorf("%s %s: response keys %v differ from spec model %s properties %v", method, specPath, keys, name, specKeys)
+	if extra := missingKeys(specKeys, keys); len(extra) > 0 {
+		c.t.Errorf("%s %s: response keys %v are not declared by spec model %s", method, specPath, extra, name)
 	}
-	if goType != nil {
-		if missing := missingKeys(keys, jsonFields(goType)); len(missing) > 0 {
-			c.t.Errorf("%s %s: response lacks keys %v of %s", method, specPath, missing, goType)
+	want := o.expect
+	if want == nil && goType != nil {
+		want = jsonFields(goType)
+	}
+	if len(want) > 0 {
+		if missing := missingKeys(keys, want); len(missing) > 0 {
+			c.t.Errorf("%s %s: response lacks keys %v of %s", method, specPath, missing, name)
 		}
 	}
 	return raw

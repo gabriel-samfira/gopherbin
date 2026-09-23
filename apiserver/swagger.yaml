@@ -4,241 +4,854 @@ consumes:
 definitions:
     APIErrorResponse:
         type: object
-        x-go-type:
-            import:
-                alias: api_responses
-                package: gopherbin/apiserver/responses
-            type: APIErrorResponse
+        properties:
+            error:
+                type: string
+            details:
+                type: string
+        required:
+            - error
+            - details
     JWTResponse:
         type: object
-        x-go-type:
-            import:
-                alias: gopherbin_params
-                package: gopherbin/params
-            type: JWTResponse
+        properties:
+            token:
+                type: string
+        required:
+            - token
     LabelInfo:
         type: object
-        x-go-type:
-            import:
-                alias: gopherbin_params
-                package: gopherbin/params
-            type: LabelInfo
+        properties:
+            id:
+                type: integer
+            name:
+                type: string
+            color:
+                type: string
+            usage:
+                type: integer
+        required:
+            - id
+            - name
+            - usage
     LabelInfoArray:
         items:
             $ref: '#/definitions/LabelInfo'
         type: array
     LabelVocabulary:
         type: object
-        x-go-type:
-            import:
-                alias: gopherbin_params
-                package: gopherbin/params
-            type: LabelVocabulary
+        properties:
+            personal:
+                type: array
+                items:
+                    type: string
+            teams:
+                type: array
+                items:
+                    type: object
+                    properties:
+                        team:
+                            type: string
+                        labels:
+                            type: array
+                            items:
+                                type: string
+                    required:
+                        - team
+                        - labels
+            colors:
+                type: object
+                additionalProperties:
+                    type: string
+        required:
+            - personal
+            - teams
+            - colors
     MeSettingsParams:
         type: object
-        x-go-type:
-            import:
-                alias: gopherbin_params
-                package: gopherbin/params
-            type: MeSettingsParams
+        properties:
+            discoverable:
+                type: boolean
     NewTeamParams:
         type: object
-        x-go-type:
-            import:
-                alias: gopherbin_params
-                package: gopherbin/params
-            type: NewTeamParams
+        properties:
+            name:
+                type: string
+            description:
+                type: string
+        required:
+            - name
     NewUserParams:
         type: object
-        x-go-type:
-            import:
-                alias: gopherbin_params
-                package: gopherbin/params
-            type: NewUserParams
+        properties:
+            email:
+                type: string
+            username:
+                type: string
+            full_name:
+                type: string
+            password:
+                type: string
+            is_admin:
+                type: boolean
+            enabled:
+                type: boolean
+        required:
+            - email
+            - username
+            - full_name
+            - password
+            - is_admin
+            - enabled
     PasswordLoginParams:
         type: object
-        x-go-type:
-            import:
-                alias: gopherbin_params
-                package: gopherbin/params
-            type: PasswordLoginParams
+        properties:
+            username:
+                type: string
+            password:
+                type: string
+        required:
+            - username
+            - password
     Paste:
         type: object
-        x-go-type:
-            import:
-                alias: gopherbin_params
-                package: gopherbin/params
-            type: Paste
+        properties:
+            id:
+                type: integer
+            paste_id:
+                type: string
+            data:
+                type: string
+                format: byte
+            preview:
+                type: string
+                format: byte
+            language:
+                type: string
+            name:
+                type: string
+            description:
+                type: string
+            expires:
+                type: string
+                format: date-time
+            max_accesses:
+                type: integer
+            access_count:
+                type: integer
+            public:
+                type: boolean
+            created_at:
+                type: string
+                format: date-time
+            created_by:
+                type: string
+            owner:
+                type: string
+            owner_id:
+                type: integer
+            team:
+                type: string
+            metadata:
+                type: object
+                additionalProperties:
+                    type: string
+            labels:
+                type: array
+                items:
+                    type: object
+                    properties:
+                        name:
+                            type: string
+                        color:
+                            type: string
+                        scope:
+                            type: string
+                        team:
+                            type: string
+                    required:
+                        - name
+        required:
+            - id
+            - paste_id
+            - language
+            - name
+            - description
+            - public
+            - created_at
+            - created_by
+            - owner
+            - owner_id
+            - metadata
     PasteLabelsParams:
         type: object
-        x-go-type:
-            import:
-                alias: gopherbin_params
-                package: gopherbin/params
-            type: PasteLabelsParams
+        properties:
+            labels:
+                type: array
+                items:
+                    type: string
+        required:
+            - labels
     PasteListResult:
         type: object
-        x-go-type:
-            import:
-                alias: gopherbin_params
-                package: gopherbin/params
-            type: PasteListResult
+        properties:
+            total_pages:
+                type: integer
+            page:
+                type: integer
+            pastes:
+                type: array
+                items:
+                    type: object
+                    properties:
+                        id:
+                            type: integer
+                        paste_id:
+                            type: string
+                        data:
+                            type: string
+                            format: byte
+                        preview:
+                            type: string
+                            format: byte
+                        language:
+                            type: string
+                        name:
+                            type: string
+                        description:
+                            type: string
+                        expires:
+                            type: string
+                            format: date-time
+                        max_accesses:
+                            type: integer
+                        access_count:
+                            type: integer
+                        public:
+                            type: boolean
+                        created_at:
+                            type: string
+                            format: date-time
+                        created_by:
+                            type: string
+                        owner:
+                            type: string
+                        owner_id:
+                            type: integer
+                        team:
+                            type: string
+                        metadata:
+                            type: object
+                            additionalProperties:
+                                type: string
+                        labels:
+                            type: array
+                            items:
+                                type: object
+                                properties:
+                                    name:
+                                        type: string
+                                    color:
+                                        type: string
+                                    scope:
+                                        type: string
+                                    team:
+                                        type: string
+                                required:
+                                    - name
+                    required:
+                        - id
+                        - paste_id
+                        - language
+                        - name
+                        - description
+                        - public
+                        - created_at
+                        - created_by
+                        - owner
+                        - owner_id
+                        - metadata
+        required:
+            - total_pages
+            - page
+            - pastes
     PasteShareListResponse:
         type: object
-        x-go-type:
-            import:
-                alias: gopherbin_params
-                package: gopherbin/params
-            type: PasteShareListResponse
+        properties:
+            users:
+                type: array
+                items:
+                    type: object
+                    properties:
+                        id:
+                            type: integer
+                        username:
+                            type: string
+                        email:
+                            type: string
+                        full_name:
+                            type: string
+                        status:
+                            type: string
+                        role:
+                            type: string
+                        added_by_id:
+                            type: integer
+                        added_by:
+                            type: string
+                    required:
+                        - id
+                        - username
+                        - email
+                        - full_name
+        required:
+            - users
     SetTeamMemberRoleParams:
         type: object
-        x-go-type:
-            import:
-                alias: gopherbin_params
-                package: gopherbin/params
-            type: SetTeamMemberRoleParams
+        properties:
+            role:
+                type: string
+        required:
+            - role
     TeamInviteInfo:
         type: object
-        x-go-type:
-            import:
-                alias: gopherbin_params
-                package: gopherbin/params
-            type: TeamInviteInfo
+        properties:
+            team_id:
+                type: integer
+            team_name:
+                type: string
+            invited_by:
+                type: string
+        required:
+            - team_id
+            - team_name
     TeamInviteInfoArray:
         items:
             $ref: '#/definitions/TeamInviteInfo'
         type: array
     TeamLabelGroup:
         type: object
-        x-go-type:
-            import:
-                alias: gopherbin_params
-                package: gopherbin/params
-            type: TeamLabelGroup
+        properties:
+            team:
+                type: string
+            labels:
+                type: array
+                items:
+                    type: string
+        required:
+            - team
+            - labels
     TeamLabelsParams:
         type: object
-        x-go-type:
-            import:
-                alias: gopherbin_params
-                package: gopherbin/params
-            type: TeamLabelsParams
+        properties:
+            labels:
+                type: array
+                items:
+                    type: string
+        required:
+            - labels
     TeamListResult:
         type: object
-        x-go-type:
-            import:
-                alias: gopherbin_params
-                package: gopherbin/params
-            type: TeamListResult
+        properties:
+            total_pages:
+                type: integer
+            page:
+                type: integer
+            teams:
+                type: array
+                items:
+                    type: object
+                    properties:
+                        id:
+                            type: integer
+                        name:
+                            type: string
+                        description:
+                            type: string
+                        owner:
+                            type: object
+                            properties:
+                                id:
+                                    type: integer
+                                username:
+                                    type: string
+                                email:
+                                    type: string
+                                full_name:
+                                    type: string
+                                status:
+                                    type: string
+                                role:
+                                    type: string
+                                added_by_id:
+                                    type: integer
+                                added_by:
+                                    type: string
+                            required:
+                                - id
+                                - username
+                                - email
+                                - full_name
+                        members:
+                            type: array
+                            items:
+                                type: object
+                                properties:
+                                    id:
+                                        type: integer
+                                    username:
+                                        type: string
+                                    email:
+                                        type: string
+                                    full_name:
+                                        type: string
+                                    status:
+                                        type: string
+                                    role:
+                                        type: string
+                                    added_by_id:
+                                        type: integer
+                                    added_by:
+                                        type: string
+                                required:
+                                    - id
+                                    - username
+                                    - email
+                                    - full_name
+                        my_role:
+                            type: string
+                        labels:
+                            type: array
+                            items:
+                                type: string
+                        label_details:
+                            type: array
+                            items:
+                                type: object
+                                properties:
+                                    id:
+                                        type: integer
+                                    name:
+                                        type: string
+                                    color:
+                                        type: string
+                                    usage:
+                                        type: integer
+                                required:
+                                    - id
+                                    - name
+                                    - usage
+                        transfer_to:
+                            type: object
+                            properties:
+                                id:
+                                    type: integer
+                                username:
+                                    type: string
+                                email:
+                                    type: string
+                                full_name:
+                                    type: string
+                                status:
+                                    type: string
+                                role:
+                                    type: string
+                                added_by_id:
+                                    type: integer
+                                added_by:
+                                    type: string
+                            required:
+                                - id
+                                - username
+                                - email
+                                - full_name
+                        my_pending_transfer:
+                            type: boolean
+                        stats:
+                            type: object
+                            properties:
+                                members:
+                                    type: integer
+                                pending:
+                                    type: integer
+                                pastes:
+                                    type: integer
+                                contributors:
+                                    type: integer
+                            required:
+                                - members
+                                - pending
+                                - pastes
+                                - contributors
+                        created_at:
+                            type: string
+                            format: date-time
+                    required:
+                        - id
+                        - name
+                        - owner
+        required:
+            - total_pages
+            - page
+            - teams
     TeamMember:
         type: object
-        x-go-type:
-            import:
-                alias: gopherbin_params
-                package: gopherbin/params
-            type: TeamMember
+        properties:
+            id:
+                type: integer
+            username:
+                type: string
+            email:
+                type: string
+            full_name:
+                type: string
+            status:
+                type: string
+            role:
+                type: string
+            added_by_id:
+                type: integer
+            added_by:
+                type: string
+        required:
+            - id
+            - username
+            - email
+            - full_name
     TeamMemberArray:
         items:
             $ref: '#/definitions/TeamMember'
         type: array
     TeamMemberParams:
         type: object
-        x-go-type:
-            import:
-                alias: gopherbin_params
-                package: gopherbin/params
-            type: TeamMemberParams
+        properties:
+            userID:
+                type: string
+            role:
+                type: string
+        required:
+            - userID
     TeamStats:
         type: object
-        x-go-type:
-            import:
-                alias: gopherbin_params
-                package: gopherbin/params
-            type: TeamStats
+        properties:
+            members:
+                type: integer
+            pending:
+                type: integer
+            pastes:
+                type: integer
+            contributors:
+                type: integer
+        required:
+            - members
+            - pending
+            - pastes
+            - contributors
     TeamTransferInfo:
         type: object
-        x-go-type:
-            import:
-                alias: gopherbin_params
-                package: gopherbin/params
-            type: TeamTransferInfo
+        properties:
+            team_id:
+                type: integer
+            team_name:
+                type: string
+            from_user:
+                type: string
+        required:
+            - team_id
+            - team_name
     TeamTransferInfoArray:
         items:
             $ref: '#/definitions/TeamTransferInfo'
         type: array
     TeamTransferParams:
         type: object
-        x-go-type:
-            import:
-                alias: gopherbin_params
-                package: gopherbin/params
-            type: TeamTransferParams
+        properties:
+            userID:
+                type: string
+        required:
+            - userID
     Teams:
         type: object
-        x-go-type:
-            import:
-                alias: gopherbin_params
-                package: gopherbin/params
-            type: Teams
+        properties:
+            id:
+                type: integer
+            name:
+                type: string
+            description:
+                type: string
+            owner:
+                type: object
+                properties:
+                    id:
+                        type: integer
+                    username:
+                        type: string
+                    email:
+                        type: string
+                    full_name:
+                        type: string
+                    status:
+                        type: string
+                    role:
+                        type: string
+                    added_by_id:
+                        type: integer
+                    added_by:
+                        type: string
+                required:
+                    - id
+                    - username
+                    - email
+                    - full_name
+            members:
+                type: array
+                items:
+                    type: object
+                    properties:
+                        id:
+                            type: integer
+                        username:
+                            type: string
+                        email:
+                            type: string
+                        full_name:
+                            type: string
+                        status:
+                            type: string
+                        role:
+                            type: string
+                        added_by_id:
+                            type: integer
+                        added_by:
+                            type: string
+                    required:
+                        - id
+                        - username
+                        - email
+                        - full_name
+            my_role:
+                type: string
+            labels:
+                type: array
+                items:
+                    type: string
+            label_details:
+                type: array
+                items:
+                    type: object
+                    properties:
+                        id:
+                            type: integer
+                        name:
+                            type: string
+                        color:
+                            type: string
+                        usage:
+                            type: integer
+                    required:
+                        - id
+                        - name
+                        - usage
+            transfer_to:
+                type: object
+                properties:
+                    id:
+                        type: integer
+                    username:
+                        type: string
+                    email:
+                        type: string
+                    full_name:
+                        type: string
+                    status:
+                        type: string
+                    role:
+                        type: string
+                    added_by_id:
+                        type: integer
+                    added_by:
+                        type: string
+                required:
+                    - id
+                    - username
+                    - email
+                    - full_name
+            my_pending_transfer:
+                type: boolean
+            stats:
+                type: object
+                properties:
+                    members:
+                        type: integer
+                    pending:
+                        type: integer
+                    pastes:
+                        type: integer
+                    contributors:
+                        type: integer
+                required:
+                    - members
+                    - pending
+                    - pastes
+                    - contributors
+            created_at:
+                type: string
+                format: date-time
+        required:
+            - id
+            - name
+            - owner
     UpdateLabelParams:
         type: object
-        x-go-type:
-            import:
-                alias: gopherbin_params
-                package: gopherbin/params
-            type: UpdateLabelParams
+        properties:
+            name:
+                type: string
+            color:
+                type: string
     UpdatePasteParams:
         type: object
-        x-go-type:
-            import:
-                alias: gopherbin_params
-                package: gopherbin/params
-            type: UpdatePasteParams
+        properties:
+            public:
+                type: boolean
+        required:
+            - public
     UpdateTeamParams:
         type: object
-        x-go-type:
-            import:
-                alias: gopherbin_params
-                package: gopherbin/params
-            type: UpdateTeamParams
+        properties:
+            name:
+                type: string
+            description:
+                type: string
     UpdateUserPayload:
         type: object
-        x-go-type:
-            import:
-                alias: gopherbin_params
-                package: gopherbin/params
-            type: UpdateUserPayload
+        properties:
+            is_admin:
+                type: boolean
+            username:
+                type: string
+            password:
+                type: string
+            full_name:
+                type: string
+            enabled:
+                type: boolean
+            email:
+                type: string
+            discoverable:
+                type: boolean
     UserActionRequest:
         type: object
-        x-go-type:
-            import:
-                alias: gopherbin_params
-                package: gopherbin/params
-            type: UserActionRequest
+        properties:
+            userID:
+                type: string
+        required:
+            - userID
     UserListResult:
         type: object
-        x-go-type:
-            import:
-                alias: gopherbin_params
-                package: gopherbin/params
-            type: UserListResult
+        properties:
+            total_pages:
+                type: integer
+            users:
+                type: array
+                items:
+                    type: object
+                    properties:
+                        id:
+                            type: integer
+                        created_at:
+                            type: string
+                            format: date-time
+                        updated_at:
+                            type: string
+                            format: date-time
+                        email:
+                            type: string
+                        username:
+                            type: string
+                        full_name:
+                            type: string
+                        enabled:
+                            type: boolean
+                        is_admin:
+                            type: boolean
+                        is_superuser:
+                            type: boolean
+                        discoverable:
+                            type: boolean
+                    required:
+                        - id
+                        - created_at
+                        - updated_at
+                        - email
+                        - username
+                        - full_name
+                        - enabled
+                        - is_admin
+                        - is_superuser
+                        - discoverable
+        required:
+            - total_pages
+            - users
     UserSearchResult:
         type: object
-        x-go-type:
-            import:
-                alias: gopherbin_params
-                package: gopherbin/params
-            type: UserSearchResult
+        properties:
+            id:
+                type: integer
+            username:
+                type: string
+            full_name:
+                type: string
+        required:
+            - id
+            - username
+            - full_name
     UserSearchResultArray:
         items:
             $ref: '#/definitions/UserSearchResult'
         type: array
     Users:
         type: object
-        x-go-type:
-            import:
-                alias: gopherbin_params
-                package: gopherbin/params
-            type: Users
+        properties:
+            id:
+                type: integer
+            created_at:
+                type: string
+                format: date-time
+            updated_at:
+                type: string
+                format: date-time
+            email:
+                type: string
+            username:
+                type: string
+            full_name:
+                type: string
+            enabled:
+                type: boolean
+            is_admin:
+                type: boolean
+            is_superuser:
+                type: boolean
+            discoverable:
+                type: boolean
+        required:
+            - id
+            - created_at
+            - updated_at
+            - email
+            - username
+            - full_name
+            - enabled
+            - is_admin
+            - is_superuser
+            - discoverable
+info:
+    description: The GopherBin REST API.
+    license:
+        name: Apache 2.0
+        url: https://www.apache.org/licenses/LICENSE-2.0
+    title: GopherBin API.
+    version: "1.0"
 paths:
     /admin/users:
         get:
