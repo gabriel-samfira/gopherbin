@@ -32,6 +32,9 @@ export class ApiClient {
 					status: response.status
 				}));
 
+				// The server payload does not carry the status code; attach it so
+				// callers can tell an HTTP error from a network failure.
+				error.status = response.status;
 				throw error;
 			}
 

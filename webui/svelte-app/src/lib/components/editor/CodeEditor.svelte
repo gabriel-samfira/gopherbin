@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { EditorView, basicSetup } from 'codemirror';
+	import { EditorView } from 'codemirror';
+	import { pasteSetup } from '$lib/utils/cmSetup';
 	import { EditorState, Compartment, Prec } from '@codemirror/state';
 	import { indentWithTab } from '@codemirror/commands';
 	import { keymap } from '@codemirror/view';
@@ -55,7 +56,7 @@
 			}
 
 			const extensions = [
-				basicSetup,
+				pasteSetup,
 				// Keep Tab inside the editor when editable; in readonly mode
 				// let it move focus as usual.
 				...(readOnly ? [] : [Prec.high(keymap.of([indentWithTab]))]),
