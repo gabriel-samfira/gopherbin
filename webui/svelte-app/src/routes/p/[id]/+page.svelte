@@ -13,7 +13,9 @@
 	import { copyToClipboard as copyText } from '$lib/utils/clipboard';
 	import { formatApiError } from '$lib/utils/errors';
 	import { decodeBase64 } from '$lib/utils/base64';
+	import { labelColor, labelStyle } from '$lib/utils/labelColor';
 	import type { Paste } from '$lib/types/paste';
+	import { Globe, Lock, Users } from 'lucide-svelte';
 
 	let paste: Paste | null = null;
 	let loading = true;
@@ -77,7 +79,32 @@
 	<div class="space-y-4">
 		<div class="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
 			<div class="flex-1">
-				<h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100 break-words">{paste.name}</h1>
+				<div class="flex items-center gap-2 flex-wrap">
+					<h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100 break-words">{paste.name}</h1>
+					{#if paste.public}
+						<span class="flex items-center gap-1 text-xs px-2 py-0.5 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-200 rounded">
+							<Globe class="w-3 h-3" /> Public
+						</span>
+					{:else}
+						<span class="flex items-center gap-1 text-xs px-2 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded">
+							<Lock class="w-3 h-3" /> Private
+						</span>
+					{/if}
+					{#if paste.team}
+						<span class="flex items-center gap-1 text-xs px-2 py-0.5 bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-200 rounded">
+							<Users class="w-3 h-3" /> {paste.team}
+						</span>
+					{/if}
+					{#each paste.labels || [] as label}
+						<span
+							class="text-xs px-2 py-0.5 rounded-full {labelColor(label.name, label.color)} {label.scope === 'team' ? 'ring-1 ring-purple-400 dark:ring-purple-500' : ''}"
+							style={labelStyle(label.color)}
+							title={label.scope === 'team' ? `Team label · ${label.team}` : 'Personal label'}
+						>
+							{label.name}
+						</span>
+					{/each}
+				</div>
 				<p class="text-sm sm:text-base text-gray-600 dark:text-gray-400 mt-2">
 					Created
 					{#if paste.created_by}

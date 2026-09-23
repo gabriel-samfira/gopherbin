@@ -4,22 +4,25 @@
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { toast } from '$lib/stores/toast';
-	import { updateUser, deleteUser } from '$lib/api/users';
+	import { getUser, updateUser, deleteUser } from '$lib/api/users';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Input from '$lib/components/ui/Input.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
+	import Spinner from '$lib/components/ui/Spinner.svelte';
 	import Toggle from '$lib/components/ui/Toggle.svelte';
 	import type { User, UserUpdate } from '$lib/types/user';
 	import { formatApiError } from '$lib/utils/errors';
 
 	let user: User | null = null;
 	let error = '';
+	let loading = true;
 
-	// User info form
+	// User info
 	let fullName = '';
 	let username = '';
 	let email = '';
 	let enabled = true;
+	let discoverable = true;
 	let isAdmin = false;
 
 	// Password reset form
@@ -31,7 +34,8 @@
 	let deleteConfirmation = '';
 	let showDeleteModal = false;
 
-	$: userId = $page.params.id;
+	const userId = $page.params.id ?? '';
+	$: isSelf = user !== null && String(user.id) === String($auth.username);
 	$: passwordsMatch = newPassword && newPassword === confirmPassword && newPassword.length >= 8;
 
 	onMount(async () => {
@@ -40,19 +44,19 @@
 			return;
 		}
 
-		// Get user data from SvelteKit's page state
-		const state = $page.state as { user?: User } | undefined;
-		if (state?.user) {
-			user = state.user;
-			fullName = user.full_name;
-			username = user.username;
-			email = user.email;
-			enabled = user.enabled;
-			isAdmin = user.is_admin;
-		} else {
-			// If no state, redirect back to user list
-			error = 'User data not found. Please select a user from the list.';
-			setTimeout(() => goto('/admin/users'), 2000);
+		try {
+			const fetched = await getUser(userId, $auth.token);
+			user = fetched;
+			fullName = fetched.full_name;
+			username = fetched.username;
+			email = fetched.email;
+			enabled = fetched.enabled;
+			isAdmin = fetched.is_admin;
+			discoverable = fetched.discoverable !== false;
+		} catch (err) {
+			error = formatApiError(err);
+		} finally {
+			loading = false;
 		}
 	});
 
@@ -67,12 +71,16 @@
 				enabled: enabled,
 				is_admin: isAdmin
 			};
+			if (user && discoverable !== user.discoverable) {
+				updates.discoverable = discoverable;
+			}
 			await updateUser(userId, updates, $auth.token);
 			toast.show('User info updated successfully', 'success');
 			// Update local user object
 			if (user) {
 				user.enabled = enabled;
 				user.is_admin = isAdmin;
+				user.discoverable = discoverable;
 			}
 		} catch (err) {
 			error = formatApiError(err);
@@ -116,12 +124,14 @@
 	<div class="p-4 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded-md">
 		Access denied. Admin privileges required.
 	</div>
+{:else if loading}
+	<Spinner />
 {:else if user}
 	<div class="space-y-6">
 		<div class="flex flex-col sm:flex-row sm:items-center gap-4">
 			<Button on:click={() => goto('/admin/users')} variant="secondary" class="w-full sm:w-auto">← Back</Button>
 			<h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100">
-				Edit User: {user?.username || `#${userId}`}
+				Edit User: {user.username}
 			</h1>
 		</div>
 
@@ -154,8 +164,9 @@
 					<Input bind:value={email} type="email" placeholder="Enter email" />
 				</div>
 				<div class="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6 pt-2">
-					<Toggle bind:checked={enabled} label="Account Enabled" />
+					<Toggle bind:checked={enabled} label="Account Enabled" disabled={isSelf} />
 					<Toggle bind:checked={isAdmin} label="Admin User" />
+					<Toggle bind:checked={discoverable} label="Appear in team-invite search" />
 				</div>
 				<Button on:click={handleUpdateUserInfo} variant="primary" class="w-full sm:w-auto">
 					Update User Info
@@ -194,6 +205,7 @@
 		</div>
 
 		<!-- Danger Zone -->
+		{#if !isSelf}
 		<div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 sm:p-6">
 			<h2 class="text-lg sm:text-xl font-bold text-red-900 dark:text-red-200 mb-4">Danger Zone</h2>
 			<p class="text-sm sm:text-base text-red-700 dark:text-red-300 mb-4">
@@ -217,18 +229,29 @@
 				</Button>
 			</div>
 		</div>
+		{/if}
 	</div>
 
 	<Modal show={showDeleteModal} onClose={() => (showDeleteModal = false)}>
 		<div class="space-y-4">
-			<h2 class="text-xl font-bold text-gray-900 dark:text-gray-100">Final Confirmation</h2>
-			<p class="text-gray-700 dark:text-gray-300">
-				Are you absolutely sure you want to delete this user? This action cannot be undone.
-			</p>
+			<h2 class="text-xl font-bold text-gray-900 dark:text-gray-100">Final confirmation</h2>
+			<div class="p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-md space-y-2 text-sm text-gray-700 dark:text-gray-300">
+				<p class="font-medium text-gray-900 dark:text-gray-100">Deleting {user?.username} will:</p>
+				<ul class="list-disc list-inside space-y-1 text-gray-600 dark:text-gray-400">
+					<li>permanently remove their account and all pastes they own;</li>
+					<li>revoke every paste share involving this account;</li>
+					<li>remove them from all teams they belong to.</li>
+				</ul>
+				<p>If this user owns any teams, those teams must be deleted first. This operation cannot be undone.</p>
+			</div>
 			<div class="flex justify-end gap-2">
 				<Button on:click={() => (showDeleteModal = false)} variant="secondary">Cancel</Button>
-				<Button on:click={handleDeleteUser} variant="danger">Yes, Delete User</Button>
+				<Button on:click={handleDeleteUser} variant="danger">Yes, delete user</Button>
 			</div>
 		</div>
 	</Modal>
+{:else}
+	<div class="p-3 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded-md">
+		{error || 'User not found.'}
+	</div>
 {/if}

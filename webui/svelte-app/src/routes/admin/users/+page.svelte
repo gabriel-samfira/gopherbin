@@ -2,11 +2,13 @@
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
+	import { toast } from '$lib/stores/toast';
 	import { listUsers, deleteUser } from '$lib/api/users';
 	import Button from '$lib/components/ui/Button.svelte';
 	import IconButton from '$lib/components/ui/IconButton.svelte';
 	import Spinner from '$lib/components/ui/Spinner.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
+	import Input from '$lib/components/ui/Input.svelte';
 	import { Trash2 } from 'lucide-svelte';
 	import type { User } from '$lib/types/user';
 	import { formatApiError } from '$lib/utils/errors';
@@ -18,6 +20,7 @@
 	let totalPages = 1;
 	let maxResults = 20;
 	let deletingUser: User | null = null;
+	let deleteConfirmation = '';
 
 	async function loadUsers() {
 		if (!$auth.token || !$auth.isAdmin) {
@@ -49,14 +52,22 @@
 
 	function initDelete(user: User) {
 		deletingUser = user;
+		deleteConfirmation = '';
+	}
+
+	function cancelDelete() {
+		deletingUser = null;
+		deleteConfirmation = '';
 	}
 
 	async function confirmDelete() {
-		if (!deletingUser || !$auth.token) return;
+		if (!deletingUser || !$auth.token || deleteConfirmation !== deletingUser.username) return;
 
 		try {
 			await deleteUser(deletingUser.id, $auth.token);
 			deletingUser = null;
+			deleteConfirmation = '';
+			toast.show('User deleted', 'success');
 			loadUsers();
 		} catch (err) {
 			error = formatApiError(err);
@@ -172,7 +183,9 @@
 										on:keydown={(e) => e.stopPropagation()}
 										role="none"
 									>
-										<Button on:click={() => initDelete(user)} variant="danger">Delete</Button>
+										{#if user.id !== Number($auth.username)}
+											<Button on:click={() => initDelete(user)} variant="danger">Delete</Button>
+										{/if}
 									</div>
 								</td>
 							</tr>
@@ -220,9 +233,11 @@
 								on:keydown={(e) => e.stopPropagation()}
 								role="none"
 							>
-								<IconButton title="Delete user" variant="danger" on:click={() => initDelete(user)}>
-									<Trash2 class="w-4 h-4" />
-								</IconButton>
+								{#if user.id !== Number($auth.username)}
+									<IconButton title="Delete user" variant="danger" on:click={() => initDelete(user)}>
+										<Trash2 class="w-4 h-4" />
+									</IconButton>
+								{/if}
 							</div>
 						</div>
 					</div>
@@ -255,13 +270,30 @@
 
 	<Modal show={!!deletingUser} onClose={() => (deletingUser = null)}>
 		<div class="space-y-4">
-			<h2 class="text-xl font-bold text-gray-900 dark:text-gray-100">Confirm Delete</h2>
-			<p class="text-gray-700 dark:text-gray-300">
-				Are you sure you want to delete user <strong>{deletingUser?.username}</strong>?
-			</p>
+			<h2 class="text-xl font-bold text-gray-900 dark:text-gray-100">
+				Delete user {deletingUser?.username}?
+			</h2>
+			<div class="p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-md space-y-2 text-sm text-gray-700 dark:text-gray-300">
+				<p class="font-medium text-gray-900 dark:text-gray-100">Deleting this user will:</p>
+				<ul class="list-disc list-inside space-y-1 text-gray-600 dark:text-gray-400">
+					<li>permanently remove their account and all pastes they own;</li>
+					<li>revoke every paste share involving this account;</li>
+					<li>remove them from all teams they belong to.</li>
+				</ul>
+				<p>If this user owns any teams, those teams must be deleted first.</p>
+				<p>This operation cannot be undone.</p>
+			</div>
+			<div>
+				<label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" for="user-delete-confirm">
+					Type <strong>{deletingUser?.username}</strong> to confirm
+				</label>
+				<Input id="user-delete-confirm" bind:value={deleteConfirmation} placeholder={deletingUser?.username} />
+			</div>
 			<div class="flex justify-end gap-2">
-				<Button on:click={() => (deletingUser = null)} variant="secondary">Cancel</Button>
-				<Button on:click={confirmDelete} variant="danger">Delete</Button>
+				<Button on:click={cancelDelete} variant="secondary">Cancel</Button>
+				<Button on:click={confirmDelete} variant="danger" disabled={deleteConfirmation !== deletingUser?.username}>
+					Delete
+				</Button>
 			</div>
 		</div>
 	</Modal>

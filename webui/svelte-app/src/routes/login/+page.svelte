@@ -50,7 +50,7 @@
 <div class="max-w-md mx-auto mt-8 sm:mt-16">
 	<div class="bg-white dark:bg-gray-800 shadow-md rounded-lg p-6 sm:p-8">
 		<div class="flex flex-col items-center mb-6">
-			<img src="/logo.svg" alt="GopherBin" class="h-48 sm:h-56 w-auto mb-4" />
+			<img src="/logo.svg" alt="GopherBin" class="h-48 sm:h-56 w-auto mb-4 dark:[filter:drop-shadow(0_2px_4px_rgba(255,255,255,0.35))]" />
 			<h1 class="text-xl sm:text-2xl font-bold text-center text-gray-900 dark:text-gray-100">
 				Welcome to GopherBin
 			</h1>
@@ -70,7 +70,12 @@
 					<label for="username" class="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
 						Email or Username
 					</label>
-					<Input id="username" bind:value={username} placeholder="Enter your username or email" />
+					<Input
+						id="username"
+						bind:value={username}
+						placeholder="Enter your username or email"
+						autocomplete="username"
+					/>
 				</div>
 
 				<div>
@@ -82,6 +87,7 @@
 						type="password"
 						bind:value={password}
 						placeholder="Enter your password"
+						autocomplete="current-password"
 					/>
 				</div>
 

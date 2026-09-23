@@ -2,9 +2,12 @@
 	import { goto } from '$app/navigation';
 	import { browser } from '$app/environment';
 	import { page } from '$app/stores';
+	import { onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { editorTheme } from '$lib/stores/editorTheme';
-	import { createPaste } from '$lib/api/pastes';
+	import { createPaste, getLabelVocabulary } from '$lib/api/pastes';
+	import LabelInput from '$lib/components/ui/LabelInput.svelte';
+	import { listTeams } from '$lib/api/teams';
 	import CodeEditor from '$lib/components/editor/CodeEditor.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Input from '$lib/components/ui/Input.svelte';
@@ -13,6 +16,8 @@
 	import { getLanguageFromFilename, editorThemes } from '$lib/utils/syntax';
 	import { formatApiError } from '$lib/utils/errors';
 	import { encodeBase64 } from '$lib/utils/base64';
+	import type { Team } from '$lib/types/team';
+	import { Lock } from 'lucide-svelte';
 
 	let filename = '';
 	let content = '';
@@ -21,13 +26,52 @@
 	let expiresDate: string = '';
 	let loading = false;
 	let error = '';
+	let teams: Team[] = [];
+	let selectedTeam = '';
+	let pasteLabels: string[] = [];
+	let personalLabels: string[] = [];
+	let vocabTeams: { team: string; labels: string[] }[] = [];
+	let vocabColors: Record<string, string> = {};
+
+	$: labelSuggestions = selectedTeam
+		? vocabTeams.find((t) => t.team === selectedTeam)?.labels || []
+		: personalLabels;
 
 	$: canSubmit = filename.length > 0 && content.length > 0;
+
+	// Team pastes are always private; access follows team membership
+	$: if (selectedTeam) {
+		isPublic = false;
+	}
+
+	let lastTeam = '';
+	$: if (selectedTeam !== lastTeam) {
+		lastTeam = selectedTeam;
+		pasteLabels = [];
+	}
 
 	// Auto-detect language from filename
 	$: if (filename) {
 		language = getLanguageFromFilename(filename);
 	}
+
+	onMount(async () => {
+		if (!$auth.token) return;
+		try {
+			const res = await listTeams(1, 100, $auth.token);
+			teams = res.teams || [];
+		} catch {
+			// Team features are optional; ignore load failures
+		}
+		try {
+			const vocab = await getLabelVocabulary($auth.token);
+			personalLabels = vocab.personal || [];
+			vocabTeams = vocab.teams || [];
+			vocabColors = vocab.colors || {};
+		} catch {
+			// Labels are optional; ignore load failures
+		}
+	});
 
 	function handleContentChange(newContent: string) {
 		content = newContent;
@@ -46,9 +90,11 @@
 				name: filename,
 				language: language,
 				data: encodeBase64(content),
-				public: isPublic,
+				public: selectedTeam ? false : isPublic,
 				description: '',
-				...(expiresDate && { expires: new Date(expiresDate) })
+				...(selectedTeam && { team: selectedTeam }),
+				...(expiresDate && { expires: new Date(expiresDate) }),
+				...(pasteLabels.length > 0 && { labels: pasteLabels })
 			};
 
 			const response = await createPaste(pasteData, $auth.token);
@@ -91,34 +137,73 @@
 		{:else}
 			<form on:submit={handleSubmit} class="space-y-4">
 				<div class="flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:gap-4 sm:items-center">
-					<div class="flex-1 min-w-full sm:min-w-[200px]">
+					<div class="flex-1 min-w-full sm:min-w-[200px] [&_input]:h-10">
 						<Input
 							bind:value={filename}
 							placeholder="File name (e.g., myfile.js)"
 						/>
 					</div>
 
-					<div class="flex gap-3 flex-wrap items-center">
-						<PrivacyToggle bind:isPublic />
-
+				<div class="flex gap-3 flex-wrap items-center">
+					{#if teams.length > 0}
 						<select
-							bind:value={$editorTheme}
-							class="px-3 py-2 border rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600 text-sm"
+							bind:value={selectedTeam}
+							class="px-3 h-10 border rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600 text-sm"
+							title="Team"
 						>
-							{#each editorThemes as themeOption}
-								<option value={themeOption}>
-									{themeOption.replaceAll('_', ' ')}
-								</option>
+							<option value="">Personal</option>
+							{#each teams as team}
+								<option value={team.name}>{team.name}</option>
 							{/each}
 						</select>
+					{/if}
 
-						<input
-							type="datetime-local"
-							bind:value={expiresDate}
-							class="px-3 py-2 border rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600 text-sm"
-							placeholder="Expires..."
-						/>
+					{#if selectedTeam}
+						<span
+							class="flex items-center gap-1 text-sm text-gray-700 dark:text-gray-300 px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded-md"
+							title="Team pastes are always private and visible to all team members"
+						>
+							<Lock class="w-4 h-4" />
+							Team: {selectedTeam}
+						</span>
+					{:else}
+						<PrivacyToggle bind:isPublic />
+					{/if}
+
+					<select
+						bind:value={$editorTheme}
+						class="px-3 h-10 border rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600 text-sm"
+					>
+						{#each editorThemes as themeOption}
+							<option value={themeOption}>
+								{themeOption.replaceAll('_', ' ')}
+							</option>
+						{/each}
+					</select>
+
+					<input
+						type="datetime-local"
+						bind:value={expiresDate}
+						class="px-3 h-10 border rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600 text-sm"
+						placeholder="Expires..."
+					/>
+				</div>
+				</div>
+
+				<div>
+					<div class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+						Labels
+						<span class="text-xs font-normal text-gray-500 dark:text-gray-400 ml-1">
+							{selectedTeam ? 'team labels — shared with the team' : 'personal labels — only visible to you'}
+						</span>
 					</div>
+					<LabelInput
+						labels={pasteLabels}
+						suggestions={labelSuggestions}
+						colorMap={vocabColors}
+						placeholder="Type a label and press space"
+						on:change={(e) => (pasteLabels = e.detail)}
+					/>
 				</div>
 
 				<CodeEditor value={content} mode={language} theme={$editorTheme} onChange={handleContentChange} />
