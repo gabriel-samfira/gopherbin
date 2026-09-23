@@ -6,6 +6,7 @@
 	export let disabled = false;
 	export let invalid = false;
 	export let readonly = false;
+	export let autocomplete: 'on' | 'off' | 'username' | 'current-password' | undefined = undefined;
 </script>
 
 <input
@@ -14,6 +15,7 @@
 	{placeholder}
 	{disabled}
 	{readonly}
+	{autocomplete}
 	bind:value
 	on:input
 	on:change

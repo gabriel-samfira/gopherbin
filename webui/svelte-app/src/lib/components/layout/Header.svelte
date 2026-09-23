@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { auth } from '$lib/stores/auth';
 	import ThemeToggle from '$lib/components/ui/ThemeToggle.svelte';
+	import InviteBell from '$lib/components/layout/InviteBell.svelte';
 	import { goto } from '$app/navigation';
 	import { Menu, X } from 'lucide-svelte';
 
@@ -22,7 +23,7 @@
 			<!-- Logo -->
 			<div class="flex items-center gap-2 sm:gap-3">
 				<a href="/" class="flex items-center gap-2">
-					<img src="/logo.svg" alt="GopherBin" class="h-8 sm:h-10 w-auto" />
+					<img src="/logo.svg" alt="GopherBin" class="h-8 sm:h-10 w-auto dark:[filter:drop-shadow(0_1px_2px_rgba(255,255,255,0.35))]" />
 					<span class="text-xl sm:text-2xl font-bold text-blue-600 dark:text-blue-500">
 						GopherBin
 					</span>
@@ -44,6 +45,18 @@
 					>
 						My Pastes
 					</a>
+					<a
+						href="/teams"
+						class="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-500"
+					>
+						Teams
+					</a>
+					<a
+						href="/settings"
+						class="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-500"
+					>
+						Settings
+					</a>
 					{#if $auth.isAdmin}
 						<a
 							href="/admin/users"
@@ -53,6 +66,7 @@
 						</a>
 					{/if}
 					<button
+						type="button"
 						on:click={handleLogout}
 						class="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-500"
 					>
@@ -66,13 +80,16 @@
 						Login
 					</a>
 				{/if}
+				<InviteBell />
 				<ThemeToggle />
 			</nav>
 
 			<!-- Mobile menu button & theme toggle -->
 			<div class="flex md:hidden items-center gap-2">
+				<InviteBell />
 				<ThemeToggle />
 				<button
+					type="button"
 					on:click={() => (mobileMenuOpen = !mobileMenuOpen)}
 					class="p-2 rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
 					aria-label="Toggle menu"
@@ -106,6 +123,20 @@
 					>
 						My Pastes
 					</a>
+					<a
+						href="/teams"
+						on:click={closeMobileMenu}
+						class="block py-2 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-500"
+					>
+						Teams
+					</a>
+					<a
+						href="/settings"
+						on:click={closeMobileMenu}
+						class="block py-2 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-500"
+					>
+						Settings
+					</a>
 					{#if $auth.isAdmin}
 						<a
 							href="/admin/users"
@@ -116,6 +147,7 @@
 						</a>
 					{/if}
 					<button
+						type="button"
 						on:click={handleLogout}
 						class="block w-full text-left py-2 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-500"
 					>

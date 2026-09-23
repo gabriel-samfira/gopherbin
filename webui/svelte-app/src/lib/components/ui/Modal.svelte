@@ -6,7 +6,7 @@
 {#if show}
 	<div
 		class="fixed inset-0 flex items-center justify-center z-50 p-2 sm:p-4"
-		style="background-color: rgba(0, 0, 0, 0.3); backdrop-filter: blur(4px);"
+		style="background-color: rgba(0, 0, 0, 0.5);"
 		on:click={onClose}
 		on:keydown={(e) => e.key === 'Escape' && onClose()}
 		role="button"

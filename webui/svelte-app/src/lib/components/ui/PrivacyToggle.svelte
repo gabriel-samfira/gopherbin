@@ -13,6 +13,7 @@
 		{isPublic ? 'Public' : 'Private'}
 	</span>
 	<button
+		type="button"
 		on:click={toggle}
 		class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors
 			{isPublic ? 'bg-green-600' : 'bg-gray-300 dark:bg-gray-600'}"
