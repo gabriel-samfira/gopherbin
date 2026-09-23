@@ -175,6 +175,15 @@ func (u *userManager) Create(ctx context.Context, user params.NewUserParams) (pa
 		return params.Users{}, gErrors.ErrDuplicateEntity
 	}
 
+	_, err = u.getUserByUsername(newUser.Username)
+	if err != nil {
+		if err != gErrors.ErrNotFound {
+			return params.Users{}, errors.Wrap(err, "fetching user")
+		}
+	} else {
+		return params.Users{}, gErrors.ErrDuplicateEntity
+	}
+
 	err = u.conn.Create(&newUser).Error
 	if err != nil {
 		return params.Users{}, errors.Wrap(err, "creating new user")

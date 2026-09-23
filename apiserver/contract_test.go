@@ -836,6 +836,15 @@ func (c *contract) runAdmin() {
 		c.obj(http.MethodPut, "/admin/users/{userID}", fmt.Sprintf("/admin/users/%d", c.secondUser.id), c.admin.token,
 			params.UpdateUserPayload{FullName: ptr("Renamed Second")}, reflect.TypeOf(params.Users{}))
 
+		// A username collision must surface as 409, not leak the unique index
+		// violation as a 500.
+		if dstatus, draw := c.do(http.MethodPost, "/admin/users", c.admin.token, params.NewUserParams{
+			Username: "contractsecond", Email: "duplicate@contract.local",
+			FullName: "Collision", Password: "Xk9!mnQ2vLp7wRt4", Enabled: true,
+		}); dstatus != http.StatusConflict {
+			t.Errorf("POST /admin/users with duplicate username: got %d, want 409: %s", dstatus, draw)
+		}
+
 		// The member is not an admin and must be refused. GopherBin answers
 		// permission failures on this surface with 401.
 		c.member = c.login("contractmember", "Zq8$nvL2tY6#hKd5")
