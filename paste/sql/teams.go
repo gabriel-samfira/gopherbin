@@ -200,7 +200,9 @@ func (t *teamManager) getTeam(ctx context.Context, name string) (models.Teams, e
 	}
 
 	if !t.canAccess(team, user) {
-		return models.Teams{}, errors.Wrap(gErrors.ErrUnauthorized, "accessing team")
+		// Answer 404, not 401: a denial that only fires for teams that exist
+		// would let any logged-in user enumerate team names.
+		return models.Teams{}, errors.Wrap(gErrors.ErrNotFound, "accessing team")
 	}
 	return team, nil
 }
@@ -278,6 +280,25 @@ func (t *teamManager) sqlToCommonTeams(team models.Teams, viewerID uint, joinRow
 	return out
 }
 
+// redactMemberContacts strips contact information (email addresses) from a
+// rendered team roster. It mirrors what preview mode does for List (member
+// details are omitted there entirely): a viewer who is not an active member
+// of the team is shown the roster only to decide about an invitation, and
+// must not harvest other users' email addresses from it.
+func redactMemberContacts(members *[]params.TeamMember) {
+	for i := range *members {
+		(*members)[i].Email = ""
+	}
+}
+
+func redactTeamRosterContacts(team *params.Teams) {
+	team.Owner.Email = ""
+	redactMemberContacts(&team.Members)
+	if team.TransferTo != nil {
+		team.TransferTo.Email = ""
+	}
+}
+
 // fetchMembershipData loads the join rows for a team and resolves the users
 // who added/invited each member.
 func (t *teamManager) fetchMembershipData(teamID uint) (map[uint]models.TeamUser, map[uint]models.Users, error) {
@@ -351,7 +372,9 @@ func (t *teamManager) Delete(ctx context.Context, name string) error {
 	}
 
 	if team.OwnerID != user.ID {
-		return errors.Wrap(gErrors.ErrUnauthorized, "accessing team")
+		// Post-load denial: answered with the 404 sentinel so team
+		// mutations never distinguish "forbidden" from "does not exist".
+		return errors.Wrap(gErrors.ErrNotFound, "accessing team")
 	}
 
 	err = t.conn.Transaction(func(tx *gorm.DB) error {
@@ -398,7 +421,9 @@ func (t *teamManager) Update(ctx context.Context, name string, update params.Upd
 		return params.Teams{}, errors.Wrap(err, "fetching user from context")
 	}
 	if team.OwnerID != user.ID {
-		return params.Teams{}, errors.Wrap(gErrors.ErrUnauthorized, "updating team")
+		// The row was loaded before this check: 401 here was a team-name
+		// existence oracle, so deny with the 404 sentinel instead.
+		return params.Teams{}, errors.Wrap(gErrors.ErrNotFound, "updating team")
 	}
 
 	if update.Name != nil && *update.Name != team.Name {
@@ -438,7 +463,10 @@ func (t *teamManager) SetLabels(ctx context.Context, teamName string, names []st
 		return params.Teams{}, errors.Wrap(err, "fetching user from context")
 	}
 	if !t.isMember(team, user) {
-		return params.Teams{}, errors.Wrap(gErrors.ErrUnauthorized, "managing team labels")
+		// Post-load denial (a pending invitee reaches this point via
+		// canAccess): answer with the 404 sentinel, as everywhere a
+		// found-but-forbidden team is denied.
+		return params.Teams{}, errors.Wrap(gErrors.ErrNotFound, "managing team labels")
 	}
 
 	clean, err := dedupeLabels(names)
@@ -506,6 +534,12 @@ func (t *teamManager) Get(ctx context.Context, name string) (params.Teams, error
 	}
 
 	out := t.sqlToCommonTeams(team, user.ID, joinRows, addedBy, "", false)
+
+	// A pending invitee may view the team to decide about the invitation,
+	// but is not a member yet: hand them the roster without contact data.
+	if row, ok := joinRows[user.ID]; ok && row.Status == models.TeamMembershipPending {
+		redactTeamRosterContacts(&out)
+	}
 
 	active, pending := 0, 0
 	for _, row := range joinRows {
@@ -634,7 +668,9 @@ func (t *teamManager) AddMember(ctx context.Context, teamName string, userID str
 	}
 
 	if !t.canManageMembers(team, user.ID) {
-		return params.TeamMember{}, errors.Wrap(gErrors.ErrUnauthorized, "inviting members to team")
+		// Post-load denial: 404 keeps a forbidden team indistinguishable
+		// from a nonexistent one.
+		return params.TeamMember{}, errors.Wrap(gErrors.ErrNotFound, "inviting members to team")
 	}
 	if role == "" {
 		role = models.RoleMember
@@ -643,7 +679,8 @@ func (t *teamManager) AddMember(ctx context.Context, teamName string, userID str
 		return params.TeamMember{}, gErrors.NewBadRequestError("invalid role")
 	}
 	if role == models.RoleAdmin && team.OwnerID != user.ID {
-		return params.TeamMember{}, errors.Wrap(gErrors.ErrUnauthorized, "only the team owner can invite admins")
+		// Post-load denial: same 404 semantics as the check above.
+		return params.TeamMember{}, errors.Wrap(gErrors.ErrNotFound, "only the team owner can invite admins")
 	}
 
 	memberUser, err := t.getUserByUsernameOrEmail(userID)
@@ -697,7 +734,8 @@ func (t *teamManager) SetMemberRole(ctx context.Context, teamName, member string
 		return params.TeamMember{}, errors.Wrap(err, "fetching user from context")
 	}
 	if team.OwnerID != user.ID {
-		return params.TeamMember{}, errors.Wrap(gErrors.ErrUnauthorized, "only the team owner can change roles")
+		// Post-load denial: answered with the 404 sentinel.
+		return params.TeamMember{}, errors.Wrap(gErrors.ErrNotFound, "only the team owner can change roles")
 	}
 	if role != models.RoleAdmin && role != models.RoleMember && role != models.RoleViewer {
 		return params.TeamMember{}, gErrors.NewBadRequestError("invalid role")
@@ -820,7 +858,8 @@ func (t *teamManager) RemoveMember(ctx context.Context, teamName, member string)
 
 	actorRole := t.teamRole(team, user.ID)
 	if actorRole != models.RoleOwner && actorRole != models.RoleAdmin {
-		return errors.Wrap(gErrors.ErrUnauthorized, "removing team members")
+		// Post-load denial: answered with the 404 sentinel.
+		return errors.Wrap(gErrors.ErrNotFound, "removing team members")
 	}
 
 	memberUser, err := t.getUserByUsernameOrEmail(member)
@@ -842,7 +881,8 @@ func (t *teamManager) RemoveMember(ctx context.Context, teamName, member string)
 	// Members allowed to remove others (admins) may only be removed by the
 	// team owner.
 	if actorRole == models.RoleAdmin && effectiveRole(targetRow.Role) == models.RoleAdmin {
-		return errors.Wrap(gErrors.ErrUnauthorized, "only the team owner can remove admins")
+		// Post-load denial: answered with the 404 sentinel.
+		return errors.Wrap(gErrors.ErrNotFound, "only the team owner can remove admins")
 	}
 
 	if err := t.conn.Where("teams_id = ? AND users_id = ?", team.ID, memberUser.ID).Delete(&models.TeamUser{}).Error; err != nil {
@@ -855,6 +895,10 @@ func (t *teamManager) ListMembers(ctx context.Context, teamName string) ([]param
 	team, err := t.getTeam(ctx, teamName)
 	if err != nil {
 		return []params.TeamMember{}, errors.Wrap(err, "fetching team")
+	}
+	user, err := t.getUserFromContext(ctx)
+	if err != nil {
+		return []params.TeamMember{}, errors.Wrap(err, "fetching user from context")
 	}
 	joinRows, addedBy, err := t.fetchMembershipData(team.ID)
 	if err != nil {
@@ -883,6 +927,12 @@ func (t *teamManager) ListMembers(ctx context.Context, teamName string) ([]param
 		ret = append(ret, member)
 	}
 
+	// Same roster policy as Get: a pending invitee sees names but no
+	// contact data. This also strips the owner prepended above.
+	if row, ok := joinRows[user.ID]; ok && row.Status == models.TeamMembershipPending {
+		redactMemberContacts(&ret)
+	}
+
 	return ret, nil
 }
 
@@ -900,7 +950,8 @@ func (t *teamManager) RequestTransfer(ctx context.Context, teamName string, user
 		return params.Teams{}, errors.Wrap(err, "fetching user from context")
 	}
 	if team.OwnerID != user.ID {
-		return params.Teams{}, errors.Wrap(gErrors.ErrUnauthorized, "only the team owner can transfer the team")
+		// Post-load denial: answered with the 404 sentinel.
+		return params.Teams{}, errors.Wrap(gErrors.ErrNotFound, "only the team owner can transfer the team")
 	}
 	if team.TransferToUserID != nil {
 		return params.Teams{}, gErrors.NewBadRequestError("a transfer is already pending")
@@ -935,7 +986,8 @@ func (t *teamManager) CancelTransfer(ctx context.Context, teamName string) error
 		return errors.Wrap(err, "fetching user from context")
 	}
 	if team.OwnerID != user.ID {
-		return errors.Wrap(gErrors.ErrUnauthorized, "only the team owner can cancel the transfer")
+		// Post-load denial: answered with the 404 sentinel.
+		return errors.Wrap(gErrors.ErrNotFound, "only the team owner can cancel the transfer")
 	}
 	if team.TransferToUserID == nil {
 		return gErrors.NewBadRequestError("there is no pending transfer")

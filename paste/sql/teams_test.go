@@ -90,10 +90,10 @@ func newTeamFixture(t *testing.T) *teamFixture {
 	}
 }
 
-func isUnauthorized(err error) bool {
-	_, ok := pkgErrors.Cause(err).(*gErrors.UnauthorizedError)
-	return ok
-}
+// isUnauthorized is intentionally gone: every "row found but forbidden"
+// denial in the sql layer now answers with the 404 sentinel, so tests assert
+// isNotFound for them. Authentication failures (no row loaded) stay 401 and
+// are exercised at the middleware layer, not here.
 
 func isBadRequest(err error) bool {
 	_, ok := pkgErrors.Cause(err).(*gErrors.BadRequestError)
@@ -174,11 +174,13 @@ func TestTeamAccessDeniedForOutsider(t *testing.T) {
 	if _, err := f.teams.Create(f.ctxSuper, "engineers", ""); err != nil {
 		t.Fatalf("Create team: %v", err)
 	}
-	if _, err := f.teams.Get(f.ctxUser3, "engineers"); !isUnauthorized(err) {
-		t.Fatalf("outsider Get: want Unauthorized, got %v", err)
+	// Foreign-but-existing teams answer 404: "cannot see it" ==
+	// "does not exist", so team names cannot be enumerated via 401s.
+	if _, err := f.teams.Get(f.ctxUser3, "engineers"); !isNotFound(err) {
+		t.Fatalf("outsider Get: want NotFound, got %v", err)
 	}
-	if _, err := f.teams.AddMember(f.ctxUser3, "engineers", "bob", models.RoleMember); !isUnauthorized(err) {
-		t.Fatalf("outsider AddMember: want Unauthorized, got %v", err)
+	if _, err := f.teams.AddMember(f.ctxUser3, "engineers", "bob", models.RoleMember); !isNotFound(err) {
+		t.Fatalf("outsider AddMember: want NotFound, got %v", err)
 	}
 }
 
@@ -240,8 +242,9 @@ func TestCreateTeamPasteRejectsForeignTeam(t *testing.T) {
 	if _, err := f.teams.Create(f.ctxSuper, "engineers", ""); err != nil {
 		t.Fatalf("Create team: %v", err)
 	}
-	if _, err := f.paster.Create(f.ctxUser3, []byte("x"), "x", "text", "", nil, false, "engineers", nil, nil, nil); !isUnauthorized(err) {
-		t.Fatalf("non-member team paste: want Unauthorized, got %v", err)
+	// 404: a 401 would disclose that the foreign team exists.
+	if _, err := f.paster.Create(f.ctxUser3, []byte("x"), "x", "text", "", nil, false, "engineers", nil, nil, nil); !isNotFound(err) {
+		t.Fatalf("non-member team paste: want NotFound, got %v", err)
 	}
 }
 
@@ -265,17 +268,17 @@ func TestTeamPastePrivacyRules(t *testing.T) {
 	if _, err := f.paster.SetPrivacy(f.ctxUser2, pst.PasteID, false); err != nil {
 		t.Logf("note: paste owner (member) allowed to set privacy: %v", err)
 	}
-	if _, err := f.paster.SetPrivacy(f.ctxUser3, pst.PasteID, false); !isUnauthorized(err) {
-		// outsider cannot even load-and-manage; NotFound via canAccess is also acceptable only for Get, manage path must reject
-		if !isNotFound(err) {
-			t.Fatalf("outsider SetPrivacy: want Unauthorized/NotFound, got %v", err)
-		}
+	// Outsider: canManage denial after a successful load answers 404,
+	// indistinguishable from a nonexistent paste.
+	if _, err := f.paster.SetPrivacy(f.ctxUser3, pst.PasteID, false); !isNotFound(err) {
+		t.Fatalf("outsider SetPrivacy: want NotFound, got %v", err)
 	}
 
 	// Only the paste owner or team owner may delete. A non-owner member
-	// (bob is not in the team here) cannot delete.
-	if err := f.paster.Delete(f.ctxUser3, pst.PasteID); !isUnauthorized(err) {
-		t.Fatalf("outsider Delete: want Unauthorized, got %v", err)
+	// (bob is not in the team here) cannot delete; the denial is a 404 so
+	// foreign-but-existing pastes are not enumerable.
+	if err := f.paster.Delete(f.ctxUser3, pst.PasteID); !isNotFound(err) {
+		t.Fatalf("outsider Delete: want NotFound, got %v", err)
 	}
 	if err := f.paster.Delete(f.ctxSuper, pst.PasteID); err != nil {
 		t.Fatalf("team owner Delete: %v", err)
@@ -296,9 +299,9 @@ func TestTransferOwnership(t *testing.T) {
 		t.Fatalf("transfer to self: want BadRequest, got %v", err)
 	}
 
-	// A non-owner cannot transfer.
-	if _, err := f.paster.TransferOwnership(f.ctxUser2, pst.PasteID, "bob"); !isUnauthorized(err) && !isNotFound(err) {
-		t.Fatalf("non-owner transfer: want Unauthorized/NotFound, got %v", err)
+	// A non-owner cannot transfer; the post-load canManage denial is a 404.
+	if _, err := f.paster.TransferOwnership(f.ctxUser2, pst.PasteID, "bob"); !isNotFound(err) {
+		t.Fatalf("non-owner transfer: want NotFound, got %v", err)
 	}
 
 	got, err := f.paster.TransferOwnership(f.ctxSuper, pst.PasteID, "alice")
@@ -313,8 +316,10 @@ func TestTransferOwnership(t *testing.T) {
 	if _, err := f.paster.Get(f.ctxUser2, pst.PasteID); err != nil {
 		t.Errorf("new owner Get: %v", err)
 	}
-	if _, err := f.paster.SetPrivacy(f.ctxSuper, pst.PasteID, true); !isUnauthorized(err) {
-		t.Errorf("old owner SetPrivacy: want Unauthorized, got %v", err)
+	// Old owner can no longer manage the transferred private paste; the
+	// post-load canManage denial answers 404 like a missing paste would.
+	if _, err := f.paster.SetPrivacy(f.ctxSuper, pst.PasteID, true); !isNotFound(err) {
+		t.Errorf("old owner SetPrivacy: want NotFound, got %v", err)
 	}
 	if _, err := f.paster.SetPrivacy(f.ctxUser2, pst.PasteID, true); err != nil {
 		t.Errorf("new owner SetPrivacy: %v", err)
@@ -474,9 +479,10 @@ func TestShareGuards(t *testing.T) {
 	if _, err := f.paster.ShareWithUser(f.ctxSuper, pst.PasteID, "superadmin"); !isBadRequest(err) {
 		t.Fatalf("share with owner: want BadRequest, got %v", err)
 	}
-	// A sharee cannot re-share.
-	if _, err := f.paster.ShareWithUser(f.ctxUser2, pst.PasteID, "bob"); !isUnauthorized(err) && !isNotFound(err) {
-		t.Fatalf("sharee re-share: want Unauthorized/NotFound, got %v", err)
+	// A sharee cannot re-share; the post-load owner check answers 404
+	// (uniform "foreign paste" semantics).
+	if _, err := f.paster.ShareWithUser(f.ctxUser2, pst.PasteID, "bob"); !isNotFound(err) {
+		t.Fatalf("sharee re-share: want NotFound, got %v", err)
 	}
 	// Team pastes cannot be shared with individuals.
 	if _, err := f.teams.Create(f.ctxSuper, "engineers", ""); err != nil {
@@ -523,9 +529,10 @@ func TestTeamInvitationLifecycle(t *testing.T) {
 		t.Errorf("invitee Get team: %v", err)
 	}
 
-	// A pending invitee cannot create team pastes.
-	if _, err := f.paster.Create(f.ctxUser2, []byte("x"), "x", "text", "", nil, false, "engineers", nil, nil, nil); !isUnauthorized(err) {
-		t.Fatalf("pending member team paste: want Unauthorized, got %v", err)
+	// A pending invitee cannot create team pastes; the canShareToTeam
+	// denial fires after the team row was loaded, so it is a 404.
+	if _, err := f.paster.Create(f.ctxUser2, []byte("x"), "x", "text", "", nil, false, "engineers", nil, nil, nil); !isNotFound(err) {
+		t.Fatalf("pending member team paste: want NotFound, got %v", err)
 	}
 	// A pending invitee cannot see team pastes.
 	pst, err := f.paster.Create(f.ctxSuper, []byte("secret"), "team-file", "text", "", nil, false, "engineers", nil, nil, nil)
@@ -624,10 +631,11 @@ func TestDeclineInvite(t *testing.T) {
 	if len(listed.Teams) != 0 {
 		t.Errorf("List after decline: want no teams, got %+v", listed.Teams)
 	}
-	// A second decline has nothing to decline; the team is no longer
-	// accessible to her (existence is not leaked).
-	if err := f.teams.DeclineInvite(f.ctxUser2, "engineers"); !isBadRequest(err) && !isUnauthorized(err) && !isNotFound(err) {
-		t.Fatalf("double decline: want BadRequest/Unauthorized/NotFound, got %v", err)
+	// A second decline has nothing to decline; after losing membership the
+	// team is no longer accessible to her, and the post-load denial is a
+	// 404 (existence is not leaked).
+	if err := f.teams.DeclineInvite(f.ctxUser2, "engineers"); !isNotFound(err) {
+		t.Fatalf("double decline: want NotFound, got %v", err)
 	}
 	// The owner can invite again.
 	if _, err := f.teams.AddMember(f.ctxSuper, "engineers", "alice", models.RoleMember); err != nil {
@@ -640,8 +648,10 @@ func TestAcceptWithoutInviteFails(t *testing.T) {
 	if _, err := f.teams.Create(f.ctxSuper, "engineers", ""); err != nil {
 		t.Fatalf("Create team: %v", err)
 	}
-	if _, err := f.teams.AcceptInvite(f.ctxUser2, "engineers"); !isNotFound(err) && !isUnauthorized(err) {
-		t.Fatalf("accept without invite: want NotFound/Unauthorized, got %v", err)
+	// No membership at all: the getTeam access gate denies with 404 so the
+	// team's existence is not disclosed.
+	if _, err := f.teams.AcceptInvite(f.ctxUser2, "engineers"); !isNotFound(err) {
+		t.Fatalf("accept without invite: want NotFound, got %v", err)
 	}
 }
 
@@ -655,8 +665,10 @@ func TestLeaveTeam(t *testing.T) {
 	if err := f.teams.LeaveTeam(f.ctxUser2, "engineers"); err != nil {
 		t.Fatalf("LeaveTeam: %v", err)
 	}
-	if _, err := f.teams.Get(f.ctxUser2, "engineers"); !isUnauthorized(err) {
-		t.Fatalf("Get after leave: want Unauthorized, got %v", err)
+	// After leaving she is an outsider: 404, not 401, so the team cannot
+	// be confirmed to exist.
+	if _, err := f.teams.Get(f.ctxUser2, "engineers"); !isNotFound(err) {
+		t.Fatalf("Get after leave: want NotFound, got %v", err)
 	}
 	// The owner cannot leave their own team.
 	if err := f.teams.LeaveTeam(f.ctxSuper, "engineers"); !isBadRequest(err) {
@@ -671,5 +683,69 @@ func TestLeaveTeam(t *testing.T) {
 	}
 	if err := f.teams.DeclineInvite(f.ctxUser3, "engineers"); err != nil {
 		t.Fatalf("pending DeclineInvite: %v", err)
+	}
+}
+
+// ── Roster contact data ──────────────────────────────────────────────────────
+
+// A pending invitee may view the team, but the roster they see must not
+// carry other users' contact data; active members and the owner see it all.
+func TestTeamRosterRedactedForPendingInvitee(t *testing.T) {
+	f := newTeamFixture(t)
+	if _, err := f.teams.Create(f.ctxSuper, "engineers", ""); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	f.inviteAndAccept(t, f.ctxSuper, "engineers", "alice", f.ctxUser2)
+	if _, err := f.teams.AddMember(f.ctxSuper, "engineers", "bob", models.RoleMember); err != nil {
+		t.Fatalf("AddMember bob: %v", err)
+	}
+
+	// An active member sees the full roster, emails included.
+	asMember, err := f.teams.Get(f.ctxUser2, "engineers")
+	if err != nil {
+		t.Fatalf("Get as active member: %v", err)
+	}
+	if asMember.Owner.Email != "super@example.com" {
+		t.Fatalf("active member should see the owner email, got %q", asMember.Owner.Email)
+	}
+
+	// The pending invitee still sees the roster (to decide about the
+	// invitation) but every email is blanked, owner included.
+	asPending, err := f.teams.Get(f.ctxUser3, "engineers")
+	if err != nil {
+		t.Fatalf("Get as pending invitee: %v", err)
+	}
+	if asPending.MyRole != models.TeamMembershipPending {
+		t.Fatalf("invitee my_role: want pending, got %s", asPending.MyRole)
+	}
+	if len(asPending.Members) == 0 || asPending.Owner.Username != "superadmin" {
+		t.Fatalf("roster must still be visible to the invitee: %+v", asPending)
+	}
+	if asPending.Owner.Email != "" {
+		t.Errorf("pending invitee sees owner email: %q", asPending.Owner.Email)
+	}
+	for _, m := range asPending.Members {
+		if m.Email != "" {
+			t.Errorf("pending invitee sees email of %s: %q", m.Username, m.Email)
+		}
+	}
+
+	// Same policy on the ListMembers endpoint.
+	members, err := f.teams.ListMembers(f.ctxUser3, "engineers")
+	if err != nil {
+		t.Fatalf("ListMembers as invitee: %v", err)
+	}
+	if len(members) == 0 {
+		t.Fatal("ListMembers roster must not be empty for the invitee")
+	}
+	for _, m := range members {
+		if m.Email != "" {
+			t.Errorf("ListMembers leaks email of %s: %q", m.Username, m.Email)
+		}
+	}
+	if asOwner, err := f.teams.ListMembers(f.ctxSuper, "engineers"); err != nil {
+		t.Fatalf("ListMembers as owner: %v", err)
+	} else if len(asOwner) == 0 || asOwner[0].Email == "" {
+		t.Errorf("owner must still see member emails: %+v", asOwner)
 	}
 }

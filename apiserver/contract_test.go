@@ -133,10 +133,10 @@ type specDoc struct {
 }
 
 type specDef struct {
-	Type       string              `yaml:"type"`
-	Ref        string              `yaml:"$ref"`
-	Items      *specDef            `yaml:"items"`
-	GoType     specGoType          `yaml:"x-go-type"`
+	Type       string             `yaml:"type"`
+	Ref        string             `yaml:"$ref"`
+	Items      *specDef           `yaml:"items"`
+	GoType     specGoType         `yaml:"x-go-type"`
 	Properties map[string]specDef `yaml:"properties"`
 }
 
@@ -695,6 +695,15 @@ func (c *contract) runPastes() {
 			t.Fatal(err)
 		}
 
+		// Foreign-but-existing pastes answer 404, not 401: "cannot see it"
+		// == "does not exist" (no paste-ID enumeration oracle).
+		if s, _ := c.do(http.MethodGet, "/paste/"+p.PasteID+"/sharing", c.secondUser.token, nil); s != http.StatusNotFound {
+			t.Errorf("GET sharing of foreign paste: got %d, want 404", s)
+		}
+		if s, _ := c.do(http.MethodDelete, "/paste/"+p.PasteID, c.secondUser.token, nil); s != http.StatusNotFound {
+			t.Errorf("DELETE foreign paste: got %d, want 404", s)
+		}
+
 		c.obj(http.MethodGet, "/paste", "/paste", c.admin.token, nil, reflect.TypeOf(params.PasteListResult{}))
 		c.obj(http.MethodGet, "/paste/{pasteID}", "/paste/"+p.PasteID, c.admin.token, nil,
 			reflect.TypeOf(params.Paste{}))
@@ -733,6 +742,13 @@ func (c *contract) runLabels() {
 		}
 		if len(list) == 0 {
 			t.Fatalf("expected the labels created by the paste tests; raw=%s", owned)
+		}
+		// A foreign user recoloring an existing label gets 404, not 401:
+		// small integer label IDs must not be enumerable via the
+		// exists(401)/missing(404) difference.
+		if s, _ := c.do(http.MethodPut, fmt.Sprintf("/labels/%d", list[0].ID), c.member.token,
+			params.UpdateLabelParams{Color: ptr("#00ff00")}); s != http.StatusNotFound {
+			t.Errorf("PUT foreign label as member: got %d, want 404", s)
 		}
 		c.obj(http.MethodPut, "/labels/{labelID}", fmt.Sprintf("/labels/%d", list[0].ID), c.admin.token,
 			params.UpdateLabelParams{Color: ptr("#ff0000")}, reflect.TypeOf(params.LabelInfo{}))
@@ -784,6 +800,26 @@ func (c *contract) runTeams() {
 			params.TeamMemberParams{UserID: "contractmember", Role: "member"}, reflect.TypeOf(params.TeamMember{}))
 		c.arrOpts(opts{permissiveArray: true}, http.MethodGet, "/teams/{teamName}/members", "/teams/contract-team/members", c.admin.token, nil)
 
+		// While the invitation is still pending the invitee may view the
+		// team, but the roster must carry no contact data for them.
+		pvStatus, pvRaw := c.do(http.MethodGet, "/teams/contract-team", c.member.token, nil)
+		if pvStatus != http.StatusOK {
+			t.Errorf("GET team as pending invitee: got %d, want 200: %s", pvStatus, pvRaw)
+		} else {
+			pendingView := params.Teams{}
+			if err := json.Unmarshal(pvRaw, &pendingView); err != nil {
+				t.Fatalf("team view as invitee is not params.Teams: %v", err)
+			}
+			if pendingView.MyRole != "pending" || pendingView.Owner.Email != "" {
+				t.Errorf("pending invitee roster leaks: my_role=%s owner_email=%q", pendingView.MyRole, pendingView.Owner.Email)
+			}
+			for _, m := range pendingView.Members {
+				if m.Email != "" {
+					t.Errorf("pending invitee roster leaks email of %s", m.Username)
+				}
+			}
+		}
+
 		c.obj(http.MethodPost, "/teams/{teamName}/accept", "/teams/contract-team/accept", c.member.token, nil,
 			reflect.TypeOf(params.Teams{}))
 		c.obj(http.MethodPut, "/teams/{teamName}/members/{member}", "/teams/contract-team/members/contractmember",
@@ -821,6 +857,11 @@ func (c *contract) runTeams() {
 		// when the final assertions run.
 		c.obj(http.MethodPost, "/teams", "/teams", c.admin.token,
 			params.NewTeamParams{Name: "vocab-team"}, reflect.TypeOf(params.Teams{}))
+		// An unrelated user probing an existing team gets 404, not 401:
+		// team names are not enumerable through the status difference.
+		if s, _ := c.do(http.MethodGet, "/teams/vocab-team", c.secondUser.token, nil); s != http.StatusNotFound {
+			t.Errorf("GET foreign team as outsider: got %d, want 404", s)
+		}
 		c.obj(http.MethodPut, "/teams/{teamName}/labels", "/teams/vocab-team/labels", c.admin.token,
 			params.TeamLabelsParams{Labels: []string{"team-label"}}, reflect.TypeOf(params.Teams{}))
 		c.obj(http.MethodGet, "/labels", "/labels", c.admin.token, nil, reflect.TypeOf(params.LabelVocabulary{}))

@@ -24,9 +24,10 @@ func TestTeamUpdateRenameAndDescription(t *testing.T) {
 		t.Fatalf("expected description to be stored, got %q", team.Description)
 	}
 
-	// Non-members cannot update.
-	if _, err := f.teams.Update(f.ctxUser3, "engineers", params.UpdateTeamParams{}); !isUnauthorized(err) {
-		t.Fatalf("expected unauthorized update, got %v", err)
+	// Non-members cannot update; the denial fires after the team row was
+	// loaded, so it answers 404 and does not confirm the team exists.
+	if _, err := f.teams.Update(f.ctxUser3, "engineers", params.UpdateTeamParams{}); !isNotFound(err) {
+		t.Fatalf("expected not-found update for outsider, got %v", err)
 	}
 
 	desc := "updated"
@@ -148,12 +149,13 @@ func TestTeamLabels(t *testing.T) {
 		t.Fatalf("label removal failed: %v", team.Labels)
 	}
 
-	// A pending invitee may not.
+	// A pending invitee may not; the isMember denial fires after the team
+	// load and answers 404 like a missing team would.
 	if _, err := f.teams.AddMember(f.ctxSuper, "engineers", "bob", models.RoleMember); err != nil {
 		t.Fatalf("AddMember: %v", err)
 	}
-	if _, err := f.teams.SetLabels(f.ctxUser3, "engineers", []string{"sneaky"}); !isUnauthorized(err) {
-		t.Fatalf("expected unauthorized, got %v", err)
+	if _, err := f.teams.SetLabels(f.ctxUser3, "engineers", []string{"sneaky"}); !isNotFound(err) {
+		t.Fatalf("expected not-found for pending invitee, got %v", err)
 	}
 }
 
@@ -275,9 +277,10 @@ func TestPasteSetLabels(t *testing.T) {
 		}
 	}
 
-	// Non-owner cannot relabel.
-	if _, err := f.paster.SetLabels(f.ctxUser3, pst.PasteID, []string{"hijack"}); !isUnauthorized(err) {
-		t.Fatalf("expected unauthorized, got %v", err)
+	// Non-owner cannot relabel; the canManage denial is answered with 404
+	// so foreign paste IDs are not distinguishable from missing ones.
+	if _, err := f.paster.SetLabels(f.ctxUser3, pst.PasteID, []string{"hijack"}); !isNotFound(err) {
+		t.Fatalf("expected not-found for non-owner relabel, got %v", err)
 	}
 
 	// Invalid label characters are rejected.
@@ -436,12 +439,14 @@ func TestLabelManagementColorRenameDelete(t *testing.T) {
 		t.Fatal("expected invalid color rejection")
 	}
 
-	// Foreign users cannot touch personal labels.
-	if _, err := f.paster.UpdateLabel(f.ctxUser3, urgent.ID, params.UpdateLabelParams{Color: &red}); !isUnauthorized(err) {
-		t.Fatalf("expected unauthorized, got %v", err)
+	// Foreign users cannot touch personal labels. The label row was loaded
+	// before the check, so both denials answer 404: label IDs (small
+	// integers) must not be enumerable via 401-vs-404 differences.
+	if _, err := f.paster.UpdateLabel(f.ctxUser3, urgent.ID, params.UpdateLabelParams{Color: &red}); !isNotFound(err) {
+		t.Fatalf("expected not-found for foreign recolor, got %v", err)
 	}
-	if err := f.paster.DeleteLabel(f.ctxUser3, urgent.ID); !isUnauthorized(err) {
-		t.Fatalf("expected unauthorized delete, got %v", err)
+	if err := f.paster.DeleteLabel(f.ctxUser3, urgent.ID); !isNotFound(err) {
+		t.Fatalf("expected not-found for foreign delete, got %v", err)
 	}
 
 	// Rename wip -> urgent merges into the existing label.
@@ -500,8 +505,9 @@ func TestTeamLabelColorPermissions(t *testing.T) {
 	if err != nil || info.Color != teal {
 		t.Fatalf("active member should recolor team label: %v %+v", err, info)
 	}
-	if _, err := f.paster.UpdateLabel(f.ctxUser3, labelID, params.UpdateLabelParams{Color: &green}); !isUnauthorized(err) {
-		t.Fatalf("outsider should not recolor team label, got %v", err)
+	// Outsider recolor of a team label: 404, same non-enumerable answer.
+	if _, err := f.paster.UpdateLabel(f.ctxUser3, labelID, params.UpdateLabelParams{Color: &green}); !isNotFound(err) {
+		t.Fatalf("outsider should get not-found for team label recolor, got %v", err)
 	}
 	team, err = f.teams.Get(f.ctxUser2, "engineers")
 	if err != nil {

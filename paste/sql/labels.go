@@ -218,7 +218,9 @@ func (p *paste) UpdateLabel(ctx context.Context, labelID uint, args params.Updat
 			return err
 		}
 		if !ok {
-			return gErrors.ErrUnauthorized
+			// The label row was loaded successfully: a 401 here would let
+			// any logged-in user enumerate label IDs. Deny with 404 instead.
+			return gErrors.ErrNotFound
 		}
 		if args.Color != nil {
 			if err := tx.Model(&label).Update("color", *args.Color).Error; err != nil {
@@ -297,7 +299,9 @@ func (p *paste) DeleteLabel(ctx context.Context, labelID uint) error {
 			return err
 		}
 		if !ok {
-			return gErrors.ErrUnauthorized
+			// Post-load denial: 404, so foreign label IDs are not
+			// distinguishable from nonexistent ones.
+			return gErrors.ErrNotFound
 		}
 		if err := tx.Exec("DELETE FROM paste_labels WHERE label_id = ?", labelID).Error; err != nil {
 			return errors.Wrap(err, "clearing label usage")

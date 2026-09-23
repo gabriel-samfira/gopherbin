@@ -30,13 +30,14 @@ func TestTeamRoleInvitePermissions(t *testing.T) {
 	// Admin can invite a plain member.
 	f.inviteAndAcceptRole(t, f.ctxUser2, "engineers", "bob", models.RoleMember, f.ctxUser3)
 
-	// A plain member cannot invite anyone.
-	if _, err := f.teams.AddMember(f.ctxUser3, "engineers", "superadmin", models.RoleMember); !isUnauthorized(err) {
-		t.Fatalf("member invite: want unauthorized, got %v", err)
+	// A plain member cannot invite anyone. The denial fires after the team
+	// row was loaded, so it answers 404 (no existence oracle).
+	if _, err := f.teams.AddMember(f.ctxUser3, "engineers", "superadmin", models.RoleMember); !isNotFound(err) {
+		t.Fatalf("member invite: want NotFound, got %v", err)
 	}
-	// An admin cannot invite other admins.
-	if _, err := f.teams.AddMember(f.ctxUser2, "engineers", "bob", models.RoleAdmin); !isUnauthorized(err) {
-		t.Fatalf("admin inviting admin: want unauthorized, got %v", err)
+	// An admin cannot invite other admins (same 404 post-load semantics).
+	if _, err := f.teams.AddMember(f.ctxUser2, "engineers", "bob", models.RoleAdmin); !isNotFound(err) {
+		t.Fatalf("admin inviting admin: want NotFound, got %v", err)
 	}
 	// Invalid roles are rejected.
 	if _, err := f.teams.AddMember(f.ctxSuper, "engineers", "bob", "wizard"); !isBadRequest(err) {
@@ -71,12 +72,13 @@ func TestTeamRoleRemoveRules(t *testing.T) {
 	if err := f.teams.RemoveMember(f.ctxUser2, "engineers", "bob"); err != nil {
 		t.Fatalf("admin removing member: %v", err)
 	}
-	// Only the owner may remove another admin.
-	if err := f.teams.RemoveMember(f.ctxUser2, "engineers", "alice"); !isUnauthorized(err) {
-		t.Fatalf("admin removing self(admin): want unauthorized, got %v", err)
+	// Only the owner may remove another admin. Both denials fire after the
+	// team row was loaded and now answer 404 ("cannot manage" == "absent").
+	if err := f.teams.RemoveMember(f.ctxUser2, "engineers", "alice"); !isNotFound(err) {
+		t.Fatalf("admin removing self(admin): want NotFound, got %v", err)
 	}
-	if err := f.teams.RemoveMember(f.ctxUser3, "engineers", "alice"); !isUnauthorized(err) {
-		t.Fatalf("removed member removing admin: want unauthorized, got %v", err)
+	if err := f.teams.RemoveMember(f.ctxUser3, "engineers", "alice"); !isNotFound(err) {
+		t.Fatalf("removed member removing admin: want NotFound, got %v", err)
 	}
 	// Nobody but removal target: the owner is untouchable.
 	if err := f.teams.RemoveMember(f.ctxUser2, "engineers", "superadmin"); !isBadRequest(err) {
@@ -99,9 +101,10 @@ func TestTeamRoleShareGate(t *testing.T) {
 	if _, err := f.teams.Get(f.ctxUser2, "engineers"); err != nil {
 		t.Fatalf("viewer reading team: %v", err)
 	}
-	// ...but cannot share team-scoped pastes.
-	if _, err := f.paster.Create(f.ctxUser2, []byte("x"), "x", "text", "", nil, false, "engineers", nil, nil, nil); !isUnauthorized(err) {
-		t.Fatalf("viewer sharing team paste: want unauthorized, got %v", err)
+	// ...but cannot share team-scoped pastes; the canShareToTeam denial
+	// fires after the team load, so it answers 404.
+	if _, err := f.paster.Create(f.ctxUser2, []byte("x"), "x", "text", "", nil, false, "engineers", nil, nil, nil); !isNotFound(err) {
+		t.Fatalf("viewer sharing team paste: want NotFound, got %v", err)
 	}
 
 	// Members can share.
@@ -110,12 +113,12 @@ func TestTeamRoleShareGate(t *testing.T) {
 		t.Fatalf("member sharing team paste: %v", err)
 	}
 
-	// A demotion takes effect immediately.
+	// A demotion takes effect immediately (denial is a 404, see above).
 	if _, err := f.teams.SetMemberRole(f.ctxSuper, "engineers", "bob", models.RoleViewer); err != nil {
 		t.Fatalf("demote bob: %v", err)
 	}
-	if _, err := f.paster.Create(f.ctxUser3, []byte("x"), "x", "text", "", nil, false, "engineers", nil, nil, nil); !isUnauthorized(err) {
-		t.Fatalf("demoted member sharing: want unauthorized, got %v", err)
+	if _, err := f.paster.Create(f.ctxUser3, []byte("x"), "x", "text", "", nil, false, "engineers", nil, nil, nil); !isNotFound(err) {
+		t.Fatalf("demoted member sharing: want NotFound, got %v", err)
 	}
 	// A promotion restores it.
 	if _, err := f.teams.SetMemberRole(f.ctxSuper, "engineers", "bob", models.RoleAdmin); err != nil {
@@ -133,9 +136,9 @@ func TestTeamRoleManagement(t *testing.T) {
 	}
 	f.inviteAndAccept(t, f.ctxSuper, "engineers", "alice", f.ctxUser2)
 
-	// Only the owner may change roles.
-	if _, err := f.teams.SetMemberRole(f.ctxUser2, "engineers", "bob", models.RoleAdmin); !isUnauthorized(err) {
-		t.Fatalf("self role change: want unauthorized, got %v", err)
+	// Only the owner may change roles; the post-load denial answers 404.
+	if _, err := f.teams.SetMemberRole(f.ctxUser2, "engineers", "bob", models.RoleAdmin); !isNotFound(err) {
+		t.Fatalf("self role change: want NotFound, got %v", err)
 	}
 	// Owner promotes alice, who then may invite.
 	if _, err := f.teams.SetMemberRole(f.ctxSuper, "engineers", "alice", models.RoleAdmin); err != nil {
@@ -162,9 +165,9 @@ func TestTeamTransfer(t *testing.T) {
 	f.inviteAndAccept(t, f.ctxSuper, "engineers", "bob", f.ctxUser3)
 	f.inviteAndAccept(t, f.ctxSuper, "engineers", "alice", f.ctxUser2)
 
-	// Non-owners cannot request a transfer.
-	if _, err := f.teams.RequestTransfer(f.ctxUser2, "engineers", "bob"); !isUnauthorized(err) {
-		t.Fatalf("non-owner transfer: want unauthorized, got %v", err)
+	// Non-owners cannot request a transfer; post-load denial => 404.
+	if _, err := f.teams.RequestTransfer(f.ctxUser2, "engineers", "bob"); !isNotFound(err) {
+		t.Fatalf("non-owner transfer: want NotFound, got %v", err)
 	}
 	// Transfers target accepted members only.
 	if _, err := f.users.Create(f.ctxSuper, params.NewUserParams{
@@ -265,12 +268,13 @@ func TestTeamTransferDeclineAndCancel(t *testing.T) {
 		t.Fatalf("after decline: %+v", after)
 	}
 
-	// Cancel by the owner clears the pending offer.
+	// Cancel by the owner clears the pending offer. A non-owner cancelling
+	// hits the post-load owner check, which now answers 404.
 	if _, err := f.teams.RequestTransfer(f.ctxSuper, "engineers", "bob"); err != nil {
 		t.Fatalf("RequestTransfer: %v", err)
 	}
-	if err := f.teams.CancelTransfer(f.ctxUser3, "engineers"); !isUnauthorized(err) {
-		t.Fatalf("target cancelling: want unauthorized, got %v", err)
+	if err := f.teams.CancelTransfer(f.ctxUser3, "engineers"); !isNotFound(err) {
+		t.Fatalf("target cancelling: want NotFound, got %v", err)
 	}
 	if err := f.teams.CancelTransfer(f.ctxSuper, "engineers"); err != nil {
 		t.Fatalf("CancelTransfer: %v", err)
