@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"gopherbin/config"
 )
@@ -57,6 +58,16 @@ func TestNewConfig_ValidFile(t *testing.T) {
 	if cfg.Database.DbBackend != config.SQLiteBackend {
 		t.Errorf("want sqlite3 backend, got %q", cfg.Database.DbBackend)
 	}
+	// validTOML does not set max_body_size; the default must be applied.
+	if cfg.APIServer.MaxBodySize != config.DefaultMaxBodySize {
+		t.Errorf("want default max body size %d, got %d",
+			config.DefaultMaxBodySize, cfg.APIServer.MaxBodySize)
+	}
+	// A configured TTL below the 24h default must be honored, not
+	// silently bumped up to it.
+	if ttl := cfg.APIServer.JWTAuth.TimeToLive.Duration(); ttl != time.Hour {
+		t.Errorf("want configured TTL 1h, got %v", ttl)
+	}
 }
 
 func TestNewConfig_MissingFile(t *testing.T) {
@@ -71,6 +82,58 @@ func TestNewConfig_InvalidTOML(t *testing.T) {
 	_, err := config.NewConfig(path)
 	if err == nil {
 		t.Fatal("expected error for invalid TOML")
+	}
+}
+
+func TestNewConfig_MaxBodySizeFromTOML(t *testing.T) {
+	dbFile := filepath.Join(t.TempDir(), "test.db")
+	path := writeTOML(t, fmt.Sprintf(`
+[apiserver]
+bind = "0.0.0.0"
+port = 9997
+max_body_size = 12345
+
+  [apiserver.jwt_auth]
+  secret = "super-secret-key-for-testing"
+
+[database]
+backend = "sqlite3"
+
+  [database.sqlite3]
+  db_file = %q
+`, dbFile))
+	cfg, err := config.NewConfig(path)
+	if err != nil {
+		t.Fatalf("NewConfig: %v", err)
+	}
+	if cfg.APIServer.MaxBodySize != 12345 {
+		t.Errorf("want max_body_size 12345, got %d", cfg.APIServer.MaxBodySize)
+	}
+	// time_to_live unset in this file → default 24h.
+	if ttl := cfg.APIServer.JWTAuth.TimeToLive.Duration(); ttl != config.DefaultJWTTTL {
+		t.Errorf("want default TTL %v, got %v", config.DefaultJWTTTL, ttl)
+	}
+}
+
+func TestNewConfig_TTLBelowMinimumRejected(t *testing.T) {
+	dbFile := filepath.Join(t.TempDir(), "test.db")
+	path := writeTOML(t, fmt.Sprintf(`
+[apiserver]
+bind = "0.0.0.0"
+port = 9997
+
+  [apiserver.jwt_auth]
+  secret = "super-secret-key-for-testing"
+  time_to_live = "30s"
+
+[database]
+backend = "sqlite3"
+
+  [database.sqlite3]
+  db_file = %q
+`, dbFile))
+	if _, err := config.NewConfig(path); err == nil {
+		t.Fatal("expected error for time_to_live below the minimum")
 	}
 }
 
@@ -170,8 +233,41 @@ func TestJWTAuth_Validate_SetsDefaultTTL(t *testing.T) {
 	if err := j.Validate(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if j.TimeToLive.Duration() < config.DefaultJWTTTL {
-		t.Errorf("want TTL >= %v, got %v", config.DefaultJWTTTL, j.TimeToLive.Duration())
+	if j.TimeToLive.Duration() != config.DefaultJWTTTL {
+		t.Errorf("want TTL %v, got %v", config.DefaultJWTTTL, j.TimeToLive.Duration())
+	}
+}
+
+func TestJWTAuth_Validate_HonorsTTLAboveMinimum(t *testing.T) {
+	// A configured TTL >= MinJWTTTL must be kept as-is, NOT silently
+	// bumped up to DefaultJWTTTL.
+	j := config.JWTAuth{Secret: "s3cr3t", TimeToLive: "6h"}
+	if err := j.Validate(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := j.TimeToLive.Duration(); got != 6*time.Hour {
+		t.Errorf("want TTL 6h, got %v", got)
+	}
+}
+
+func TestJWTAuth_Validate_AcceptsMinimumTTL(t *testing.T) {
+	j := config.JWTAuth{Secret: "s3cr3t", TimeToLive: "10m"}
+	if err := j.Validate(); err != nil {
+		t.Fatalf("unexpected error for TTL == MinJWTTTL: %v", err)
+	}
+	if got := j.TimeToLive.Duration(); got != config.MinJWTTTL {
+		t.Errorf("want TTL %v, got %v", config.MinJWTTTL, got)
+	}
+}
+
+func TestJWTAuth_Validate_RejectsTTLBelowMinimum(t *testing.T) {
+	j := config.JWTAuth{Secret: "s3cr3t", TimeToLive: "9m59s"}
+	if err := j.Validate(); err == nil {
+		t.Fatal("expected error for TTL below MinJWTTTL")
+	}
+	// The rejected value must not have been rewritten to the default.
+	if got := j.TimeToLive.Duration(); got != 9*time.Minute+59*time.Second {
+		t.Errorf("rejected TTL should not be rewritten, got %v", got)
 	}
 }
 
@@ -292,6 +388,59 @@ func TestAPIServer_Validate_Valid(t *testing.T) {
 	}
 	if err := a.Validate(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// ── APIServer.Validate: MaxBodySize ───────────────────────────────────────────
+
+func TestAPIServer_Validate_MaxBodySizeDefaultsWhenUnset(t *testing.T) {
+	a := config.APIServer{
+		Port:    9997,
+		Bind:    "0.0.0.0",
+		JWTAuth: config.JWTAuth{Secret: "super-secret"},
+	}
+	if err := a.Validate(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if a.MaxBodySize != config.DefaultMaxBodySize {
+		t.Errorf("want default %d, got %d", config.DefaultMaxBodySize, a.MaxBodySize)
+	}
+}
+
+func TestAPIServer_Validate_DefaultMaxBodySizeIs8MiB(t *testing.T) {
+	if config.DefaultMaxBodySize != 8388608 {
+		t.Errorf("want 8388608, got %d", config.DefaultMaxBodySize)
+	}
+}
+
+func TestAPIServer_Validate_MaxBodySizeHonored(t *testing.T) {
+	a := config.APIServer{
+		Port:        9997,
+		Bind:        "0.0.0.0",
+		JWTAuth:     config.JWTAuth{Secret: "super-secret"},
+		MaxBodySize: 42 * 1024 * 1024,
+	}
+	if err := a.Validate(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if a.MaxBodySize != 42*1024*1024 {
+		t.Errorf("configured value must be kept, got %d", a.MaxBodySize)
+	}
+}
+
+func TestAPIServer_Validate_NegativeMaxBodySizeDefaults(t *testing.T) {
+	a := config.APIServer{
+		Port:        9997,
+		Bind:        "0.0.0.0",
+		JWTAuth:     config.JWTAuth{Secret: "super-secret"},
+		MaxBodySize: -1,
+	}
+	if err := a.Validate(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if a.MaxBodySize != config.DefaultMaxBodySize {
+		t.Errorf("want default %d for negative value, got %d",
+			config.DefaultMaxBodySize, a.MaxBodySize)
 	}
 }
 

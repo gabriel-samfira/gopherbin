@@ -21,6 +21,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"gopherbin/admin"
@@ -33,6 +34,52 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 )
+
+// apiPathPrefix is the mount point of every API endpoint. The request body
+// cap applies only under this prefix; everything else (the web UI) is left
+// alone.
+const apiPathPrefix = "/api/v1"
+
+// maxBodySizeMiddleware caps the size of request bodies served under the API
+// prefix. It must run per request because http.MaxBytesReader needs the
+// ResponseWriter of the request whose body it limits. When the limit is hit
+// the wrapped body starts returning *http.MaxBytesError, which makes body
+// decoding in the handlers fail; the shared error mapper turns that into a
+// 413 response, so no handler changes are required.
+func maxBodySizeMiddleware(next http.Handler, maxBodySize int64) http.Handler {
+	// Defense in depth: a validated config always carries a positive
+	// limit (config.APIServer.Validate applies the default), but never
+	// build an uncapped chain if handed a zeroed config.
+	if maxBodySize <= 0 {
+		maxBodySize = config.DefaultMaxBodySize
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, apiPathPrefix) {
+			r.Body = http.MaxBytesReader(w, r.Body, maxBodySize)
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// newServerHandler assembles the HTTP handler chain for the API server.
+//
+// The body-size cap is applied inside the (optional) CORS wrapper so that
+// error responses triggered by the cap still carry CORS headers. The CORS
+// wrapper is only installed when explicit origins are configured: with an
+// empty cors_origins list gorilla/handlers would fall back to
+// "Access-Control-Allow-Origin: *", so we fail closed and emit no CORS
+// headers at all instead.
+func newServerHandler(router *mux.Router, cfg *config.Config) http.Handler {
+	var handler http.Handler = maxBodySizeMiddleware(router, cfg.APIServer.MaxBodySize)
+
+	if len(cfg.APIServer.CORSOrigins) > 0 {
+		allowedOrigins := handlers.AllowedOrigins(cfg.APIServer.CORSOrigins)
+		methodsOk := handlers.AllowedMethods([]string{"GET", "HEAD", "POST", "PUT", "OPTIONS", "DELETE"})
+		headersOk := handlers.AllowedHeaders([]string{"X-Requested-With", "Content-Type", "Authorization"})
+		handler = handlers.CORS(methodsOk, headersOk, allowedOrigins)(handler)
+	}
+	return handler
+}
 
 // APIServer is the API server worker
 type APIServer struct {
@@ -98,12 +145,20 @@ func GetAPIServer(cfg *config.Config) (*APIServer, error) {
 	}
 
 	router.Use(corwMw)
-	allowedOrigins := handlers.AllowedOrigins(cfg.APIServer.CORSOrigins)
-	methodsOk := handlers.AllowedMethods([]string{"GET", "HEAD", "POST", "PUT", "OPTIONS", "DELETE"})
-	headersOk := handlers.AllowedHeaders([]string{"X-Requested-With", "Content-Type", "Authorization"})
 
 	srv := &http.Server{
-		Handler: handlers.CORS(methodsOk, headersOk, allowedOrigins)(router),
+		Handler: newServerHandler(router, cfg),
+		// Transport level hardening. ReadHeaderTimeout bounds
+		// slowloris-style header stalls; the generous read/write
+		// timeouts still allow large pastes (capped at
+		// cfg.APIServer.MaxBodySize) over slow links. No endpoint
+		// streams responses (handlers write full bodies, no
+		// http.Flusher / io.Copy use), so WriteTimeout cannot cut
+		// off an in-flight stream.
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       120 * time.Second,
+		WriteTimeout:      120 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 	if cfg.APIServer.UseTLS {
 		tlsCfg, err := cfg.APIServer.TLSConfig.TLSConfig()

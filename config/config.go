@@ -38,6 +38,13 @@ const (
 	// DefaultJWTTTL is the default duration in seconds a JWT token
 	// will be valid.
 	DefaultJWTTTL time.Duration = 24 * time.Hour
+	// MinJWTTTL is the shortest JWT time_to_live accepted in the
+	// configuration. Anything below this is rejected rather than
+	// silently raised to the default.
+	MinJWTTTL time.Duration = 10 * time.Minute
+	// DefaultMaxBodySize is the limit, in bytes, enforced on API
+	// request bodies when max_body_size is unset.
+	DefaultMaxBodySize int64 = 8 * 1024 * 1024 // 8 MiB
 )
 
 // NewConfig returns a new Config
@@ -251,9 +258,15 @@ type JWTAuth struct {
 
 // Validate validates the JWTAuth config
 func (j *JWTAuth) Validate() error {
-	// TODO: Set defaults somewhere else.
-	if j.TimeToLive.Duration() < DefaultJWTTTL {
+	// An unset time_to_live falls back to the default. A configured one
+	// is honored as-is, as long as it is not so short that tokens expire
+	// mid-session (which previously happened silently by bumping short
+	// TTLs up to the default).
+	if j.TimeToLive == "" {
 		j.TimeToLive = timeToLive(DefaultJWTTTL.String())
+	} else if ttl := j.TimeToLive.Duration(); ttl < MinJWTTTL {
+		return fmt.Errorf(
+			"invalid JWT time_to_live %s: must be at least %s", ttl, MinJWTTTL)
 	}
 	if j.Secret == "" {
 		return fmt.Errorf("invalid JWT secret")
@@ -270,6 +283,10 @@ type APIServer struct {
 	JWTAuth     JWTAuth   `toml:"jwt_auth" json:"jwt-auth"`
 	TLSConfig   TLSConfig `toml:"tls" json:"tls"`
 	CORSOrigins []string  `toml:"cors_origins" json:"cors-origins"`
+	// MaxBodySize is the maximum size, in bytes, of a request body
+	// served by the API endpoints. Zero (unset) means
+	// DefaultMaxBodySize.
+	MaxBodySize int64 `toml:"max_body_size" json:"max-body-size"`
 }
 
 // Validate validates the API server config
@@ -281,6 +298,12 @@ func (a *APIServer) Validate() error {
 	}
 	if a.Port > 65535 || a.Port < 1 {
 		return fmt.Errorf("invalid port nr %d", a.Port)
+	}
+
+	// Unset (or nonsensically small) body limits fall back to the
+	// default rather than disabling the transport level cap.
+	if a.MaxBodySize <= 0 {
+		a.MaxBodySize = DefaultMaxBodySize
 	}
 
 	if err := a.JWTAuth.Validate(); err != nil {

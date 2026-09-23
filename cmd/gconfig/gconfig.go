@@ -70,7 +70,7 @@ func ensureSecret() (string, error) {
 			return "", nil
 		}
 
-		if err := setConfigSection("apiserver.jwt-auth.secret", ret); err != nil {
+		if err := setConfigSection("config.apiserver.jwt-auth.secret", ret); err != nil {
 			return "", err
 		}
 
