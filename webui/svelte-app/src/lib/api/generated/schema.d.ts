@@ -861,6 +861,7 @@ export interface components {
             enabled?: boolean;
             email?: string;
             discoverable?: boolean;
+            current_password?: string;
         };
         UserActionRequest: {
             userID: string;

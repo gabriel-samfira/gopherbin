@@ -2,7 +2,6 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { auth } from '$lib/stores/auth';
-	import { login } from '$lib/api/auth';
 	import { getMe, updateMe, updateUser } from '$lib/api/users';
 	import { getMyLabels, updateLabel, deleteLabel } from '$lib/api/pastes';
 	import Button from '$lib/components/ui/Button.svelte';
@@ -136,16 +135,9 @@
 		changingPassword = true;
 		passwordError = '';
 		try {
-			// The server does not require the old password on update, so
-			// verify it out of band before overwriting the credential.
-			await login({ username: me.username, password: currentPassword });
-		} catch {
-			passwordError = 'Current password is incorrect';
-			changingPassword = false;
-			return;
-		}
-		try {
-			await updateUser(me.id, { password: newPassword }, $auth.token);
+			// The server verifies current_password itself; a wrong one comes
+			// back as 401 with "current password is incorrect" details.
+			await updateUser(me.id, { password: newPassword, current_password: currentPassword }, $auth.token);
 			currentPassword = '';
 			newPassword = '';
 			confirmPassword = '';

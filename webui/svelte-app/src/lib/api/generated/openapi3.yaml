@@ -2338,6 +2338,8 @@ components:
           type: string
         discoverable:
           type: boolean
+        current_password:
+          type: string
     UserActionRequest:
       type: object
       properties:

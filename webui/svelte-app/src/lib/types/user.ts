@@ -27,6 +27,11 @@ export interface UserUpdate {
 	enabled?: boolean;
 	is_admin?: boolean;
 	password?: string;
+	/**
+	 * Required by the server whenever `password` is set and the caller is
+	 * updating their own account (see PUT /api/v1/admin/users/{id}).
+	 */
+	current_password?: string;
 	discoverable?: boolean;
 }
 
