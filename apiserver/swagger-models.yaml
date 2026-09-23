@@ -1,0 +1,273 @@
+# Hand-maintained inputs merged into the generated swagger.yaml by
+# `swagger generate spec --input=../swagger-models.yaml` (see the go:generate
+# directives in routers/routers.go).
+#
+# Model definitions are bound to the real Go types with x-go-type: go-swagger
+# reads the struct definitions from these packages and derives the schemas, so
+# the spec can never drift from the code that serves it.
+basePath: /api/v1
+consumes:
+    - application/json
+produces:
+    - application/json
+security:
+    - Bearer: []
+securityDefinitions:
+    Bearer:
+        description: 'The token with the `Bearer: ` prefix, e.g. "Bearer abcde12345".'
+        in: header
+        name: Authorization
+        type: apiKey
+responses:
+    OK:
+        description: The operation completed successfully. No content is returned.
+        schema:
+            type: object
+    file:
+        description: Binary file download.
+        schema:
+            type: file
+definitions:
+    APIErrorResponse:
+        type: object
+        x-go-type:
+            type: APIErrorResponse
+            import:
+                package: gopherbin/apiserver/responses
+                alias: api_responses
+    # ---------------------------------------------------------------------
+    # Response models
+    # ---------------------------------------------------------------------
+    JWTResponse:
+        type: object
+        x-go-type:
+            type: JWTResponse
+            import:
+                package: gopherbin/params
+                alias: gopherbin_params
+    Users:
+        type: object
+        x-go-type:
+            type: Users
+            import:
+                package: gopherbin/params
+                alias: gopherbin_params
+    UserListResult:
+        type: object
+        x-go-type:
+            type: UserListResult
+            import:
+                package: gopherbin/params
+                alias: gopherbin_params
+    UserSearchResult:
+        type: object
+        x-go-type:
+            type: UserSearchResult
+            import:
+                package: gopherbin/params
+                alias: gopherbin_params
+    UserSearchResultArray:
+        type: array
+        items:
+            $ref: '#/definitions/UserSearchResult'
+    Paste:
+        type: object
+        x-go-type:
+            type: Paste
+            import:
+                package: gopherbin/params
+                alias: gopherbin_params
+    PasteListResult:
+        type: object
+        x-go-type:
+            type: PasteListResult
+            import:
+                package: gopherbin/params
+                alias: gopherbin_params
+    PasteShareListResponse:
+        type: object
+        x-go-type:
+            type: PasteShareListResponse
+            import:
+                package: gopherbin/params
+                alias: gopherbin_params
+    LabelInfo:
+        type: object
+        x-go-type:
+            type: LabelInfo
+            import:
+                package: gopherbin/params
+                alias: gopherbin_params
+    LabelInfoArray:
+        type: array
+        items:
+            $ref: '#/definitions/LabelInfo'
+    LabelVocabulary:
+        type: object
+        x-go-type:
+            type: LabelVocabulary
+            import:
+                package: gopherbin/params
+                alias: gopherbin_params
+    TeamLabelGroup:
+        type: object
+        x-go-type:
+            type: TeamLabelGroup
+            import:
+                package: gopherbin/params
+                alias: gopherbin_params
+    Teams:
+        type: object
+        x-go-type:
+            type: Teams
+            import:
+                package: gopherbin/params
+                alias: gopherbin_params
+    TeamListResult:
+        type: object
+        x-go-type:
+            type: TeamListResult
+            import:
+                package: gopherbin/params
+                alias: gopherbin_params
+    TeamMember:
+        type: object
+        x-go-type:
+            type: TeamMember
+            import:
+                package: gopherbin/params
+                alias: gopherbin_params
+    TeamMemberArray:
+        type: array
+        items:
+            $ref: '#/definitions/TeamMember'
+    TeamStats:
+        type: object
+        x-go-type:
+            type: TeamStats
+            import:
+                package: gopherbin/params
+                alias: gopherbin_params
+    TeamInviteInfo:
+        type: object
+        x-go-type:
+            type: TeamInviteInfo
+            import:
+                package: gopherbin/params
+                alias: gopherbin_params
+    TeamInviteInfoArray:
+        type: array
+        items:
+            $ref: '#/definitions/TeamInviteInfo'
+    TeamTransferInfo:
+        type: object
+        x-go-type:
+            type: TeamTransferInfo
+            import:
+                package: gopherbin/params
+                alias: gopherbin_params
+    TeamTransferInfoArray:
+        type: array
+        items:
+            $ref: '#/definitions/TeamTransferInfo'
+    # ---------------------------------------------------------------------
+    # Request models
+    # ---------------------------------------------------------------------
+    NewUserParams:
+        type: object
+        x-go-type:
+            type: NewUserParams
+            import:
+                package: gopherbin/params
+                alias: gopherbin_params
+    UpdateUserPayload:
+        type: object
+        x-go-type:
+            type: UpdateUserPayload
+            import:
+                package: gopherbin/params
+                alias: gopherbin_params
+    PasswordLoginParams:
+        type: object
+        x-go-type:
+            type: PasswordLoginParams
+            import:
+                package: gopherbin/params
+                alias: gopherbin_params
+    UpdatePasteParams:
+        type: object
+        x-go-type:
+            type: UpdatePasteParams
+            import:
+                package: gopherbin/params
+                alias: gopherbin_params
+    UserActionRequest:
+        type: object
+        x-go-type:
+            type: UserActionRequest
+            import:
+                package: gopherbin/params
+                alias: gopherbin_params
+    PasteLabelsParams:
+        type: object
+        x-go-type:
+            type: PasteLabelsParams
+            import:
+                package: gopherbin/params
+                alias: gopherbin_params
+    UpdateLabelParams:
+        type: object
+        x-go-type:
+            type: UpdateLabelParams
+            import:
+                package: gopherbin/params
+                alias: gopherbin_params
+    NewTeamParams:
+        type: object
+        x-go-type:
+            type: NewTeamParams
+            import:
+                package: gopherbin/params
+                alias: gopherbin_params
+    UpdateTeamParams:
+        type: object
+        x-go-type:
+            type: UpdateTeamParams
+            import:
+                package: gopherbin/params
+                alias: gopherbin_params
+    TeamLabelsParams:
+        type: object
+        x-go-type:
+            type: TeamLabelsParams
+            import:
+                package: gopherbin/params
+                alias: gopherbin_params
+    TeamMemberParams:
+        type: object
+        x-go-type:
+            type: TeamMemberParams
+            import:
+                package: gopherbin/params
+                alias: gopherbin_params
+    SetTeamMemberRoleParams:
+        type: object
+        x-go-type:
+            type: SetTeamMemberRoleParams
+            import:
+                package: gopherbin/params
+                alias: gopherbin_params
+    TeamTransferParams:
+        type: object
+        x-go-type:
+            type: TeamTransferParams
+            import:
+                package: gopherbin/params
+                alias: gopherbin_params
+    MeSettingsParams:
+        type: object
+        x-go-type:
+            type: MeSettingsParams
+            import:
+                package: gopherbin/params
+                alias: gopherbin_params

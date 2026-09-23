@@ -16,6 +16,7 @@ require (
 	github.com/nbutton23/zxcvbn-go v0.0.0-20210217022336-fa2cb2858354
 	github.com/pkg/errors v0.9.1
 	golang.org/x/crypto v0.57.0
+	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/datatypes v1.2.7
 	gorm.io/driver/mysql v1.6.0
 	gorm.io/driver/sqlite v1.6.0

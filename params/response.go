@@ -204,7 +204,7 @@ type LabelVocabulary struct {
 	Teams    []TeamLabelGroup `json:"teams"`
 	// Colors maps label name to a custom #rrggbb color across the whole
 	// vocabulary, so any label badge can render consistently.
-	Colors map[string]string `json:"colors,omitempty"`
+	Colors map[string]string `json:"colors"`
 }
 
 // UnmarshalJSON accepts either a bare label name string (the shape sent when

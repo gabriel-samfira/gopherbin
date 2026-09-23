@@ -1,0 +1,1532 @@
+basePath: /api/v1
+consumes:
+    - application/json
+definitions:
+    APIErrorResponse:
+        type: object
+        x-go-type:
+            import:
+                alias: api_responses
+                package: gopherbin/apiserver/responses
+            type: APIErrorResponse
+    JWTResponse:
+        type: object
+        x-go-type:
+            import:
+                alias: gopherbin_params
+                package: gopherbin/params
+            type: JWTResponse
+    LabelInfo:
+        type: object
+        x-go-type:
+            import:
+                alias: gopherbin_params
+                package: gopherbin/params
+            type: LabelInfo
+    LabelInfoArray:
+        items:
+            $ref: '#/definitions/LabelInfo'
+        type: array
+    LabelVocabulary:
+        type: object
+        x-go-type:
+            import:
+                alias: gopherbin_params
+                package: gopherbin/params
+            type: LabelVocabulary
+    MeSettingsParams:
+        type: object
+        x-go-type:
+            import:
+                alias: gopherbin_params
+                package: gopherbin/params
+            type: MeSettingsParams
+    NewTeamParams:
+        type: object
+        x-go-type:
+            import:
+                alias: gopherbin_params
+                package: gopherbin/params
+            type: NewTeamParams
+    NewUserParams:
+        type: object
+        x-go-type:
+            import:
+                alias: gopherbin_params
+                package: gopherbin/params
+            type: NewUserParams
+    PasswordLoginParams:
+        type: object
+        x-go-type:
+            import:
+                alias: gopherbin_params
+                package: gopherbin/params
+            type: PasswordLoginParams
+    Paste:
+        type: object
+        x-go-type:
+            import:
+                alias: gopherbin_params
+                package: gopherbin/params
+            type: Paste
+    PasteLabelsParams:
+        type: object
+        x-go-type:
+            import:
+                alias: gopherbin_params
+                package: gopherbin/params
+            type: PasteLabelsParams
+    PasteListResult:
+        type: object
+        x-go-type:
+            import:
+                alias: gopherbin_params
+                package: gopherbin/params
+            type: PasteListResult
+    PasteShareListResponse:
+        type: object
+        x-go-type:
+            import:
+                alias: gopherbin_params
+                package: gopherbin/params
+            type: PasteShareListResponse
+    SetTeamMemberRoleParams:
+        type: object
+        x-go-type:
+            import:
+                alias: gopherbin_params
+                package: gopherbin/params
+            type: SetTeamMemberRoleParams
+    TeamInviteInfo:
+        type: object
+        x-go-type:
+            import:
+                alias: gopherbin_params
+                package: gopherbin/params
+            type: TeamInviteInfo
+    TeamInviteInfoArray:
+        items:
+            $ref: '#/definitions/TeamInviteInfo'
+        type: array
+    TeamLabelGroup:
+        type: object
+        x-go-type:
+            import:
+                alias: gopherbin_params
+                package: gopherbin/params
+            type: TeamLabelGroup
+    TeamLabelsParams:
+        type: object
+        x-go-type:
+            import:
+                alias: gopherbin_params
+                package: gopherbin/params
+            type: TeamLabelsParams
+    TeamListResult:
+        type: object
+        x-go-type:
+            import:
+                alias: gopherbin_params
+                package: gopherbin/params
+            type: TeamListResult
+    TeamMember:
+        type: object
+        x-go-type:
+            import:
+                alias: gopherbin_params
+                package: gopherbin/params
+            type: TeamMember
+    TeamMemberArray:
+        items:
+            $ref: '#/definitions/TeamMember'
+        type: array
+    TeamMemberParams:
+        type: object
+        x-go-type:
+            import:
+                alias: gopherbin_params
+                package: gopherbin/params
+            type: TeamMemberParams
+    TeamStats:
+        type: object
+        x-go-type:
+            import:
+                alias: gopherbin_params
+                package: gopherbin/params
+            type: TeamStats
+    TeamTransferInfo:
+        type: object
+        x-go-type:
+            import:
+                alias: gopherbin_params
+                package: gopherbin/params
+            type: TeamTransferInfo
+    TeamTransferInfoArray:
+        items:
+            $ref: '#/definitions/TeamTransferInfo'
+        type: array
+    TeamTransferParams:
+        type: object
+        x-go-type:
+            import:
+                alias: gopherbin_params
+                package: gopherbin/params
+            type: TeamTransferParams
+    Teams:
+        type: object
+        x-go-type:
+            import:
+                alias: gopherbin_params
+                package: gopherbin/params
+            type: Teams
+    UpdateLabelParams:
+        type: object
+        x-go-type:
+            import:
+                alias: gopherbin_params
+                package: gopherbin/params
+            type: UpdateLabelParams
+    UpdatePasteParams:
+        type: object
+        x-go-type:
+            import:
+                alias: gopherbin_params
+                package: gopherbin/params
+            type: UpdatePasteParams
+    UpdateTeamParams:
+        type: object
+        x-go-type:
+            import:
+                alias: gopherbin_params
+                package: gopherbin/params
+            type: UpdateTeamParams
+    UpdateUserPayload:
+        type: object
+        x-go-type:
+            import:
+                alias: gopherbin_params
+                package: gopherbin/params
+            type: UpdateUserPayload
+    UserActionRequest:
+        type: object
+        x-go-type:
+            import:
+                alias: gopherbin_params
+                package: gopherbin/params
+            type: UserActionRequest
+    UserListResult:
+        type: object
+        x-go-type:
+            import:
+                alias: gopherbin_params
+                package: gopherbin/params
+            type: UserListResult
+    UserSearchResult:
+        type: object
+        x-go-type:
+            import:
+                alias: gopherbin_params
+                package: gopherbin/params
+            type: UserSearchResult
+    UserSearchResultArray:
+        items:
+            $ref: '#/definitions/UserSearchResult'
+        type: array
+    Users:
+        type: object
+        x-go-type:
+            import:
+                alias: gopherbin_params
+                package: gopherbin/params
+            type: Users
+paths:
+    /admin/users:
+        get:
+            operationId: listUsers
+            parameters:
+                - description: Page number, starting at 1.
+                  in: query
+                  name: page
+                  type: integer
+                - description: Maximum results per page.
+                  in: query
+                  name: max_results
+                  type: integer
+            responses:
+                "200":
+                    description: UserListResult
+                    schema:
+                        $ref: '#/definitions/UserListResult'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "403":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            summary: List all user accounts (admin only).
+            tags:
+                - admin
+        post:
+            operationId: createUser
+            parameters:
+                - description: New user.
+                  in: body
+                  name: Body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/NewUserParams'
+                    description: New user.
+                    type: object
+            responses:
+                "200":
+                    description: Users
+                    schema:
+                        $ref: '#/definitions/Users'
+                "400":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "403":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            summary: Create a user account (admin only).
+            tags:
+                - admin
+    /admin/users/{userID}:
+        delete:
+            operationId: deleteUser
+            parameters:
+                - description: Numeric user identifier.
+                  in: path
+                  name: userID
+                  required: true
+                  type: string
+            responses:
+                "200":
+                    $ref: '#/responses/OK'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "403":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "404":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            summary: Delete a user account (admin only).
+            tags:
+                - admin
+        get:
+            operationId: getUser
+            parameters:
+                - description: Numeric user identifier.
+                  in: path
+                  name: userID
+                  required: true
+                  type: string
+            responses:
+                "200":
+                    description: Users
+                    schema:
+                        $ref: '#/definitions/Users'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "403":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "404":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            summary: Fetch a single user account (admin only).
+            tags:
+                - admin
+        put:
+            operationId: updateUser
+            parameters:
+                - description: Numeric user identifier.
+                  in: path
+                  name: userID
+                  required: true
+                  type: string
+                - description: User fields to update.
+                  in: body
+                  name: Body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/UpdateUserPayload'
+                    description: User fields to update.
+                    type: object
+            responses:
+                "200":
+                    description: Users
+                    schema:
+                        $ref: '#/definitions/Users'
+                "400":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "403":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "404":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            summary: Update a user account (admin only).
+            tags:
+                - admin
+    /auth/login:
+        post:
+            operationId: login
+            parameters:
+                - description: Login credentials.
+                  in: body
+                  name: Body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/PasswordLoginParams'
+                    description: Login credentials.
+                    type: object
+            responses:
+                "200":
+                    description: JWTResponse
+                    schema:
+                        $ref: '#/definitions/JWTResponse'
+                "400":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            summary: Exchange username/email and password for a JWT token.
+            tags:
+                - auth
+    /first-run:
+        post:
+            description: |-
+                Bootstrap the installation by creating the initial superuser. Only succeeds
+                while the instance has no superuser; every subsequent call returns 409.
+            operationId: firstRun
+            parameters:
+                - description: Initial superuser.
+                  in: body
+                  name: Body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/NewUserParams'
+                    description: Initial superuser.
+                    type: object
+            responses:
+                "200":
+                    description: Users
+                    schema:
+                        $ref: '#/definitions/Users'
+                "400":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "409":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            tags:
+                - system
+    /labels:
+        get:
+            operationId: listLabels
+            responses:
+                "200":
+                    description: LabelVocabulary
+                    schema:
+                        $ref: '#/definitions/LabelVocabulary'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            summary: The label vocabulary visible to the caller, with usage counts.
+            tags:
+                - labels
+    /labels/{labelID}:
+        delete:
+            operationId: deleteLabel
+            parameters:
+                - description: Numeric label identifier.
+                  in: path
+                  name: labelID
+                  required: true
+                  type: string
+            responses:
+                "200":
+                    $ref: '#/responses/OK'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "404":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            summary: Delete a label owned by the caller.
+            tags:
+                - labels
+        put:
+            operationId: updateLabel
+            parameters:
+                - description: Numeric label identifier.
+                  in: path
+                  name: labelID
+                  required: true
+                  type: string
+                - description: Label fields to update.
+                  in: body
+                  name: Body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/UpdateLabelParams'
+                    description: Label fields to update.
+                    type: object
+            responses:
+                "200":
+                    description: LabelInfo
+                    schema:
+                        $ref: '#/definitions/LabelInfo'
+                "400":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "404":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            summary: Rename a label or change its custom color.
+            tags:
+                - labels
+    /labels/mine:
+        get:
+            operationId: listOwnedLabels
+            responses:
+                "200":
+                    description: LabelInfoArray
+                    schema:
+                        $ref: '#/definitions/LabelInfoArray'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            summary: Labels owned by the caller.
+            tags:
+                - labels
+    /logout:
+        get:
+            operationId: logout
+            responses:
+                "200":
+                    $ref: '#/responses/OK'
+            summary: Blacklist the caller's current JWT token, ending the session.
+            tags:
+                - auth
+    /me:
+        get:
+            operationId: getMe
+            responses:
+                "200":
+                    description: Users
+                    schema:
+                        $ref: '#/definitions/Users'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            summary: The account record of the authenticated caller.
+            tags:
+                - users
+        put:
+            operationId: updateMe
+            parameters:
+                - description: Settings to update.
+                  in: body
+                  name: Body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/MeSettingsParams'
+                    description: Settings to update.
+                    type: object
+            responses:
+                "200":
+                    description: Users
+                    schema:
+                        $ref: '#/definitions/Users'
+                "400":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            summary: Update the caller's own settings.
+            tags:
+                - users
+    /paste:
+        get:
+            description: |-
+                List pastes visible to the caller, filtered by the optional query
+                parameters.
+            operationId: listPastes
+            parameters:
+                - description: Page number, starting at 1.
+                  in: query
+                  name: page
+                  type: integer
+                - description: Maximum results per page.
+                  in: query
+                  name: max_results
+                  type: integer
+                - description: Restrict the listing to a scope (e.g. user or team).
+                  in: query
+                  name: scope
+                  type: string
+                - description: Restrict the listing to a single team.
+                  in: query
+                  name: team
+                  type: string
+                - description: Comma separated label names the pastes must carry.
+                  in: query
+                  name: labels
+                  type: string
+            responses:
+                "200":
+                    description: PasteListResult
+                    schema:
+                        $ref: '#/definitions/PasteListResult'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            tags:
+                - pastes
+        post:
+            operationId: createPaste
+            parameters:
+                - description: Paste payload.
+                  in: body
+                  name: Body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/Paste'
+                    description: Paste payload.
+                    type: object
+            responses:
+                "200":
+                    description: Paste
+                    schema:
+                        $ref: '#/definitions/Paste'
+                "400":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            summary: Create a new paste. The content is provided base64 encoded.
+            tags:
+                - pastes
+    /paste/{pasteID}:
+        delete:
+            operationId: deletePaste
+            parameters:
+                - description: Paste identifier.
+                  in: path
+                  name: pasteID
+                  required: true
+                  type: string
+            responses:
+                "200":
+                    $ref: '#/responses/OK'
+                "400":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "404":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            summary: Delete a paste the caller owns.
+            tags:
+                - pastes
+        get:
+            operationId: getPaste
+            parameters:
+                - description: Paste identifier.
+                  in: path
+                  name: pasteID
+                  required: true
+                  type: string
+            responses:
+                "200":
+                    description: Paste
+                    schema:
+                        $ref: '#/definitions/Paste'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "404":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            summary: Fetch a single paste the caller is allowed to see.
+            tags:
+                - pastes
+        put:
+            operationId: updatePaste
+            parameters:
+                - description: Paste identifier.
+                  in: path
+                  name: pasteID
+                  required: true
+                  type: string
+                - description: Fields to update.
+                  in: body
+                  name: Body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/UpdatePasteParams'
+                    description: Fields to update.
+                    type: object
+            responses:
+                "200":
+                    description: Paste
+                    schema:
+                        $ref: '#/definitions/Paste'
+                "400":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "404":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            summary: Update the mutable fields of an existing paste.
+            tags:
+                - pastes
+    /paste/{pasteID}/download:
+        get:
+            operationId: downloadPaste
+            parameters:
+                - description: Paste identifier.
+                  in: path
+                  name: pasteID
+                  required: true
+                  type: string
+            responses:
+                "200":
+                    $ref: '#/responses/file'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "404":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            summary: Download the raw paste content as an attachment.
+            tags:
+                - pastes
+    /paste/{pasteID}/labels:
+        put:
+            operationId: setPasteLabels
+            parameters:
+                - description: Paste identifier.
+                  in: path
+                  name: pasteID
+                  required: true
+                  type: string
+                - description: Desired label names.
+                  in: body
+                  name: Body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/PasteLabelsParams'
+                    description: Desired label names.
+                    type: object
+            responses:
+                "200":
+                    description: Paste
+                    schema:
+                        $ref: '#/definitions/Paste'
+                "400":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "404":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            summary: Replace the label set attached to a paste.
+            tags:
+                - pastes
+    /paste/{pasteID}/sharing:
+        get:
+            operationId: listPasteShares
+            parameters:
+                - description: Paste identifier.
+                  in: path
+                  name: pasteID
+                  required: true
+                  type: string
+            responses:
+                "200":
+                    description: PasteShareListResponse
+                    schema:
+                        $ref: '#/definitions/PasteShareListResponse'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "404":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            summary: List the users a paste is shared with.
+            tags:
+                - pastes
+        post:
+            operationId: sharePaste
+            parameters:
+                - description: Paste identifier.
+                  in: path
+                  name: pasteID
+                  required: true
+                  type: string
+                - description: User to share with (username or email in userID).
+                  in: body
+                  name: Body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/UserActionRequest'
+                    description: User to share with (username or email in userID).
+                    type: object
+            responses:
+                "200":
+                    description: TeamMember
+                    schema:
+                        $ref: '#/definitions/TeamMember'
+                "400":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "404":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            summary: Grant a user access to a private paste.
+            tags:
+                - pastes
+    /paste/{pasteID}/sharing/{userID}:
+        delete:
+            operationId: unsharePaste
+            parameters:
+                - description: Paste identifier.
+                  in: path
+                  name: pasteID
+                  required: true
+                  type: string
+                - description: User identifier.
+                  in: path
+                  name: userID
+                  required: true
+                  type: string
+            responses:
+                "200":
+                    $ref: '#/responses/OK'
+                "400":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "404":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            summary: Revoke a user's access to a paste.
+            tags:
+                - pastes
+    /paste/{pasteID}/transfer:
+        post:
+            operationId: transferPaste
+            parameters:
+                - description: Paste identifier.
+                  in: path
+                  name: pasteID
+                  required: true
+                  type: string
+                - description: Target user.
+                  in: body
+                  name: Body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/UserActionRequest'
+                    description: Target user.
+                    type: object
+            responses:
+                "200":
+                    description: Paste
+                    schema:
+                        $ref: '#/definitions/Paste'
+                "400":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "404":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            summary: Transfer ownership of a paste to another user.
+            tags:
+                - pastes
+    /paste/search:
+        get:
+            operationId: searchPastes
+            parameters:
+                - description: Search query.
+                  in: query
+                  name: q
+                  required: true
+                  type: string
+                - description: Page number, starting at 1.
+                  in: query
+                  name: page
+                  type: integer
+                - description: Maximum results per page.
+                  in: query
+                  name: max_results
+                  type: integer
+                - description: Restrict the search to a scope (e.g. user or team).
+                  in: query
+                  name: scope
+                  type: string
+                - description: Restrict the search to a single team.
+                  in: query
+                  name: team
+                  type: string
+                - description: Comma separated label names the pastes must carry.
+                  in: query
+                  name: labels
+                  type: string
+            responses:
+                "200":
+                    description: PasteListResult
+                    schema:
+                        $ref: '#/definitions/PasteListResult'
+                "400":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            summary: Full-text search over the pastes visible to the caller.
+            tags:
+                - pastes
+    /public/paste/{pasteID}:
+        get:
+            operationId: publicPasteView
+            parameters:
+                - description: Paste identifier.
+                  in: path
+                  name: pasteID
+                  required: true
+                  type: string
+            responses:
+                "200":
+                    description: Paste
+                    schema:
+                        $ref: '#/definitions/Paste'
+                "404":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            summary: Fetch a paste that has been marked public, without authentication.
+            tags:
+                - pastes
+    /teams:
+        get:
+            operationId: listTeams
+            parameters:
+                - description: Page number, starting at 1.
+                  in: query
+                  name: page
+                  type: integer
+                - description: Maximum results per page.
+                  in: query
+                  name: max_results
+                  type: integer
+            responses:
+                "200":
+                    description: TeamListResult
+                    schema:
+                        $ref: '#/definitions/TeamListResult'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            summary: List the teams the caller belongs to.
+            tags:
+                - teams
+        post:
+            operationId: createTeam
+            parameters:
+                - description: Team name and description.
+                  in: body
+                  name: Body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/NewTeamParams'
+                    description: Team name and description.
+                    type: object
+            responses:
+                "200":
+                    description: Teams
+                    schema:
+                        $ref: '#/definitions/Teams'
+                "400":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            summary: Create a new team owned by the caller.
+            tags:
+                - teams
+    /teams/{teamName}:
+        delete:
+            operationId: deleteTeam
+            parameters:
+                - description: Team name.
+                  in: path
+                  name: teamName
+                  required: true
+                  type: string
+            responses:
+                "200":
+                    $ref: '#/responses/OK'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "404":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            summary: Delete a team (owner only).
+            tags:
+                - teams
+        get:
+            operationId: getTeam
+            parameters:
+                - description: Team name.
+                  in: path
+                  name: teamName
+                  required: true
+                  type: string
+            responses:
+                "200":
+                    description: Teams
+                    schema:
+                        $ref: '#/definitions/Teams'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "404":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            summary: Fetch a team the caller is a member of.
+            tags:
+                - teams
+        put:
+            operationId: updateTeam
+            parameters:
+                - description: Team name.
+                  in: path
+                  name: teamName
+                  required: true
+                  type: string
+                - description: Team fields to update.
+                  in: body
+                  name: Body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/UpdateTeamParams'
+                    description: Team fields to update.
+                    type: object
+            responses:
+                "200":
+                    description: Teams
+                    schema:
+                        $ref: '#/definitions/Teams'
+                "400":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "404":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            summary: Rename a team or change its description (owner only).
+            tags:
+                - teams
+    /teams/{teamName}/accept:
+        post:
+            operationId: acceptTeamInvite
+            parameters:
+                - description: Team name.
+                  in: path
+                  name: teamName
+                  required: true
+                  type: string
+            responses:
+                "200":
+                    description: Teams
+                    schema:
+                        $ref: '#/definitions/Teams'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "404":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            summary: Accept a pending team invitation addressed to the caller.
+            tags:
+                - teams
+    /teams/{teamName}/decline:
+        post:
+            operationId: declineTeamInvite
+            parameters:
+                - description: Team name.
+                  in: path
+                  name: teamName
+                  required: true
+                  type: string
+            responses:
+                "200":
+                    $ref: '#/responses/OK'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "404":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            summary: Decline a pending team invitation addressed to the caller.
+            tags:
+                - teams
+    /teams/{teamName}/labels:
+        put:
+            operationId: setTeamLabels
+            parameters:
+                - description: Team name.
+                  in: path
+                  name: teamName
+                  required: true
+                  type: string
+                - description: Desired label names.
+                  in: body
+                  name: Body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/TeamLabelsParams'
+                    description: Desired label names.
+                    type: object
+            responses:
+                "200":
+                    description: Teams
+                    schema:
+                        $ref: '#/definitions/Teams'
+                "400":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "404":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            summary: Replace the label vocabulary of a team (owner or admin).
+            tags:
+                - teams
+    /teams/{teamName}/leave:
+        post:
+            operationId: leaveTeam
+            parameters:
+                - description: Team name.
+                  in: path
+                  name: teamName
+                  required: true
+                  type: string
+            responses:
+                "200":
+                    $ref: '#/responses/OK'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "404":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            summary: Leave a team the caller belongs to.
+            tags:
+                - teams
+    /teams/{teamName}/members:
+        get:
+            operationId: listTeamMembers
+            parameters:
+                - description: Team name.
+                  in: path
+                  name: teamName
+                  required: true
+                  type: string
+            responses:
+                "200":
+                    description: TeamMemberArray
+                    schema:
+                        $ref: '#/definitions/TeamMemberArray'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "404":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            summary: List the members of a team, including pending invites.
+            tags:
+                - teams
+        post:
+            description: |-
+                Invite a user to the team (owner or admin). The invite is pending until the
+                target user accepts it.
+            operationId: addTeamMember
+            parameters:
+                - description: Team name.
+                  in: path
+                  name: teamName
+                  required: true
+                  type: string
+                - description: User (username/email) and role of the new member.
+                  in: body
+                  name: Body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/TeamMemberParams'
+                    description: User (username/email) and role of the new member.
+                    type: object
+            responses:
+                "200":
+                    description: TeamMember
+                    schema:
+                        $ref: '#/definitions/TeamMember'
+                "400":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "404":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            tags:
+                - teams
+    /teams/{teamName}/members/{member}:
+        delete:
+            operationId: removeTeamMember
+            parameters:
+                - description: Team name.
+                  in: path
+                  name: teamName
+                  required: true
+                  type: string
+                - description: Member username.
+                  in: path
+                  name: member
+                  required: true
+                  type: string
+            responses:
+                "200":
+                    $ref: '#/responses/OK'
+                "400":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "404":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            summary: Remove a member from the team (owner or admin, subject to role rules).
+            tags:
+                - teams
+        put:
+            operationId: setTeamMemberRole
+            parameters:
+                - description: Team name.
+                  in: path
+                  name: teamName
+                  required: true
+                  type: string
+                - description: Member username.
+                  in: path
+                  name: member
+                  required: true
+                  type: string
+                - description: New role.
+                  in: body
+                  name: Body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/SetTeamMemberRoleParams'
+                    description: New role.
+                    type: object
+            responses:
+                "200":
+                    description: TeamMember
+                    schema:
+                        $ref: '#/definitions/TeamMember'
+                "400":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "404":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            summary: Change a member's role (owner only).
+            tags:
+                - teams
+    /teams/{teamName}/transfer:
+        post:
+            description: |-
+                Offer team ownership to one of the team members (owner only). The offer
+                takes effect only once the target accepts it.
+            operationId: transferTeam
+            parameters:
+                - description: Team name.
+                  in: path
+                  name: teamName
+                  required: true
+                  type: string
+                - description: Offer target.
+                  in: body
+                  name: Body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/TeamTransferParams'
+                    description: Offer target.
+                    type: object
+            responses:
+                "200":
+                    description: Teams
+                    schema:
+                        $ref: '#/definitions/Teams'
+                "400":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "404":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            tags:
+                - teams
+    /teams/{teamName}/transfer/{action}:
+        post:
+            operationId: teamTransferAction
+            parameters:
+                - description: Team name.
+                  in: path
+                  name: teamName
+                  required: true
+                  type: string
+                - description: Transfer action.
+                  enum:
+                    - accept decline cancel
+                  in: path
+                  name: action
+                  required: true
+                  type: string
+            responses:
+                "200":
+                    description: Teams
+                    schema:
+                        $ref: '#/definitions/Teams'
+                "400":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "404":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            summary: 'Act on a pending ownership transfer: accept, decline or cancel.'
+            tags:
+                - teams
+    /teams/invites:
+        get:
+            operationId: listTeamInvites
+            responses:
+                "200":
+                    description: TeamInviteInfoArray
+                    schema:
+                        $ref: '#/definitions/TeamInviteInfoArray'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            summary: Team invitations currently pending on the caller.
+            tags:
+                - teams
+    /teams/transfers:
+        get:
+            operationId: listTeamTransfers
+            responses:
+                "200":
+                    description: TeamTransferInfoArray
+                    schema:
+                        $ref: '#/definitions/TeamTransferInfoArray'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            summary: Pending team-ownership offers addressed to the caller.
+            tags:
+                - teams
+    /users/search:
+        get:
+            description: |-
+                Type-ahead search over discoverable users, optionally excluding the members
+                of a team.
+            operationId: searchUsers
+            parameters:
+                - description: Username or email prefix to search for.
+                  in: query
+                  name: q
+                  required: true
+                  type: string
+                - description: Exclude members of this team from the results.
+                  in: query
+                  name: team
+                  type: string
+            responses:
+                "200":
+                    description: UserSearchResultArray
+                    schema:
+                        $ref: '#/definitions/UserSearchResultArray'
+                "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+            tags:
+                - users
+produces:
+    - application/json
+responses:
+    OK:
+        description: The operation completed successfully. No content is returned.
+        schema:
+            type: object
+    file:
+        description: Binary file download.
+        schema:
+            type: file
+security:
+    - Bearer: []
+securityDefinitions:
+    Bearer:
+        description: 'The token with the `Bearer: ` prefix, e.g. "Bearer abcde12345".'
+        in: header
+        name: Authorization
+        type: apiKey
+swagger: "2.0"
