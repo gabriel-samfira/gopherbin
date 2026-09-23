@@ -61,14 +61,46 @@ func maxBodySizeMiddleware(next http.Handler, maxBodySize int64) http.Handler {
 	})
 }
 
+// contentSecurityPolicy is the fixed CSP shipped on every response. The app
+// serves the SvelteKit SPA and the JSON API from the same origin and keeps
+// the JWT in localStorage, so script execution is the main XSS risk:
+// script-src stays strict ('self' only — the bundle ships external module
+// scripts and needs no unsafe-inline/unsafe-eval). style-src must allow
+// 'unsafe-inline' because Svelte 5 injects component <style> elements at
+// runtime and CodeMirror 6 builds style sheets programmatically. img-src and
+// font-src allow data: URLs for inline icons/fonts emitted by the bundle.
+const contentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+
+// securityHeadersMiddleware sets a fixed set of security response headers on
+// every response the server produces: API JSON, SPA assets and error pages
+// alike. The headers are Set on w.Header() before delegating, so they are in
+// place before the first WriteHeader fires; handlers that overwrite their own
+// Content-Type etc. are unaffected. As the outermost wrapper in
+// newServerHandler it also covers the paths that never reach a controller:
+// mux's default 404, CORS-rejected requests, 413s from the body cap. Setting
+// them on 204/101 responses is harmless and keeps the rule uniform.
+func securityHeadersMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("Content-Security-Policy", contentSecurityPolicy)
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("Referrer-Policy", "no-referrer")
+		h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()")
+		next.ServeHTTP(w, r)
+	})
+}
+
 // newServerHandler assembles the HTTP handler chain for the API server.
 //
-// The body-size cap is applied inside the (optional) CORS wrapper so that
-// error responses triggered by the cap still carry CORS headers. The CORS
-// wrapper is only installed when explicit origins are configured: with an
-// empty cors_origins list gorilla/handlers would fall back to
-// "Access-Control-Allow-Origin: *", so we fail closed and emit no CORS
-// headers at all instead.
+// Order (outermost first): security headers, then CORS, then the body-size
+// cap. Headers go outermost so every response — including CORS-rejected and
+// cap-triggered ones — carries them. The body-size cap is applied inside the
+// (optional) CORS wrapper so that error responses triggered by the cap still
+// carry CORS headers. The CORS wrapper is only installed when explicit
+// origins are configured: with an empty cors_origins list gorilla/handlers
+// would fall back to "Access-Control-Allow-Origin: *", so we fail closed and
+// emit no CORS headers at all instead.
 func newServerHandler(router *mux.Router, cfg *config.Config) http.Handler {
 	var handler http.Handler = maxBodySizeMiddleware(router, cfg.APIServer.MaxBodySize)
 
@@ -78,7 +110,7 @@ func newServerHandler(router *mux.Router, cfg *config.Config) http.Handler {
 		headersOk := handlers.AllowedHeaders([]string{"X-Requested-With", "Content-Type", "Authorization"})
 		handler = handlers.CORS(methodsOk, headersOk, allowedOrigins)(handler)
 	}
-	return handler
+	return securityHeadersMiddleware(handler)
 }
 
 // APIServer is the API server worker
