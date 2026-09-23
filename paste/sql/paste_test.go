@@ -469,3 +469,40 @@ func TestGetPublicPaste_ConcurrentBudgetServesExactlyN(t *testing.T) {
 		t.Fatalf("after concurrent exhaustion: want NotFound, got %v", err)
 	}
 }
+
+func TestPeekMaxAccesses(t *testing.T) {
+	paster, aliceCtx, _ := newSearchFixture(t)
+	limited := mustCreate(t, paster, aliceCtx, "limited", true, pInt(3))
+	unlimited := mustCreate(t, paster, aliceCtx, "unlimited", true, nil)
+
+	peeker, ok := paster.(interface {
+		PeekMaxAccesses(context.Context, string) (*int, error)
+	})
+	if !ok {
+		t.Fatal("concrete paster does not implement PeekMaxAccesses")
+	}
+	if got, err := peeker.PeekMaxAccesses(aliceCtx, limited.PasteID); err != nil || got == nil || *got != 3 {
+		t.Errorf("limited: got (%v, %v), want (3, nil)", got, err)
+	}
+	if got, err := peeker.PeekMaxAccesses(aliceCtx, unlimited.PasteID); err != nil || got != nil {
+		t.Errorf("unlimited: got (%v, %v), want (nil, nil)", got, err)
+	}
+	if _, err := peeker.PeekMaxAccesses(aliceCtx, "doesnotexist1234567890ab"); err == nil {
+		t.Error("missing paste: want error, got nil")
+	}
+	// Peeking must not consume budget: three peeks leave all three serves.
+	for i := 0; i < 3; i++ {
+		if _, err := peeker.PeekMaxAccesses(aliceCtx, limited.PasteID); err != nil {
+			t.Fatalf("peek %d: %v", i, err)
+		}
+	}
+	served := 0
+	for i := 0; i < 3; i++ {
+		if _, err := paster.GetPublicPaste(aliceCtx, limited.PasteID); err == nil {
+			served++
+		}
+	}
+	if served != 3 {
+		t.Errorf("peeks consumed budget: served %d, want 3", served)
+	}
+}

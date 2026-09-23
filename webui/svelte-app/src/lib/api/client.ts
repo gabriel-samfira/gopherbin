@@ -68,8 +68,12 @@ export class ApiClient {
 		}
 	}
 
-	async get<T>(endpoint: string, token?: string | null): Promise<T> {
-		return this.request<T>(endpoint, { method: 'GET' }, token);
+	async get<T>(
+		endpoint: string,
+		token?: string | null,
+		headers?: Record<string, string>
+	): Promise<T> {
+		return this.request<T>(endpoint, { method: 'GET', headers }, token);
 	}
 
 	async post<T>(endpoint: string, data?: unknown, token?: string | null): Promise<T> {

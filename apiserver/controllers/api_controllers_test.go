@@ -1,14 +1,21 @@
 package controllers
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"gopherbin/config"
 	gErrors "gopherbin/errors"
+	"gopherbin/params"
+	"gopherbin/paste/common"
+
+	"github.com/gorilla/mux"
 )
 
 func TestClampPagination(t *testing.T) {
@@ -188,6 +195,7 @@ func TestHandleErrorTypedBranchesStillEchoOwnDetails(t *testing.T) {
 	}{
 		{"not found", gErrors.NewNotFoundError("paste abc not found"), http.StatusNotFound, "Not Found", "paste abc not found"},
 		{"unauthorized", gErrors.NewUnauthorizedError("invalid username or password"), http.StatusUnauthorized, "Not Authorized", "invalid username or password"},
+		{"forbidden", gErrors.NewForbiddenError("send header %s", "X-Consume-Access"), http.StatusForbidden, "Forbidden", "send header X-Consume-Access"},
 		{"bad request", gErrors.NewBadRequestError("name too long"), http.StatusBadRequest, "Bad Request", "name too long"},
 		{"conflict", gErrors.NewConflictError("team exists"), http.StatusConflict, "Conflict", "team exists"},
 		{"duplicate", gErrors.NewDuplicateUserError("duplicate user bob"), http.StatusConflict, "Conflict", "duplicate user bob"},
@@ -205,4 +213,182 @@ func TestHandleErrorTypedBranchesStillEchoOwnDetails(t *testing.T) {
 			}
 		})
 	}
+}
+
+// --- X-Consume-Access drive-by gate -------------------------------------
+
+// unlimitedPaster implements just enough of common.Paster for the read
+// handlers under test. The embedded nil interface is a tripwire: any call
+// to a method the handlers were not supposed to make panics loudly instead
+// of returning a plausible zero value.
+type unlimitedPaster struct {
+	common.Paster
+	paste      params.Paste
+	gets       int
+	publicGets int
+}
+
+func (f *unlimitedPaster) Get(ctx context.Context, pasteID string) (params.Paste, error) {
+	f.gets++
+	return f.paste, nil
+}
+
+func (f *unlimitedPaster) GetPublicPaste(ctx context.Context, pasteID string) (params.Paste, error) {
+	f.publicGets++
+	return f.paste, nil
+}
+
+// budgetPaster additionally provides the optional accessBudgetPeeker
+// capability the gate type-asserts for (the same contract the paste/sql
+// manager is expected to implement).
+type budgetPaster struct {
+	unlimitedPaster
+	maxAccesses *int
+	peekErr     error
+	peeks       int
+}
+
+func (f *budgetPaster) PeekMaxAccesses(ctx context.Context, pasteID string) (*int, error) {
+	f.peeks++
+	return f.maxAccesses, f.peekErr
+}
+
+func get(t *testing.T, h http.HandlerFunc, header string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/public/paste/abc123", nil)
+	if header != "" {
+		req.Header.Set(consumeAccessHeader, header)
+	}
+	req = mux.SetURLVars(req, map[string]string{"pasteID": "abc123"})
+	w := httptest.NewRecorder()
+	h(w, req)
+	return w
+}
+
+func TestConsumeAccessGate(t *testing.T) {
+	three := 3
+	budgetPaste := params.Paste{PasteID: "abc123", Data: []byte("secret"), MaxAccesses: &three}
+	freePaste := params.Paste{PasteID: "abc123", Data: []byte("open")}
+
+	t.Run("public budget paste without header gets 403 and consumes nothing", func(t *testing.T) {
+		fp := &budgetPaster{unlimitedPaster: unlimitedPaster{paste: budgetPaste}, maxAccesses: &three}
+		ctrl := NewAPIController(fp, nil, nil, config.JWTAuth{})
+		w := get(t, ctrl.PublicPasteViewHandler, "")
+
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("status = %d, want 403 (body %s)", w.Code, w.Body.String())
+		}
+		errStr, details := decode(t, w)
+		if errStr != "Forbidden" {
+			t.Fatalf("error = %q, want Forbidden", errStr)
+		}
+		if details != "viewing this paste consumes one of its limited accesses; send header X-Consume-Access to confirm the view" {
+			t.Fatalf("details = %q", details)
+		}
+		if fp.publicGets != 0 || fp.gets != 0 {
+			t.Fatalf("consuming getter called despite missing header: gets=%d publicGets=%d", fp.gets, fp.publicGets)
+		}
+		if strings.Contains(w.Body.String(), "secret") {
+			t.Fatal("paste content leaked in 403 response")
+		}
+	})
+
+	t.Run("budget paste with header proceeds and consumes one access", func(t *testing.T) {
+		fp := &budgetPaster{unlimitedPaster: unlimitedPaster{paste: budgetPaste}, maxAccesses: &three}
+		ctrl := NewAPIController(fp, nil, nil, config.JWTAuth{})
+		w := get(t, ctrl.PublicPasteViewHandler, "1")
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+		if fp.publicGets != 1 {
+			t.Fatalf("publicGets = %d, want the consuming getter to run once", fp.publicGets)
+		}
+		if fp.peeks != 0 {
+			t.Fatalf("peeks = %d, want the header to short-circuit the budget peek", fp.peeks)
+		}
+	})
+
+	t.Run("any non-empty header value confirms the view", func(t *testing.T) {
+		fp := &budgetPaster{unlimitedPaster: unlimitedPaster{paste: budgetPaste}, maxAccesses: &three}
+		ctrl := NewAPIController(fp, nil, nil, config.JWTAuth{})
+		w := get(t, ctrl.PublicPasteViewHandler, "sure-why-not")
+		if w.Code != http.StatusOK || fp.publicGets != 1 {
+			t.Fatalf("status = %d, publicGets = %d, want 200/1", w.Code, fp.publicGets)
+		}
+	})
+
+	t.Run("paste without budget proceeds without header", func(t *testing.T) {
+		fp := &budgetPaster{unlimitedPaster: unlimitedPaster{paste: freePaste}, maxAccesses: nil}
+		ctrl := NewAPIController(fp, nil, nil, config.JWTAuth{})
+		w := get(t, ctrl.PublicPasteViewHandler, "")
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200 (body %s)", w.Code, w.Body.String())
+		}
+		if fp.publicGets != 1 {
+			t.Fatalf("publicGets = %d, want the default flow untouched", fp.publicGets)
+		}
+	})
+
+	t.Run("authenticated view of budget paste without header gets 403", func(t *testing.T) {
+		fp := &budgetPaster{unlimitedPaster: unlimitedPaster{paste: budgetPaste}, maxAccesses: &three}
+		ctrl := NewAPIController(fp, nil, nil, config.JWTAuth{})
+		w := get(t, ctrl.PasteViewHandler, "")
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("status = %d, want 403", w.Code)
+		}
+		if fp.gets != 0 {
+			t.Fatalf("gets = %d, want 0: the view must not consume", fp.gets)
+		}
+	})
+
+	t.Run("download of budget paste without header gets 403", func(t *testing.T) {
+		fp := &budgetPaster{unlimitedPaster: unlimitedPaster{paste: budgetPaste}, maxAccesses: &three}
+		ctrl := NewAPIController(fp, nil, nil, config.JWTAuth{})
+		w := get(t, ctrl.PasteDownloadHandler, "")
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("status = %d, want 403", w.Code)
+		}
+		if fp.gets != 0 {
+			t.Fatalf("gets = %d, want 0: the download must not consume", fp.gets)
+		}
+	})
+
+	t.Run("download with header serves the bytes", func(t *testing.T) {
+		fp := &budgetPaster{unlimitedPaster: unlimitedPaster{paste: budgetPaste}, maxAccesses: &three}
+		ctrl := NewAPIController(fp, nil, nil, config.JWTAuth{})
+		w := get(t, ctrl.PasteDownloadHandler, "1")
+		if w.Code != http.StatusOK || fp.gets != 1 {
+			t.Fatalf("status = %d, gets = %d, want 200/1", w.Code, fp.gets)
+		}
+		if w.Body.String() != "secret" {
+			t.Fatalf("body = %q, want the paste data", w.Body.String())
+		}
+	})
+
+	t.Run("peek failure falls through to the getter", func(t *testing.T) {
+		fp := &budgetPaster{
+			unlimitedPaster: unlimitedPaster{paste: budgetPaste},
+			maxAccesses:     &three,
+			peekErr:         errors.New("db went away"),
+		}
+		ctrl := NewAPIController(fp, nil, nil, config.JWTAuth{})
+		w := get(t, ctrl.PublicPasteViewHandler, "")
+		if w.Code != http.StatusOK || fp.publicGets != 1 {
+			t.Fatalf("status = %d, publicGets = %d, want 200/1 (getter reproduces not-found/errors)", w.Code, fp.publicGets)
+		}
+	})
+
+	t.Run("paster without the peek capability keeps the pre-gate behavior", func(t *testing.T) {
+		// Documents the degraded mode: without a side-effect-free budget
+		// read the gate cannot distinguish, so nothing changes (and
+		// NewAPIController logs a startup warning).
+		fp := &unlimitedPaster{paste: budgetPaste}
+		ctrl := NewAPIController(fp, nil, nil, config.JWTAuth{})
+		w := get(t, ctrl.PublicPasteViewHandler, "")
+		if w.Code != http.StatusOK || fp.publicGets != 1 {
+			t.Fatalf("status = %d, publicGets = %d, want 200/1", w.Code, fp.publicGets)
+		}
+	})
 }

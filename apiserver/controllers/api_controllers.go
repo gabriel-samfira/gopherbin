@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -27,6 +28,13 @@ import (
 
 // NewAPIController returns a new APIController
 func NewAPIController(paster common.Paster, teamManager common.TeamManager, mgr adminCommon.UserManager, cfg config.JWTAuth) *APIController {
+	if _, ok := paster.(accessBudgetPeeker); !ok {
+		// Loud rather than silent: without the peek capability the
+		// X-Consume-Access drive-by gate cannot tell budget pastes from
+		// unlimited ones and stays inactive (pre-gate behavior).
+		log.Printf("apiserver: warning: paster does not implement PeekMaxAccesses; " +
+			"the X-Consume-Access gate for limited-access pastes is INACTIVE")
+	}
 	return &APIController{
 		paster:       paster,
 		manager:      mgr,
@@ -74,6 +82,9 @@ func handleError(w http.ResponseWriter, err error) {
 	case *gErrors.UnauthorizedError:
 		w.WriteHeader(http.StatusUnauthorized)
 		apiErr.Error = "Not Authorized"
+	case *gErrors.ForbiddenError:
+		w.WriteHeader(http.StatusForbidden)
+		apiErr.Error = "Forbidden"
 	case *gErrors.BadRequestError:
 		w.WriteHeader(http.StatusBadRequest)
 		apiErr.Error = "Bad Request"
@@ -195,6 +206,64 @@ func (p *APIController) NotFoundHandler(w http.ResponseWriter, r *http.Request) 
 	json.NewEncoder(w).Encode(responses.NotFoundResponse)
 }
 
+// consumeAccessHeader must be sent (any non-empty value) on the paste-read
+// routes whose read consumes one of a paste's limited accesses
+// (max_accesses set). Browsers cannot attach custom headers to drive-by
+// requests (an <img> src cannot set them at all; a cross-origin fetch that
+// tries one is blocked by the CORS preflight, which never lists this
+// header), so its presence is a positive confirmation that a real viewer
+// asked for the content, not a page burning pastes from a third-party
+// origin. Same-origin app fetches set it unconditionally (see
+// webui/svelte-app/src/lib/api/pastes.ts), so legitimate users never see
+// the 403.
+const consumeAccessHeader = "X-Consume-Access"
+
+// accessBudgetPeeker is an OPTIONAL read-only capability a common.Paster
+// implementation may provide to report a paste's access budget without
+// consuming one of its accesses. The gate below needs the budget BEFORE
+// calling Get/GetPublicPaste, which consume unconditionally on budget
+// pastes, so the check cannot go through the ordinary getters; only a
+// side-effect-free read (loadPaste-style) can. Get and GetPublicPaste
+// remain unchanged. When the wired paster does not implement this
+// capability the gate cannot distinguish budget pastes from unlimited
+// ones and keeps the pre-gate behavior (NewAPIController logs a warning
+// at startup so the gap is visible rather than silent).
+type accessBudgetPeeker interface {
+	PeekMaxAccesses(ctx context.Context, pasteID string) (*int, error)
+}
+
+// confirmLimitedAccess guards the read handlers that consume an access
+// (GET /paste/{id}, GET /public/paste/{id}, GET /paste/{id}/download).
+// It returns true when the consuming getter call may proceed: the client
+// confirmed the view with the X-Consume-Access header, or the paste has no
+// access budget (a view of such a paste cannot consume anything, so it
+// behaves exactly as before this gate existed). A budget paste read without
+// the header is answered with a typed 403 and no manager call is made, so
+// nothing is consumed and nothing is destroyed.
+func (p *APIController) confirmLimitedAccess(w http.ResponseWriter, r *http.Request, pasteID string) bool {
+	// Any non-empty value counts: the header's presence is the
+	// confirmation, its content carries no meaning.
+	if r.Header.Get(consumeAccessHeader) != "" {
+		return true
+	}
+	peeker, ok := p.paster.(accessBudgetPeeker)
+	if !ok {
+		// Capability absent: the budget cannot be inspected without
+		// consuming an access to find out; keep serving as before.
+		return true
+	}
+	maxAccesses, err := peeker.PeekMaxAccesses(r.Context(), pasteID)
+	if err != nil || maxAccesses == nil {
+		// Unknown, unreadable or not found: proceed and let the getter
+		// produce exactly the same not-found / internal responses it
+		// produced before this gate existed.
+		return true
+	}
+	handleError(w, gErrors.NewForbiddenError(
+		"viewing this paste consumes one of its limited accesses; send header %s to confirm the view", consumeAccessHeader))
+	return false
+}
+
 // FirstRunHandler initializez gopherbin
 func (p *APIController) FirstRunHandler(w http.ResponseWriter, r *http.Request) {
 	if p.manager.HasSuperUser() {
@@ -306,6 +375,9 @@ func (p *APIController) PasteViewHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	if !p.confirmLimitedAccess(w, r, pasteID) {
+		return
+	}
 	pasteInfo, err := p.paster.Get(ctx, pasteID)
 	if err != nil {
 		handleError(w, err)
@@ -326,6 +398,12 @@ func (p *APIController) PasteDownloadHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	if !p.confirmLimitedAccess(w, r, pasteID) {
+		return
+	}
+
+	// Consumes one of a budget paste's accesses: gated above like
+	// PasteViewHandler.
 	pasteInfo, err := p.paster.Get(ctx, pasteID)
 	if err != nil {
 		handleError(w, err)
@@ -350,6 +428,9 @@ func (p *APIController) PublicPasteViewHandler(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	if !p.confirmLimitedAccess(w, r, pasteID) {
+		return
+	}
 	pasteInfo, err := p.paster.GetPublicPaste(ctx, pasteID)
 	if err != nil {
 		handleError(w, err)

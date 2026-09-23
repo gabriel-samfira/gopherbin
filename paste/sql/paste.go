@@ -410,7 +410,9 @@ func (p *paste) Create(
 			return params.Paste{}, errors.Wrap(err, "fetching team")
 		}
 		if !p.teamMgr.canShareToTeam(teamModel, user) {
-			return params.Paste{}, errors.Wrap(gErrors.ErrUnauthorized, "creating paste for foreign team")
+			// The team row was loaded successfully: a 401 here would let any
+			// logged-in user enumerate team names through paste creation.
+			return params.Paste{}, errors.Wrap(gErrors.ErrNotFound, "creating paste for foreign team")
 		}
 		teamID = &teamModel.ID
 		// Team pastes are never public: access is governed by team membership.
@@ -533,6 +535,23 @@ func (p *paste) loadPaste(pasteID string) (models.Paste, error) {
 		return models.Paste{}, errors.Wrap(q.Error, "fetching paste from database")
 	}
 	return tmpPaste, nil
+}
+
+// PeekMaxAccesses returns the access budget configured for a paste without
+// consuming one. A nil result means the paste has no max_accesses limit.
+// Implemented as a single-column read so it never touches the access counter.
+func (p *paste) PeekMaxAccesses(ctx context.Context, pasteID string) (*int, error) {
+	var row models.Paste
+	q := p.conn.Select("max_accesses").
+		Where("paste_id = ? and (expires is NULL or expires >= ?)", pasteID, time.Now()).
+		First(&row)
+	if q.Error != nil {
+		if errors.Is(q.Error, gorm.ErrRecordNotFound) {
+			return nil, gErrors.ErrNotFound
+		}
+		return nil, errors.Wrap(q.Error, "peeking paste access budget")
+	}
+	return row.MaxAccesses, nil
 }
 
 func (p *paste) GetPublicPaste(ctx context.Context, pasteID string) (params.Paste, error) {
@@ -911,7 +930,9 @@ func (p *paste) Delete(ctx context.Context, pasteID string) error {
 		return errors.Wrap(err, "fetching paste")
 	}
 	if !p.canManage(pst, user) {
-		return gErrors.ErrUnauthorized
+		// Post-load canManage denial: answered with the 404 sentinel so an
+		// existing but foreign paste is indistinguishable from a missing one.
+		return gErrors.ErrNotFound
 	}
 	if pst.PasteID == "" {
 		return nil
@@ -1009,7 +1030,9 @@ func (p *paste) ShareWithUser(ctx context.Context, pasteID string, userID string
 		return params.TeamMember{}, gErrors.ErrNotFound
 	}
 	if pst.OwnerID != ctxUser.ID {
-		return params.TeamMember{}, errors.Wrap(gErrors.ErrUnauthorized, "sharing foreign paste")
+		// Post-load denial on the sharing path: 404, matching the uniform
+		// "foreign paste" answer used by unshare and list-shares.
+		return params.TeamMember{}, errors.Wrap(gErrors.ErrNotFound, "sharing foreign paste")
 	}
 
 	if pst.TeamID != nil {
@@ -1041,7 +1064,9 @@ func (p *paste) UnshareWithUser(ctx context.Context, pasteID string, userID stri
 		return errors.Wrap(err, "fetching paste")
 	}
 	if pst.OwnerID != ctxUser.ID {
-		return errors.Wrap(gErrors.ErrUnauthorized, "unsharing foreign paste")
+		// Post-load denial: this check runs before any canAccess gate, so a
+		// 401 here was a direct paste-ID existence oracle. Deny with 404.
+		return errors.Wrap(gErrors.ErrNotFound, "unsharing foreign paste")
 	}
 
 	targetUser, err := p.getUserByUsernameOrEmail(userID)
@@ -1069,7 +1094,8 @@ func (p *paste) ListShares(ctx context.Context, pasteID string) (params.PasteSha
 		return params.PasteShareListResponse{}, errors.Wrap(err, "fetching paste")
 	}
 	if !p.canManage(pst, ctxUser) {
-		return params.PasteShareListResponse{}, errors.Wrap(gErrors.ErrUnauthorized, "listing shares of foreign paste")
+		// Post-load canManage denial: answered with the 404 sentinel.
+		return params.PasteShareListResponse{}, errors.Wrap(gErrors.ErrNotFound, "listing shares of foreign paste")
 	}
 
 	var shares []models.Users
@@ -1099,7 +1125,8 @@ func (p *paste) SetPrivacy(ctx context.Context, pasteID string, public bool) (pa
 		return params.Paste{}, errors.Wrap(err, "fetching paste")
 	}
 	if !p.canManage(pst, user) {
-		return params.Paste{}, gErrors.ErrUnauthorized
+		// Post-load canManage denial: answered with the 404 sentinel.
+		return params.Paste{}, gErrors.ErrNotFound
 	}
 	if pst.TeamID != nil && public {
 		return params.Paste{}, gErrors.NewBadRequestError("team pastes cannot be made public")
@@ -1124,7 +1151,8 @@ func (p *paste) TransferOwnership(ctx context.Context, pasteID string, userID st
 		return params.Paste{}, errors.Wrap(err, "fetching paste")
 	}
 	if !p.canManage(pst, user) {
-		return params.Paste{}, gErrors.ErrUnauthorized
+		// Post-load canManage denial: answered with the 404 sentinel.
+		return params.Paste{}, gErrors.ErrNotFound
 	}
 
 	targetUser, err := p.getUserByUsernameOrEmail(userID)
@@ -1160,7 +1188,8 @@ func (p *paste) SetLabels(ctx context.Context, pasteID string, names []string) (
 		return params.Paste{}, errors.Wrap(err, "fetching paste")
 	}
 	if !p.canManage(pst, user) {
-		return params.Paste{}, gErrors.ErrUnauthorized
+		// Post-load canManage denial: answered with the 404 sentinel.
+		return params.Paste{}, gErrors.ErrNotFound
 	}
 	clean, err := dedupeLabels(names)
 	if err != nil {

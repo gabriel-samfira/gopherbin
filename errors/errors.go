@@ -107,3 +107,18 @@ func NewConflictError(msg string, a ...interface{}) error {
 type ConflictError struct {
 	baseError
 }
+
+// NewForbiddenError returns a new ForbiddenError
+func NewForbiddenError(msg string, a ...interface{}) error {
+	return &ForbiddenError{
+		baseError{
+			msg: fmt.Sprintf(msg, a...),
+		},
+	}
+}
+
+// ForbiddenError is returned when the request is valid and the caller is
+// authenticated, but the server refuses to execute it (HTTP 403)
+type ForbiddenError struct {
+	baseError
+}

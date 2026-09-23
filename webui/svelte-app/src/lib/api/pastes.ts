@@ -5,12 +5,21 @@ export async function createPaste(data: PasteCreate, token: string): Promise<{ p
 	return apiClient.post<{ paste_id: string }>('/paste', data, token);
 }
 
+// Views of a paste with max_accesses set consume one of its accesses. The
+// server requires the X-Consume-Access header on such views and answers
+// 403 without it; a cross-origin drive-by (<img>, simple fetch) cannot
+// attach custom headers, which is what stops it from burning pastes. The
+// app sends the header unconditionally on every single-paste read so a
+// legitimate user never sees the 403 (pastes without an access budget
+// ignore the header entirely).
+const CONSUME_ACCESS_HEADERS = { 'X-Consume-Access': '1' };
+
 export async function getPaste(pasteId: string, token: string): Promise<Paste> {
-	return apiClient.get<Paste>(`/paste/${pasteId}`, token);
+	return apiClient.get<Paste>(`/paste/${pasteId}`, token, CONSUME_ACCESS_HEADERS);
 }
 
 export async function getPublicPaste(pasteId: string): Promise<Paste> {
-	return apiClient.get<Paste>(`/public/paste/${pasteId}`);
+	return apiClient.get<Paste>(`/public/paste/${pasteId}`, null, CONSUME_ACCESS_HEADERS);
 }
 
 export async function listPastes(

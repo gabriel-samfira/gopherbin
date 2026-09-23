@@ -58,6 +58,17 @@ func TestNewConflictError(t *testing.T) {
 	}
 }
 
+func TestNewForbiddenError(t *testing.T) {
+	err := gErrors.NewForbiddenError("send header %s", "X-Consume-Access")
+	want := "send header X-Consume-Access"
+	if err.Error() != want {
+		t.Errorf("want %q, got %q", want, err.Error())
+	}
+	if _, ok := err.(*gErrors.ForbiddenError); !ok {
+		t.Error("expected *ForbiddenError")
+	}
+}
+
 func TestSentinelVars(t *testing.T) {
 	if _, ok := gErrors.ErrUnauthorized.(*gErrors.UnauthorizedError); !ok {
 		t.Error("ErrUnauthorized: expected *UnauthorizedError")
