@@ -75,9 +75,15 @@ func NewDBConn(dbCfg config.Database) (conn *gorm.DB, err error) {
 	return conn, nil
 }
 
-// PaswsordToBcrypt returns a bcrypt hash of the specified password using the default cost
+// bcryptCost is the work factor for password hashing. 12 (~250ms on current
+// hardware) keeps online brute force expensive; hashes created at lower costs
+// keep verifying because the cost is embedded in the hash.
+const bcryptCost = 12
+
+// PaswsordToBcrypt returns a bcrypt hash of the specified password using
+// bcryptCost.
 func PaswsordToBcrypt(password string) (string, error) {
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcryptCost)
 	if err != nil {
 		// TODO: make this a fatal error, that should return a 500 error to user
 		return "", fmt.Errorf("failed to hash password")
