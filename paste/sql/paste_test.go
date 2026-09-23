@@ -63,7 +63,7 @@ func pInt(n int) *int { return &n }
 // mustCreate is a helper to create a paste and fail the test on error.
 func mustCreate(t *testing.T, paster pasteCommon.Paster, ctx context.Context, title string, public bool, maxAccesses *int) params.Paste {
 	t.Helper()
-	p, err := paster.Create(ctx, []byte("paste content"), title, "text", "", nil, public, "", nil, maxAccesses)
+	p, err := paster.Create(ctx, []byte("paste content"), title, "text", "", nil, public, "", nil, maxAccesses, nil)
 	if err != nil {
 		t.Fatalf("Create(%q): %v", title, err)
 	}

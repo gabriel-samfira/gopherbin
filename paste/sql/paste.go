@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"gopherbin/auth"
@@ -58,7 +59,7 @@ func NewPaster(dbCfg config.Database) (common.Paster, error) {
 type paste struct {
 	conn      *gorm.DB
 	dbBackend config.DBBackendType
-	teamMgr   common.TeamManager
+	teamMgr   *teamManager
 }
 
 func (p *paste) migrateDB() error {
@@ -66,6 +67,8 @@ func (p *paste) migrateDB() error {
 		&models.Users{},
 		&models.Paste{},
 		&models.Teams{},
+		&models.TeamUser{},
+		&models.Label{},
 		&models.JWTBacklist{},
 	); err != nil {
 		return err
@@ -236,7 +239,10 @@ func (p *paste) incrementAndMaybeDestroy(tx *gorm.DB, pst *models.Paste) error {
 	return nil
 }
 
-func (p *paste) sqlToCommonPaste(modelPaste models.Paste, withPreview bool) params.Paste {
+// sqlToCommonPaste renders a paste for a viewer. viewerID 0 means anonymous:
+// personal labels are then omitted, and they are also hidden from anyone who is
+// not the paste owner.
+func (p *paste) sqlToCommonPaste(modelPaste models.Paste, withPreview bool, viewerID uint) params.Paste {
 	metadata := make(map[string]string)
 	if modelPaste.Metadata != nil {
 		err := json.Unmarshal(modelPaste.Metadata, &metadata)
@@ -257,7 +263,17 @@ func (p *paste) sqlToCommonPaste(modelPaste models.Paste, withPreview bool) para
 		MaxAccesses: modelPaste.MaxAccesses,
 		AccessCount: modelPaste.AccessCount,
 		CreatedBy:   modelPaste.Owner.FullName,
+		Owner:       modelPaste.Owner.Username,
+		OwnerID:     modelPaste.OwnerID,
+		Team:        modelPaste.Team.Name,
 		Metadata:    metadata,
+	}
+	for _, label := range modelPaste.Labels {
+		if label.TeamID != nil {
+			paste.Labels = append(paste.Labels, params.PasteLabel{Name: label.Name, Color: label.Color, Scope: "team", Team: modelPaste.Team.Name})
+		} else if viewerID != 0 && viewerID == modelPaste.OwnerID {
+			paste.Labels = append(paste.Labels, params.PasteLabel{Name: label.Name, Color: label.Color, Scope: "personal"})
+		}
 	}
 	if withPreview {
 		paste.Preview = modelPaste.Data
@@ -273,7 +289,8 @@ func (p *paste) Create(
 	expires *time.Time,
 	isPublic bool, team string,
 	metadata map[string]string,
-	maxAccesses *int) (paste params.Paste, err error) {
+	maxAccesses *int,
+	labels []string) (paste params.Paste, err error) {
 
 	pasteID, err := util.GetRandomString(24)
 	if err != nil {
@@ -285,9 +302,21 @@ func (p *paste) Create(
 		return params.Paste{}, errors.Wrap(err, "fetching user")
 	}
 	if len(data) == 0 || len(title) == 0 {
-		// TODO: create some custom error types
-		fmt.Printf("data --> %v --> title: %v\n", data, title)
 		return params.Paste{}, gErrors.ErrBadRequest
+	}
+
+	var teamID *uint
+	if team != "" {
+		teamModel, err := p.teamMgr.get(team)
+		if err != nil {
+			return params.Paste{}, errors.Wrap(err, "fetching team")
+		}
+		if !p.teamMgr.canShareToTeam(teamModel, user) {
+			return params.Paste{}, errors.Wrap(gErrors.ErrUnauthorized, "creating paste for foreign team")
+		}
+		teamID = &teamModel.ID
+		// Team pastes are never public: access is governed by team membership.
+		isPublic = false
 	}
 
 	var encodedMetadata []byte
@@ -310,12 +339,41 @@ func (p *paste) Create(
 		Description: description,
 		Metadata:    encodedMetadata,
 		MaxAccesses: maxAccesses,
+		TeamID:      teamID,
 	}
+	cleanLabels, err := dedupeLabels(labels)
+	if err != nil {
+		return params.Paste{}, errors.Wrap(err, "validating labels")
+	}
+
 	q := p.conn.Create(&newPaste)
 	if q.Error != nil {
 		return params.Paste{}, errors.Wrap(q.Error, "creating paste")
 	}
-	return p.sqlToCommonPaste(newPaste, false), nil
+	if len(cleanLabels) > 0 {
+		labelOwnerID, labelTeamID := user.ID, uint(0)
+		if teamID != nil {
+			labelOwnerID, labelTeamID = 0, *teamID
+		}
+		err = p.conn.Transaction(func(tx *gorm.DB) error {
+			resolved, err := resolveOrCreateLabels(tx, cleanLabels, labelOwnerID, labelTeamID)
+			if err != nil {
+				return err
+			}
+			return tx.Model(&newPaste).Association("Labels").Replace(resolved)
+		})
+		if err != nil {
+			return params.Paste{}, errors.Wrap(err, "attaching labels")
+		}
+	}
+	if newPaste.TeamID != nil {
+		teamModel, err := p.teamMgr.get(team)
+		if err != nil {
+			return params.Paste{}, errors.Wrap(err, "fetching team")
+		}
+		newPaste.Team = teamModel
+	}
+	return p.sqlToCommonPaste(newPaste, false, user.ID), nil
 }
 
 func (p *paste) canAccess(paste models.Paste, user models.Users) bool {
@@ -323,14 +381,14 @@ func (p *paste) canAccess(paste models.Paste, user models.Users) bool {
 		return true
 	}
 
-	// The user is the owner of the team
+	// The user is the owner of the paste
 	if paste.Owner.ID == user.ID {
 		return true
 	}
 
 	// This paste belongs to a team, and the user
 	// is the owner of the team.
-	if paste.Team.OwnerID == user.ID {
+	if paste.TeamID != nil && paste.Team.OwnerID == user.ID {
 		return true
 	}
 
@@ -341,22 +399,49 @@ func (p *paste) canAccess(paste models.Paste, user models.Users) bool {
 		}
 	}
 
-	// Check if the paste belongs to a team that the user
-	// is a member of.
-	for _, team := range user.MemberOf {
-		if team.ID == paste.Team.ID {
-			return true
-		}
+	// Check if the paste belongs to a team that the user has joined
+	// (pending invitees do not get access).
+	if paste.TeamID != nil && p.teamMgr.isActiveMember(*paste.TeamID, user.ID) {
+		return true
 	}
 
 	return false
+}
+
+// canManage returns true if the user may mutate (delete, change privacy of,
+// transfer) the paste. Only the owner of the paste, or the owner of the team
+// that owns the paste may manage it.
+func (p *paste) canManage(paste models.Paste, user models.Users) bool {
+	if paste.OwnerID == user.ID {
+		return true
+	}
+	if paste.TeamID != nil && paste.Team.OwnerID == user.ID {
+		return true
+	}
+	return false
+}
+
+// loadPaste fetches a paste by pasteID with all relations needed for
+// authorization decisions. Unlike getPaste it does not increment the access
+// counter, so it can be used by mutation endpoints without side effects.
+func (p *paste) loadPaste(pasteID string) (models.Paste, error) {
+	var tmpPaste models.Paste
+	q := p.conn.Preload("Owner").Preload("Users").Preload("Team").Preload("Team.Owner").Preload("Labels").
+		Where("paste_id = ? and (expires is NULL or expires >= ?)", pasteID, time.Now()).First(&tmpPaste)
+	if q.Error != nil {
+		if errors.Is(q.Error, gorm.ErrRecordNotFound) {
+			return models.Paste{}, gErrors.ErrNotFound
+		}
+		return models.Paste{}, errors.Wrap(q.Error, "fetching paste from database")
+	}
+	return tmpPaste, nil
 }
 
 func (p *paste) GetPublicPaste(ctx context.Context, pasteID string) (params.Paste, error) {
 	var tmpPaste models.Paste
 	err := p.conn.Transaction(func(tx *gorm.DB) error {
 		now := time.Now()
-		q := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where(
+		q := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Preload("Labels").Preload("Team").Where(
 			"paste_id = ? and (expires is NULL or expires >= ?) and public = ?", pasteID, now, true).First(&tmpPaste)
 		if q.Error != nil {
 			if errors.Is(q.Error, gorm.ErrRecordNotFound) {
@@ -372,14 +457,14 @@ func (p *paste) GetPublicPaste(ctx context.Context, pasteID string) (params.Past
 	if err != nil {
 		return params.Paste{}, err
 	}
-	return p.sqlToCommonPaste(tmpPaste, false), nil
+	return p.sqlToCommonPaste(tmpPaste, false, 0), nil
 }
 
 func (p *paste) getPaste(pasteID string, user models.Users) (models.Paste, error) {
 	var tmpPaste models.Paste
 	err := p.conn.Transaction(func(tx *gorm.DB) error {
 		now := time.Now()
-		q := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Preload("Users").Preload("Owner").Where(
+		q := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Preload("Users").Preload("Owner").Preload("Team").Preload("Labels").Where(
 			"paste_id = ? and (expires is NULL or expires >= ?)", pasteID, now).First(&tmpPaste)
 		if q.Error != nil {
 			if errors.Is(q.Error, gorm.ErrRecordNotFound) {
@@ -414,14 +499,99 @@ func (p *paste) get(ctx context.Context, pasteID string) (models.Paste, error) {
 }
 
 func (p *paste) Get(ctx context.Context, pasteID string) (paste params.Paste, err error) {
-	pst, err := p.get(ctx, pasteID)
+	user, err := p.getUserFromContext(ctx)
+	if err != nil {
+		return params.Paste{}, errors.Wrap(err, "fetching user from DB")
+	}
+	pst, err := p.getPaste(pasteID, user)
 	if err != nil {
 		return params.Paste{}, errors.Wrap(err, "fetching paste")
 	}
-	return p.sqlToCommonPaste(pst, false), nil
+	return p.sqlToCommonPaste(pst, false, user.ID), nil
 }
 
-func (p *paste) Search(ctx context.Context, query string, page int64, results int64) (params.PasteListResult, error) {
+// scopeClause returns a SQL condition (and its bind values) limiting results
+// to the pastes visible to the given user, according to the requested scope:
+//   - ScopeMine:   pastes the user owns
+//   - ScopeShared: pastes shared with the user directly, or visible through a
+//     team the user is a member or owner of
+//   - ScopeAll:    the union of the above
+func (p *paste) scopeClause(user models.Users, scope string) (string, []interface{}) {
+	sharedCond := `(owner_id != ? AND (EXISTS (SELECT 1 FROM paste_users WHERE paste_users.paste_id = pastes.id AND paste_users.users_id = ?) OR (team_id IS NOT NULL AND (team_id IN (SELECT teams_id FROM team_users WHERE team_users.users_id = ? AND team_users.status = 'active') OR team_id IN (SELECT id FROM teams WHERE teams.owner_id = ?)))))`
+
+	switch scope {
+	case common.ScopeMine:
+		return "owner_id = ?", []interface{}{user.ID}
+	case common.ScopeShared:
+		return sharedCond, []interface{}{user.ID, user.ID, user.ID, user.ID}
+	default: // ScopeAll
+		cond := `(owner_id = ? OR EXISTS (SELECT 1 FROM paste_users WHERE paste_users.paste_id = pastes.id AND paste_users.users_id = ?) OR (team_id IS NOT NULL AND (team_id IN (SELECT teams_id FROM team_users WHERE team_users.users_id = ? AND team_users.status = 'active') OR team_id IN (SELECT id FROM teams WHERE teams.owner_id = ?))))`
+		return cond, []interface{}{user.ID, user.ID, user.ID, user.ID}
+	}
+}
+
+// viewerTeamIDs returns the IDs of teams whose labels the viewer may use or
+// see: teams they actively belong to, plus teams they own.
+func (p *paste) viewerTeamIDs(user models.Users) []uint {
+	var ids []uint
+	p.conn.Model(&models.TeamUser{}).
+		Where("users_id = ? AND status = ?", user.ID, models.TeamMembershipActive).
+		Pluck("teams_id", &ids)
+	var owned []uint
+	p.conn.Model(&models.Teams{}).Where("owner_id = ?", user.ID).Pluck("id", &owned)
+	return append(ids, owned...)
+}
+
+// labelFilter builds AND-joined EXISTS conditions: every requested label name
+// must be attached to the paste, either as the viewer's own personal label or
+// as a label of one of the viewer's teams. Same-named labels belonging to
+// foreign teams are not matched.
+func (p *paste) labelFilter(user models.Users, names []string) (string, []interface{}) {
+	if len(names) == 0 {
+		return "", nil
+	}
+	teamIDs := p.viewerTeamIDs(user)
+	conds := make([]string, 0, len(names))
+	args := make([]interface{}, 0, len(names)*(1+len(teamIDs)))
+	for _, name := range names {
+		if len(teamIDs) > 0 {
+			placeholders := strings.Repeat("?, ", len(teamIDs)-1) + "?"
+			conds = append(conds, `(EXISTS (SELECT 1 FROM paste_labels pl JOIN labels l ON l.id = pl.label_id
+				WHERE pl.paste_id = pastes.id AND l.name = ? AND ((l.team_id IS NULL AND l.owner_user_id = ?) OR l.team_id IN (`+placeholders+`))))`)
+			args = append(args, name, user.ID)
+			for _, id := range teamIDs {
+				args = append(args, id)
+			}
+		} else {
+			conds = append(conds, `(EXISTS (SELECT 1 FROM paste_labels pl JOIN labels l ON l.id = pl.label_id
+				WHERE pl.paste_id = pastes.id AND l.name = ? AND l.team_id IS NULL AND l.owner_user_id = ?))`)
+			args = append(args, name, user.ID)
+		}
+	}
+	return strings.Join(conds, " AND "), args
+}
+
+// teamFilter limits results to pastes of one named team. The scope clause
+// still applies, so teams the viewer cannot see simply match nothing.
+func (p *paste) teamFilter(team string) (string, []interface{}) {
+	if team == "" {
+		return "", nil
+	}
+	return "(team_id IN (SELECT id FROM teams WHERE name = ?))", []interface{}{team}
+}
+
+// mergeConds joins optional WHERE fragments with AND.
+func mergeConds(parts ...string) string {
+	kept := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if part != "" {
+			kept = append(kept, "("+part+")")
+		}
+	}
+	return strings.Join(kept, " AND ")
+}
+
+func (p *paste) Search(ctx context.Context, query string, page int64, results int64, scope string, labels []string, team string) (params.PasteListResult, error) {
 	user, err := p.getUserFromContext(ctx)
 	if err != nil {
 		return params.PasteListResult{}, errors.Wrap(err, "fetching user from DB")
@@ -436,6 +606,8 @@ func (p *paste) Search(ctx context.Context, query string, page int64, results in
 	var cnt int64
 	now := time.Now()
 	startFrom := (page - 1) * results
+
+	scopeCond, scopeArgs := p.scopeClause(user, scope)
 
 	// Build full-text search query based on database backend
 	var q *gorm.DB
@@ -458,18 +630,18 @@ func (p *paste) Search(ctx context.Context, query string, page int64, results in
 			// Use FULLTEXT search with MATCH...AGAINST
 			// IN BOOLEAN MODE allows for more flexible searching
 			q = p.conn.Select(
-				"id, paste_id, language, name, description, metadata, owner_id as owner, created_at, expires, public, substr(`data`, 1, 512) as data",
+				"id, paste_id, language, name, description, metadata, owner_id, team_id, created_at, expires, public, substr(`data`, 1, 512) as data",
 			).Where(
-				"owner_id = ? AND MATCH(name, `data`) AGAINST(? IN BOOLEAN MODE) AND (expires IS NULL OR expires >= ?)",
-				user.ID, query, now,
+				scopeCond+" AND MATCH(name, `data`) AGAINST(? IN BOOLEAN MODE) AND (expires IS NULL OR expires >= ?)",
+				append(scopeArgs, query, now)...,
 			).Order("id desc")
 		} else {
 			// Fallback to LIKE search
 			q = p.conn.Select(
-				"id, paste_id, language, name, description, metadata, owner_id as owner, created_at, expires, public, substr(`data`, 1, 512) as data",
+				"id, paste_id, language, name, description, metadata, owner_id, team_id, created_at, expires, public, substr(`data`, 1, 512) as data",
 			).Where(
-				"owner_id = ? AND (name LIKE ? OR `data` LIKE ?) AND (expires IS NULL OR expires >= ?)",
-				user.ID, searchPattern, searchPattern, now,
+				scopeCond+" AND (name LIKE ? OR `data` LIKE ?) AND (expires IS NULL OR expires >= ?)",
+				append(scopeArgs, searchPattern, searchPattern, now)...,
 			).Order("id desc")
 		}
 
@@ -478,17 +650,28 @@ func (p *paste) Search(ctx context.Context, query string, page int64, results in
 		// Join with FTS table and use MATCH for efficient full-text search
 		q = p.conn.Table("pastes").
 			Select(
-				"pastes.id, pastes.paste_id, pastes.language, pastes.name, pastes.description, pastes.metadata, pastes.owner_id as owner, pastes.created_at, pastes.expires, pastes.public, substr(pastes.`data`, 1, 512) as data",
+				"pastes.id, pastes.paste_id, pastes.language, pastes.name, pastes.description, pastes.metadata, pastes.owner_id, pastes.team_id, pastes.created_at, pastes.expires, pastes.public, substr(pastes.`data`, 1, 512) as data",
 			).
 			Joins("INNER JOIN pastes_fts ON pastes.id = pastes_fts.rowid").
-			Where("pastes_fts MATCH ? AND pastes.owner_id = ? AND (pastes.expires IS NULL OR pastes.expires >= ?)", query, user.ID, now).
+			Where("pastes_fts MATCH ? AND "+scopeCond+" AND (pastes.expires IS NULL OR pastes.expires >= ?)", append([]interface{}{query}, append(scopeArgs, now)...)...).
 			Order("pastes.id desc")
 
 	default:
 		// Default fallback: search only in name
 		q = p.conn.Select(
-			"id, paste_id, language, name, description, metadata, owner_id as owner, created_at, expires, public, substr(`data`, 1, 512) as data",
-		).Where("owner_id = ? and name LIKE ? and (expires is NULL or expires >= ?)", user.ID, searchPattern, now).Order("id desc")
+			"id, paste_id, language, name, description, metadata, owner_id, team_id, created_at, expires, public, substr(`data`, 1, 512) as data",
+		).Where(scopeCond+" and name LIKE ? and (expires is NULL or expires >= ?)", append(scopeArgs, searchPattern, now)...).Order("id desc")
+	}
+
+	cleanLabels, err := dedupeLabels(labels)
+	if err != nil {
+		return params.PasteListResult{}, errors.Wrap(err, "validating label filter")
+	}
+	if labelCond, labelArgs := p.labelFilter(user, cleanLabels); labelCond != "" {
+		q = q.Where(labelCond, labelArgs...)
+	}
+	if teamCond, teamArgs := p.teamFilter(team); teamCond != "" {
+		q = q.Where(teamCond, teamArgs...)
 	}
 
 	cntQ := q.Model(&models.Paste{}).Count(&cnt)
@@ -496,7 +679,7 @@ func (p *paste) Search(ctx context.Context, query string, page int64, results in
 		return params.PasteListResult{}, errors.Wrap(cntQ.Error, "counting results")
 	}
 
-	resQ := q.Offset(int(startFrom)).Limit(int(results)).Find(&pasteResults)
+	resQ := q.Preload("Owner").Preload("Team").Preload("Labels").Offset(int(startFrom)).Limit(int(results)).Find(&pasteResults)
 	if resQ.Error != nil {
 		if errors.Is(resQ.Error, gorm.ErrRecordNotFound) {
 			return params.PasteListResult{}, gErrors.ErrNotFound
@@ -506,7 +689,7 @@ func (p *paste) Search(ctx context.Context, query string, page int64, results in
 
 	asParams := make([]params.Paste, len(pasteResults))
 	for idx, val := range pasteResults {
-		asParams[idx] = p.sqlToCommonPaste(val, true)
+		asParams[idx] = p.sqlToCommonPaste(val, true, user.ID)
 	}
 
 	totalPages := int64(math.Ceil(float64(cnt) / float64(results)))
@@ -525,21 +708,36 @@ func (p *paste) Search(ctx context.Context, query string, page int64, results in
 }
 
 func (p *paste) Delete(ctx context.Context, pasteID string) error {
-	pst, err := p.get(ctx, pasteID)
+	user, err := p.getUserFromContext(ctx)
+	if err != nil {
+		return errors.Wrap(err, "fetching user")
+	}
+	pst, err := p.loadPaste(pasteID)
 	if err != nil {
 		return errors.Wrap(err, "fetching paste")
+	}
+	if !p.canManage(pst, user) {
+		return gErrors.ErrUnauthorized
 	}
 	if pst.PasteID == "" {
 		return nil
 	}
-	q := p.conn.Delete(&pst)
-	if q.Error != nil && !errors.Is(q.Error, gorm.ErrRecordNotFound) {
-		return errors.Wrap(q.Error, "deleting paste")
-	}
-	return nil
+	err = p.conn.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&pst).Association("Users").Clear(); err != nil {
+			return errors.Wrap(err, "clearing paste shares")
+		}
+		if err := tx.Model(&pst).Association("Labels").Clear(); err != nil {
+			return errors.Wrap(err, "clearing paste labels")
+		}
+		if err := tx.Unscoped().Delete(&pst).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return errors.Wrap(err, "deleting paste")
+		}
+		return nil
+	})
+	return err
 }
 
-func (p *paste) List(ctx context.Context, page int64, results int64) (paste params.PasteListResult, err error) {
+func (p *paste) List(ctx context.Context, page int64, results int64, scope string, labels []string, team string) (paste params.PasteListResult, err error) {
 	user, err := p.getUserFromContext(ctx)
 	if err != nil {
 		return params.PasteListResult{}, errors.Wrap(err, "fetching user from DB")
@@ -555,17 +753,27 @@ func (p *paste) List(ctx context.Context, page int64, results int64) (paste para
 	now := time.Now()
 	startFrom := (page - 1) * results
 
+	scopeCond, scopeArgs := p.scopeClause(user, scope)
+	teamCond, teamArgs := p.teamFilter(team)
+	cleanLabels, err := dedupeLabels(labels)
+	if err != nil {
+		return params.PasteListResult{}, errors.Wrap(err, "validating label filter")
+	}
+	labelCond, labelArgs := p.labelFilter(user, cleanLabels)
+
 	// List will return only a small preview of the paste data (first 512 bytes).
+	cond := mergeConds(scopeCond, teamCond, labelCond)
+	args := append(append(append([]interface{}{}, scopeArgs...), teamArgs...), labelArgs...)
 	q := p.conn.Select(
-		"id, paste_id, language, name, description, metadata, owner_id as owner, created_at, expires, public, substr(`data`, 1, 512) as data",
-	).Where("owner_id = ? and (expires is NULL or expires >= ?)", user.ID, now).Order("id desc")
+		"id, paste_id, language, name, description, metadata, owner_id, team_id, created_at, expires, public, substr(`data`, 1, 512) as data",
+	).Where(cond+" and (expires is NULL or expires >= ?)", append(args, now)...).Order("id desc")
 
 	cntQ := q.Model(&models.Paste{}).Count(&cnt)
 	if cntQ.Error != nil {
 		return params.PasteListResult{}, errors.Wrap(cntQ.Error, "counting results")
 	}
 
-	resQ := q.Offset(int(startFrom)).Limit(int(results)).Find(&pasteResults)
+	resQ := q.Preload("Owner").Preload("Team").Preload("Labels").Offset(int(startFrom)).Limit(int(results)).Find(&pasteResults)
 	if resQ.Error != nil {
 		if errors.Is(resQ.Error, gorm.ErrRecordNotFound) {
 			return params.PasteListResult{}, gErrors.ErrNotFound
@@ -575,7 +783,7 @@ func (p *paste) List(ctx context.Context, page int64, results int64) (paste para
 
 	asParams := make([]params.Paste, len(pasteResults))
 	for idx, val := range pasteResults {
-		asParams[idx] = p.sqlToCommonPaste(val, true)
+		asParams[idx] = p.sqlToCommonPaste(val, true, user.ID)
 	}
 
 	totalPages := int64(math.Ceil(float64(cnt) / float64(results)))
@@ -594,23 +802,32 @@ func (p *paste) List(ctx context.Context, page int64, results int64) (paste para
 }
 
 func (p *paste) ShareWithUser(ctx context.Context, pasteID string, userID string) (params.TeamMember, error) {
-	ctxUserID := auth.UserID(ctx)
+	ctxUser, err := p.getUserFromContext(ctx)
+	if err != nil {
+		return params.TeamMember{}, errors.Wrap(err, "fetching user")
+	}
 
-	pst, err := p.get(ctx, pasteID)
+	pst, err := p.loadPaste(pasteID)
 	if err != nil {
 		return params.TeamMember{}, errors.Wrap(err, "fetching paste")
 	}
-	if pst.Owner.ID != ctxUserID {
+	if !p.canAccess(pst, ctxUser) {
+		return params.TeamMember{}, gErrors.ErrNotFound
+	}
+	if pst.OwnerID != ctxUser.ID {
 		return params.TeamMember{}, errors.Wrap(gErrors.ErrUnauthorized, "sharing foreign paste")
 	}
 
-	if pst.Team.ID != 0 {
-		return params.TeamMember{}, errors.Wrap(gErrors.ErrBadRequest, "sharing team paste")
+	if pst.TeamID != nil {
+		return params.TeamMember{}, errors.Wrap(gErrors.ErrBadRequest, "team pastes are shared with the whole team")
 	}
 
 	targetUser, err := p.getUserByUsernameOrEmail(userID)
 	if err != nil {
 		return params.TeamMember{}, errors.Wrap(err, "finding user")
+	}
+	if targetUser.ID == pst.OwnerID {
+		return params.TeamMember{}, gErrors.NewBadRequestError("cannot share a paste with its owner")
 	}
 
 	if err := p.conn.Model(&pst).Association("Users").Append(&targetUser); err != nil {
@@ -620,13 +837,16 @@ func (p *paste) ShareWithUser(ctx context.Context, pasteID string, userID string
 }
 
 func (p *paste) UnshareWithUser(ctx context.Context, pasteID string, userID string) error {
-	ctxUserID := auth.UserID(ctx)
+	ctxUser, err := p.getUserFromContext(ctx)
+	if err != nil {
+		return errors.Wrap(err, "fetching user")
+	}
 
-	pst, err := p.get(ctx, pasteID)
+	pst, err := p.loadPaste(pasteID)
 	if err != nil {
 		return errors.Wrap(err, "fetching paste")
 	}
-	if pst.Owner.ID != ctxUserID {
+	if pst.OwnerID != ctxUser.ID {
 		return errors.Wrap(gErrors.ErrUnauthorized, "unsharing foreign paste")
 	}
 
@@ -645,13 +865,16 @@ func (p *paste) UnshareWithUser(ctx context.Context, pasteID string, userID stri
 }
 
 func (p *paste) ListShares(ctx context.Context, pasteID string) (params.PasteShareListResponse, error) {
-	ctxUserID := auth.UserID(ctx)
+	ctxUser, err := p.getUserFromContext(ctx)
+	if err != nil {
+		return params.PasteShareListResponse{}, errors.Wrap(err, "fetching user")
+	}
 
-	pst, err := p.get(ctx, pasteID)
+	pst, err := p.loadPaste(pasteID)
 	if err != nil {
 		return params.PasteShareListResponse{}, errors.Wrap(err, "fetching paste")
 	}
-	if pst.Owner.ID != ctxUserID {
+	if !p.canManage(pst, ctxUser) {
 		return params.PasteShareListResponse{}, errors.Wrap(gErrors.ErrUnauthorized, "listing shares of foreign paste")
 	}
 
@@ -673,14 +896,159 @@ func (p *paste) ListShares(ctx context.Context, pasteID string) (params.PasteSha
 }
 
 func (p *paste) SetPrivacy(ctx context.Context, pasteID string, public bool) (params.Paste, error) {
-	pst, err := p.get(ctx, pasteID)
+	user, err := p.getUserFromContext(ctx)
+	if err != nil {
+		return params.Paste{}, errors.Wrap(err, "fetching user")
+	}
+	pst, err := p.loadPaste(pasteID)
 	if err != nil {
 		return params.Paste{}, errors.Wrap(err, "fetching paste")
+	}
+	if !p.canManage(pst, user) {
+		return params.Paste{}, gErrors.ErrUnauthorized
+	}
+	if pst.TeamID != nil && public {
+		return params.Paste{}, gErrors.NewBadRequestError("team pastes cannot be made public")
 	}
 	pst.Public = public
 	q := p.conn.Save(&pst)
 	if q.Error != nil {
 		return params.Paste{}, errors.Wrap(q.Error, "saving paste to DB")
 	}
-	return p.sqlToCommonPaste(pst, true), nil
+	return p.sqlToCommonPaste(pst, false, user.ID), nil
+}
+
+// TransferOwnership transfers a paste to another user. Team pastes can only be
+// transferred within the team.
+func (p *paste) TransferOwnership(ctx context.Context, pasteID string, userID string) (params.Paste, error) {
+	user, err := p.getUserFromContext(ctx)
+	if err != nil {
+		return params.Paste{}, errors.Wrap(err, "fetching user")
+	}
+	pst, err := p.loadPaste(pasteID)
+	if err != nil {
+		return params.Paste{}, errors.Wrap(err, "fetching paste")
+	}
+	if !p.canManage(pst, user) {
+		return params.Paste{}, gErrors.ErrUnauthorized
+	}
+
+	targetUser, err := p.getUserByUsernameOrEmail(userID)
+	if err != nil {
+		return params.Paste{}, errors.Wrap(err, "finding target user")
+	}
+	if targetUser.ID == pst.OwnerID {
+		return params.Paste{}, gErrors.NewBadRequestError("paste is already owned by this user")
+	}
+	if pst.TeamID != nil && !p.teamMgr.isMember(pst.Team, targetUser) {
+		return params.Paste{}, gErrors.NewBadRequestError("team pastes can only be transferred to team members")
+	}
+
+	pst.OwnerID = targetUser.ID
+	pst.Owner = targetUser
+	q := p.conn.Save(&pst)
+	if q.Error != nil {
+		return params.Paste{}, errors.Wrap(q.Error, "saving paste to DB")
+	}
+	return p.sqlToCommonPaste(pst, false, user.ID), nil
+}
+
+// SetLabels replaces the labels attached to a paste. Personal pastes accept
+// the owner's personal labels; team pastes accept labels of the paste's
+// team. Labels are created on first use.
+func (p *paste) SetLabels(ctx context.Context, pasteID string, names []string) (params.Paste, error) {
+	user, err := p.getUserFromContext(ctx)
+	if err != nil {
+		return params.Paste{}, errors.Wrap(err, "fetching user")
+	}
+	pst, err := p.loadPaste(pasteID)
+	if err != nil {
+		return params.Paste{}, errors.Wrap(err, "fetching paste")
+	}
+	if !p.canManage(pst, user) {
+		return params.Paste{}, gErrors.ErrUnauthorized
+	}
+	clean, err := dedupeLabels(names)
+	if err != nil {
+		return params.Paste{}, errors.Wrap(err, "validating labels")
+	}
+
+	labelOwnerID, labelTeamID := user.ID, uint(0)
+	if pst.TeamID != nil {
+		labelOwnerID, labelTeamID = 0, *pst.TeamID
+	}
+	if err := p.conn.Transaction(func(tx *gorm.DB) error {
+		resolved, err := resolveOrCreateLabels(tx, clean, labelOwnerID, labelTeamID)
+		if err != nil {
+			return err
+		}
+		return tx.Model(&pst).Association("Labels").Replace(resolved)
+	}); err != nil {
+		return params.Paste{}, errors.Wrap(err, "setting paste labels")
+	}
+	pst.Labels = nil
+	if err := p.conn.Model(&pst).Association("Labels").Find(&pst.Labels); err != nil {
+		return params.Paste{}, errors.Wrap(err, "reloading paste labels")
+	}
+	return p.sqlToCommonPaste(pst, false, user.ID), nil
+}
+
+// ListLabels returns the label vocabulary visible to the viewer: their own
+// personal labels and the labels of teams they belong to or own.
+func (p *paste) ListLabels(ctx context.Context) (params.LabelVocabulary, error) {
+	user, err := p.getUserFromContext(ctx)
+	if err != nil {
+		return params.LabelVocabulary{}, errors.Wrap(err, "fetching user")
+	}
+	out := params.LabelVocabulary{Personal: []string{}, Teams: []params.TeamLabelGroup{}, Colors: map[string]string{}}
+
+	var personal []models.Label
+	if err := p.conn.Where("owner_user_id = ? AND team_id IS NULL", user.ID).Order("name ASC").Find(&personal).Error; err != nil {
+		return params.LabelVocabulary{}, errors.Wrap(err, "fetching personal labels")
+	}
+	for _, l := range personal {
+		out.Personal = append(out.Personal, l.Name)
+		if l.Color != "" {
+			out.Colors[l.Name] = l.Color
+		}
+	}
+
+	teamIDs := p.viewerTeamIDs(user)
+	if len(teamIDs) == 0 {
+		return out, nil
+	}
+	var teams []models.Teams
+	if err := p.conn.Where("id IN ?", teamIDs).Order("name ASC").Find(&teams).Error; err != nil {
+		return params.LabelVocabulary{}, errors.Wrap(err, "fetching viewer teams")
+	}
+	teamNames := map[uint]string{}
+	for _, tm := range teams {
+		teamNames[tm.ID] = tm.Name
+	}
+	var teamLabels []models.Label
+	if err := p.conn.Where("team_id IN ?", teamIDs).Order("name ASC").Find(&teamLabels).Error; err != nil {
+		return params.LabelVocabulary{}, errors.Wrap(err, "fetching team labels")
+	}
+	grouped := map[string]*params.TeamLabelGroup{}
+	order := []string{}
+	for _, l := range teamLabels {
+		name := teamNames[*l.TeamID]
+		group, ok := grouped[name]
+		if !ok {
+			group = &params.TeamLabelGroup{Team: name, Labels: []string{}}
+			grouped[name] = group
+			order = append(order, name)
+		}
+		group.Labels = append(group.Labels, l.Name)
+		if l.Color != "" {
+			out.Colors[fmt.Sprintf("%s:%s", name, l.Name)] = l.Color
+			if _, exists := out.Colors[l.Name]; !exists {
+				out.Colors[l.Name] = l.Color
+			}
+		}
+	}
+	for _, name := range order {
+		out.Teams = append(out.Teams, *grouped[name])
+	}
+	return out, nil
 }

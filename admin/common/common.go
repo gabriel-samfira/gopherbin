@@ -29,6 +29,9 @@ type UserManager interface {
 	Delete(ctx context.Context, userID uint) error
 	Enable(ctx context.Context, userID uint) error
 	Disable(ctx context.Context, userID uint) error
+	// SearchUsers powers the team-invite type-ahead. It only returns
+	// enabled users who have not opted out of discovery.
+	SearchUsers(ctx context.Context, query string, excludeTeam string) ([]params.UserSearchResult, error)
 	Authenticate(ctx context.Context, info params.PasswordLoginParams) (context.Context, error)
 	HasSuperUser() bool
 	CreateSuperUser(user params.NewUserParams) (params.Users, error)

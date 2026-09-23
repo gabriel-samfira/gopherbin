@@ -39,7 +39,10 @@ func (m *mockManager) Update(_ context.Context, _ uint, _ params.UpdateUserPaylo
 func (m *mockManager) List(_ context.Context, _, _ int64) (params.UserListResult, error) {
 	return params.UserListResult{}, nil
 }
-func (m *mockManager) Delete(_ context.Context, _ uint) error  { return nil }
+func (m *mockManager) Delete(_ context.Context, _ uint) error { return nil }
+func (m *mockManager) SearchUsers(_ context.Context, _ string, _ string) ([]params.UserSearchResult, error) {
+	return nil, nil
+}
 func (m *mockManager) Enable(_ context.Context, _ uint) error  { return nil }
 func (m *mockManager) Disable(_ context.Context, _ uint) error { return nil }
 func (m *mockManager) Authenticate(_ context.Context, _ params.PasswordLoginParams) (context.Context, error) {

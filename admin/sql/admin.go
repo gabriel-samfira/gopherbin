@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"gopherbin/admin/common"
@@ -72,29 +73,31 @@ func (u *userManager) newUserParamsToSQL(user params.NewUserParams) (models.User
 		return models.Users{}, errors.Wrap(err, "hashing password")
 	}
 	newUser := models.Users{
-		Email:       user.Email,
-		Username:    user.Username,
-		FullName:    user.FullName,
-		Password:    hashedPassword,
-		CreatedAt:   time.Now(),
-		IsAdmin:     user.IsAdmin,
-		IsSuperUser: false,
-		Enabled:     user.Enabled,
+		Email:        user.Email,
+		Username:     user.Username,
+		FullName:     user.FullName,
+		Password:     hashedPassword,
+		CreatedAt:    time.Now(),
+		IsAdmin:      user.IsAdmin,
+		IsSuperUser:  false,
+		Enabled:      user.Enabled,
+		Discoverable: true,
 	}
 	return newUser, nil
 }
 
 func (u *userManager) sqlUserToParams(user models.Users) params.Users {
 	return params.Users{
-		ID:          user.ID,
-		FullName:    user.FullName,
-		Email:       user.Email,
-		Username:    user.Username,
-		CreatedAt:   user.CreatedAt,
-		UpdatedAt:   user.UpdatedAt,
-		Enabled:     user.Enabled,
-		IsAdmin:     user.IsAdmin,
-		IsSuperUser: user.IsSuperUser,
+		ID:           user.ID,
+		FullName:     user.FullName,
+		Email:        user.Email,
+		Username:     user.Username,
+		CreatedAt:    user.CreatedAt,
+		UpdatedAt:    user.UpdatedAt,
+		Enabled:      user.Enabled,
+		IsAdmin:      user.IsAdmin,
+		IsSuperUser:  user.IsSuperUser,
+		Discoverable: user.Discoverable,
 	}
 }
 
@@ -276,6 +279,12 @@ func (u *userManager) Update(ctx context.Context, userID uint, update params.Upd
 		return params.Users{}, gErrors.ErrUnauthorized
 	}
 
+	// Superuser accounts may only be modified by a superuser (or by
+	// themselves), otherwise a plain admin could reset their password.
+	if tmpUser.IsSuperUser && userID != user && !isSuper {
+		return params.Users{}, gErrors.NewUnauthorizedError("only a superuser may modify the superuser account")
+	}
+
 	// Only superusers may create administrators
 	if update.IsAdmin != nil {
 		if isSuper {
@@ -316,6 +325,10 @@ func (u *userManager) Update(ctx context.Context, userID uint, update params.Upd
 		tmpUser.Enabled = *update.Enabled
 	}
 
+	if update.Discoverable != nil {
+		tmpUser.Discoverable = *update.Discoverable
+	}
+
 	if update.Username != nil {
 		if *update.Username != tmpUser.Username {
 			if tmpUser.Username != "" {
@@ -335,12 +348,21 @@ func (u *userManager) Update(ctx context.Context, userID uint, update params.Upd
 			tmpUser.Username = *update.Username
 		}
 	}
-	// TODO: When we update the user for any reason, it will invalidate
-	// all login tokens. Add a separate field as witness instead of UpdatedAt,
-	// which will only update when the password is reset, or when any other
-	// operation that should invalidate a token, happens.
-	tmpUser.UpdatedAt = time.Now()
-	q := u.conn.Save(&tmpUser)
+	// Updating sensitive attributes invalidates all login tokens (the JWT
+	// carries UpdatedAt). Preference-only changes (discoverable) must not
+	// sign the user out of their own sessions.
+	sensitive := update.Password != nil || update.Email != nil || update.FullName != nil ||
+		update.Enabled != nil || update.Username != nil || update.IsAdmin != nil
+	if sensitive {
+		tmpUser.UpdatedAt = time.Now()
+	}
+	save := u.conn
+	if !sensitive {
+		// GORM's Save refreshes UpdatedAt automatically; preference-only
+		// changes must leave it untouched so issued tokens stay valid.
+		save = save.Omit("UpdatedAt")
+	}
+	q := save.Save(&tmpUser)
 	if q.Error != nil {
 		return params.Users{}, errors.Wrap(q.Error, "saving user to database")
 	}
@@ -435,19 +457,39 @@ func (u *userManager) setEnabledFlag(userID uint, enabled bool) error {
 }
 
 func (u *userManager) Enable(ctx context.Context, userID uint) error {
-	isAdmin := auth.IsAdmin(ctx)
-	if !isAdmin {
+	if !auth.IsAdmin(ctx) {
 		return gErrors.ErrUnauthorized
+	}
+	if err := u.ensureNotSuperUser(userID, auth.IsSuperUser(ctx)); err != nil {
+		return err
 	}
 	return u.setEnabledFlag(userID, true)
 }
 
 func (u *userManager) Disable(ctx context.Context, userID uint) error {
-	isAdmin := auth.IsAdmin(ctx)
-	if !isAdmin {
+	if !auth.IsAdmin(ctx) {
 		return gErrors.ErrUnauthorized
 	}
+	if err := u.ensureNotSuperUser(userID, auth.IsSuperUser(ctx)); err != nil {
+		return err
+	}
 	return u.setEnabledFlag(userID, false)
+}
+
+// ensureNotSuperUser rejects changes to a superuser account unless the actor
+// is a superuser.
+func (u *userManager) ensureNotSuperUser(userID uint, actorIsSuper bool) error {
+	if actorIsSuper {
+		return nil
+	}
+	usr, err := u.getUser(userID)
+	if err != nil {
+		return errors.Wrap(err, "fetching user from db")
+	}
+	if usr.IsSuperUser {
+		return gErrors.NewUnauthorizedError("only a superuser may modify the superuser account")
+	}
+	return nil
 }
 
 func (u *userManager) Delete(ctx context.Context, userID uint) error {
@@ -472,9 +514,71 @@ func (u *userManager) Delete(ctx context.Context, userID uint) error {
 	if usr.IsAdmin && !isSuperUser {
 		return gErrors.NewUnauthorizedError("only a superuser may delete an admin")
 	}
+
+	// A user who still owns teams cannot be deleted: deleting them would
+	// either orphan or silently destroy those teams and their pastes.
+	var ownedTeams int64
+	if err := u.conn.Model(&models.Teams{}).Where("owner_id = ?", userID).Count(&ownedTeams).Error; err != nil {
+		return errors.Wrap(err, "counting owned teams")
+	}
+	if ownedTeams > 0 {
+		return gErrors.NewConflictError("this user still owns one or more teams; delete those teams first")
+	}
+
 	q := u.conn.Delete(&usr)
 	if q.Error != nil {
 		return errors.Wrap(q.Error, "deleting user")
 	}
 	return nil
+}
+
+// SearchUsers returns enabled, discoverable users matching the query for the
+// team-invite type-ahead. Matches are username prefix, full-name substring or
+// email prefix. Users who opted out of discovery are never listed; they can
+// still be invited by exact username/email. If excludeTeam is set, members
+// (active or pending) of that team and the caller are filtered out.
+func (u *userManager) SearchUsers(ctx context.Context, query string, excludeTeam string) ([]params.UserSearchResult, error) {
+	viewer := auth.UserID(ctx)
+	if viewer == 0 {
+		return nil, gErrors.ErrUnauthorized
+	}
+	q := strings.TrimSpace(query)
+	if len(q) < 2 {
+		return []params.UserSearchResult{}, nil
+	}
+	escaped := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(q)
+
+	tx := u.conn.Model(&models.Users{}).
+		Where("enabled = ? AND discoverable = ?", true, true).
+		Where("id <> ?", viewer).
+		Where(
+			u.conn.Where("username LIKE ? ESCAPE '\\'", escaped+"%").
+				Or("full_name LIKE ? ESCAPE '\\'", "%"+escaped+"%").
+				Or("email LIKE ? ESCAPE '\\'", escaped+"%"),
+		)
+
+	if excludeTeam != "" {
+		var team models.Teams
+		if err := u.conn.Where("name = ?", excludeTeam).First(&team).Error; err == nil {
+			sub := u.conn.Table("team_users").
+				Select("users_id").
+				Where("teams_id = ?", team.ID)
+			tx = tx.Where("id NOT IN (?)", sub)
+		}
+	}
+
+	var found []models.Users
+	if err := tx.Order("username ASC").Limit(8).Find(&found).Error; err != nil {
+		return nil, errors.Wrap(err, "searching users")
+	}
+
+	out := make([]params.UserSearchResult, 0, len(found))
+	for i := range found {
+		out = append(out, params.UserSearchResult{
+			ID:       found[i].ID,
+			Username: found[i].Username,
+			FullName: found[i].FullName,
+		})
+	}
+	return out, nil
 }

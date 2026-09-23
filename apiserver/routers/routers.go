@@ -57,14 +57,25 @@ func AddAPIURLs(router *mux.Router, han *controllers.APIController, authMiddlewa
 
 	// Teams handlers
 	// Remove team member
+	apiRouter.Handle("/teams/{teamName}/members/{member}", log(os.Stdout, http.HandlerFunc(han.SetTeamMemberRoleHandler))).Methods("PUT", "OPTIONS")
+	apiRouter.Handle("/teams/{teamName}/members/{member}/", log(os.Stdout, http.HandlerFunc(han.SetTeamMemberRoleHandler))).Methods("PUT", "OPTIONS")
+	apiRouter.Handle("/teams/{teamName}/transfer", log(os.Stdout, http.HandlerFunc(han.TransferTeamHandler))).Methods("POST", "OPTIONS")
+	apiRouter.Handle("/teams/{teamName}/transfer/", log(os.Stdout, http.HandlerFunc(han.TransferTeamHandler))).Methods("POST", "OPTIONS")
+	apiRouter.Handle("/teams/{teamName}/transfer/{action}", log(os.Stdout, http.HandlerFunc(han.TeamTransferActionHandler))).Methods("POST", "OPTIONS")
+	apiRouter.Handle("/teams/{teamName}/transfer/{action}/", log(os.Stdout, http.HandlerFunc(han.TeamTransferActionHandler))).Methods("POST", "OPTIONS")
 	apiRouter.Handle("/teams/{teamName}/members/{member}", log(os.Stdout, http.HandlerFunc(han.RemoveTeamMemberHandler))).Methods("DELETE", "OPTIONS")
 	apiRouter.Handle("/teams/{teamName}/members/{member}/", log(os.Stdout, http.HandlerFunc(han.RemoveTeamMemberHandler))).Methods("DELETE", "OPTIONS")
 	// Add team member
 	apiRouter.Handle("/teams/{teamName}/members", log(os.Stdout, http.HandlerFunc(han.AddTeamMemberHandler))).Methods("POST", "OPTIONS")
 	apiRouter.Handle("/teams/{teamName}/members/", log(os.Stdout, http.HandlerFunc(han.AddTeamMemberHandler))).Methods("POST", "OPTIONS")
 	// List team members
-	apiRouter.Handle("/teams/{teamName}/members", log(os.Stdout, http.HandlerFunc(han.ListTeamMembersHandler))).Methods("POST", "OPTIONS")
-	apiRouter.Handle("/teams/{teamName}/members/", log(os.Stdout, http.HandlerFunc(han.ListTeamMembersHandler))).Methods("POST", "OPTIONS")
+	apiRouter.Handle("/teams/{teamName}/members", log(os.Stdout, http.HandlerFunc(han.ListTeamMembersHandler))).Methods("GET", "OPTIONS")
+	apiRouter.Handle("/teams/{teamName}/members/", log(os.Stdout, http.HandlerFunc(han.ListTeamMembersHandler))).Methods("GET", "OPTIONS")
+	// Pending invitations of the caller (must be registered before /teams/{teamName})
+	apiRouter.Handle("/teams/invites", log(os.Stdout, http.HandlerFunc(han.ListTeamInvitesHandler))).Methods("GET", "OPTIONS")
+	apiRouter.Handle("/teams/invites/", log(os.Stdout, http.HandlerFunc(han.ListTeamInvitesHandler))).Methods("GET", "OPTIONS")
+	apiRouter.Handle("/teams/transfers", log(os.Stdout, http.HandlerFunc(han.ListTeamTransfersHandler))).Methods("GET", "OPTIONS")
+	apiRouter.Handle("/teams/transfers/", log(os.Stdout, http.HandlerFunc(han.ListTeamTransfersHandler))).Methods("GET", "OPTIONS")
 	// Get team
 	apiRouter.Handle("/teams/{teamName}", log(os.Stdout, http.HandlerFunc(han.GetTeamHandler))).Methods("GET", "OPTIONS")
 	apiRouter.Handle("/teams/{teamName}/", log(os.Stdout, http.HandlerFunc(han.GetTeamHandler))).Methods("GET", "OPTIONS")
@@ -77,6 +88,33 @@ func AddAPIURLs(router *mux.Router, han *controllers.APIController, authMiddlewa
 	// Create teams
 	apiRouter.Handle("/teams", log(os.Stdout, http.HandlerFunc(han.NewTeamHandler))).Methods("POST", "OPTIONS")
 	apiRouter.Handle("/teams/", log(os.Stdout, http.HandlerFunc(han.NewTeamHandler))).Methods("POST", "OPTIONS")
+	// Team membership actions by the invitee / member themselves
+	apiRouter.Handle("/teams/{teamName}/accept", log(os.Stdout, http.HandlerFunc(han.AcceptTeamInviteHandler))).Methods("POST", "OPTIONS")
+	apiRouter.Handle("/teams/{teamName}/accept/", log(os.Stdout, http.HandlerFunc(han.AcceptTeamInviteHandler))).Methods("POST", "OPTIONS")
+	apiRouter.Handle("/teams/{teamName}/decline", log(os.Stdout, http.HandlerFunc(han.DeclineTeamInviteHandler))).Methods("POST", "OPTIONS")
+	apiRouter.Handle("/teams/{teamName}/decline/", log(os.Stdout, http.HandlerFunc(han.DeclineTeamInviteHandler))).Methods("POST", "OPTIONS")
+	apiRouter.Handle("/teams/{teamName}/labels", log(os.Stdout, http.HandlerFunc(han.SetTeamLabelsHandler))).Methods("PUT", "OPTIONS")
+	apiRouter.Handle("/teams/{teamName}/labels/", log(os.Stdout, http.HandlerFunc(han.SetTeamLabelsHandler))).Methods("PUT", "OPTIONS")
+	apiRouter.Handle("/teams/{teamName}", log(os.Stdout, http.HandlerFunc(han.UpdateTeamHandler))).Methods("PUT", "OPTIONS")
+	apiRouter.Handle("/teams/{teamName}/", log(os.Stdout, http.HandlerFunc(han.UpdateTeamHandler))).Methods("PUT", "OPTIONS")
+	apiRouter.Handle("/paste/{pasteID}/labels", log(os.Stdout, http.HandlerFunc(han.SetPasteLabelsHandler))).Methods("PUT", "OPTIONS")
+	apiRouter.Handle("/paste/{pasteID}/labels/", log(os.Stdout, http.HandlerFunc(han.SetPasteLabelsHandler))).Methods("PUT", "OPTIONS")
+	apiRouter.Handle("/labels", log(os.Stdout, http.HandlerFunc(han.ListLabelsHandler))).Methods("GET", "OPTIONS")
+	apiRouter.Handle("/labels/", log(os.Stdout, http.HandlerFunc(han.ListLabelsHandler))).Methods("GET", "OPTIONS")
+	apiRouter.Handle("/labels/mine", log(os.Stdout, http.HandlerFunc(han.ListOwnedLabelsHandler))).Methods("GET", "OPTIONS")
+	apiRouter.Handle("/labels/mine/", log(os.Stdout, http.HandlerFunc(han.ListOwnedLabelsHandler))).Methods("GET", "OPTIONS")
+	apiRouter.Handle("/labels/{labelID}", log(os.Stdout, http.HandlerFunc(han.UpdateLabelHandler))).Methods("PUT", "OPTIONS")
+	apiRouter.Handle("/labels/{labelID}/", log(os.Stdout, http.HandlerFunc(han.UpdateLabelHandler))).Methods("PUT", "OPTIONS")
+	apiRouter.Handle("/labels/{labelID}", log(os.Stdout, http.HandlerFunc(han.DeleteLabelHandler))).Methods("DELETE", "OPTIONS")
+	apiRouter.Handle("/labels/{labelID}/", log(os.Stdout, http.HandlerFunc(han.DeleteLabelHandler))).Methods("DELETE", "OPTIONS")
+	apiRouter.Handle("/users/search", log(os.Stdout, http.HandlerFunc(han.SearchUsersHandler))).Methods("GET", "OPTIONS")
+	apiRouter.Handle("/users/search/", log(os.Stdout, http.HandlerFunc(han.SearchUsersHandler))).Methods("GET", "OPTIONS")
+	apiRouter.Handle("/me", log(os.Stdout, http.HandlerFunc(han.GetMeHandler))).Methods("GET", "OPTIONS")
+	apiRouter.Handle("/me/", log(os.Stdout, http.HandlerFunc(han.GetMeHandler))).Methods("GET", "OPTIONS")
+	apiRouter.Handle("/me", log(os.Stdout, http.HandlerFunc(han.UpdateMeHandler))).Methods("PUT", "OPTIONS")
+	apiRouter.Handle("/me/", log(os.Stdout, http.HandlerFunc(han.UpdateMeHandler))).Methods("PUT", "OPTIONS")
+	apiRouter.Handle("/teams/{teamName}/leave", log(os.Stdout, http.HandlerFunc(han.LeaveTeamHandler))).Methods("POST", "OPTIONS")
+	apiRouter.Handle("/teams/{teamName}/leave/", log(os.Stdout, http.HandlerFunc(han.LeaveTeamHandler))).Methods("POST", "OPTIONS")
 
 	// Paste handlers
 	// paste search
@@ -84,7 +122,10 @@ func AddAPIURLs(router *mux.Router, han *controllers.APIController, authMiddlewa
 	apiRouter.Handle("/paste/search", log(os.Stdout, http.HandlerFunc(han.SearchPasteHandler))).Methods("GET", "OPTIONS")
 	// Unshare paste
 	apiRouter.Handle("/paste/{pasteID}/sharing/{userID}", log(os.Stdout, http.HandlerFunc(han.UnsharePasteHandler))).Methods("DELETE", "OPTIONS")
-	apiRouter.Handle("/paste/{pasteID}/sharing/{userID}/", log(os.Stdout, http.HandlerFunc(han.PasteViewHandler))).Methods("DELETE", "OPTIONS")
+	apiRouter.Handle("/paste/{pasteID}/sharing/{userID}/", log(os.Stdout, http.HandlerFunc(han.UnsharePasteHandler))).Methods("DELETE", "OPTIONS")
+	// Transfer paste ownership
+	apiRouter.Handle("/paste/{pasteID}/transfer", log(os.Stdout, http.HandlerFunc(han.TransferPasteHandler))).Methods("POST", "OPTIONS")
+	apiRouter.Handle("/paste/{pasteID}/transfer/", log(os.Stdout, http.HandlerFunc(han.TransferPasteHandler))).Methods("POST", "OPTIONS")
 	// Share paste
 	apiRouter.Handle("/paste/{pasteID}/sharing", log(os.Stdout, http.HandlerFunc(han.SharePasteHandler))).Methods("POST", "OPTIONS")
 	apiRouter.Handle("/paste/{pasteID}/sharing/", log(os.Stdout, http.HandlerFunc(han.SharePasteHandler))).Methods("POST", "OPTIONS")
@@ -113,6 +154,9 @@ func AddAPIURLs(router *mux.Router, han *controllers.APIController, authMiddlewa
 	// admin routes
 	apiRouter.Handle("/admin/{users:users\\/?}", log(os.Stdout, http.HandlerFunc(han.UserListHandler))).Methods("GET", "OPTIONS")
 	apiRouter.Handle("/admin/{users:users\\/?}", log(os.Stdout, http.HandlerFunc(han.NewUserHandler))).Methods("POST", "OPTIONS")
+	// get single user
+	apiRouter.Handle("/admin/users/{userID}", log(os.Stdout, http.HandlerFunc(han.GetUserHandler))).Methods("GET", "OPTIONS")
+	apiRouter.Handle("/admin/users/{userID}/", log(os.Stdout, http.HandlerFunc(han.GetUserHandler))).Methods("GET", "OPTIONS")
 	// update user
 	apiRouter.Handle("/admin/users/{userID}", log(os.Stdout, http.HandlerFunc(han.UpdateUserHandler))).Methods("PUT", "OPTIONS")
 	apiRouter.Handle("/admin/users/{userID}/", log(os.Stdout, http.HandlerFunc(han.UpdateUserHandler))).Methods("PUT", "OPTIONS")

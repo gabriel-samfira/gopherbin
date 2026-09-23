@@ -18,9 +18,13 @@ import (
 	"fmt"
 	"gopherbin/errors"
 	"gopherbin/util"
+	"regexp"
+	"strings"
 
 	zxcvbn "github.com/nbutton23/zxcvbn-go"
 )
+
+var hexColorRe = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 
 // NewUserParams holds the needed information to create
 // a new user
@@ -58,12 +62,13 @@ func (u NewUserParams) Validate() error {
 // UpdateUserPayload defines fields that may be updated
 // on a user entry
 type UpdateUserPayload struct {
-	IsAdmin  *bool   `json:"is_admin,omitempty"`
-	Username *string `json:"username,omitempty"`
-	Password *string `json:"password,omitempty"`
-	FullName *string `json:"full_name,omitempty"`
-	Enabled  *bool   `json:"enabled,omitempty"`
-	Email    *string `json:"email,omitempty"`
+	IsAdmin      *bool   `json:"is_admin,omitempty"`
+	Username     *string `json:"username,omitempty"`
+	Password     *string `json:"password,omitempty"`
+	FullName     *string `json:"full_name,omitempty"`
+	Enabled      *bool   `json:"enabled,omitempty"`
+	Email        *string `json:"email,omitempty"`
+	Discoverable *bool   `json:"discoverable,omitempty"`
 }
 
 // Validate validates the object in order to determine
@@ -120,7 +125,102 @@ type UpdatePasteParams struct {
 
 // NewTeamParams holds information needed to create a new team.
 type NewTeamParams struct {
-	Name string `json:"name"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+}
+
+// UpdateTeamParams holds the mutable attributes of a team. Both fields are
+// optional; only the ones that are set are applied.
+type UpdateTeamParams struct {
+	Name        *string `json:"name,omitempty"`
+	Description *string `json:"description,omitempty"`
+}
+
+// Validate rejects empty or oversized values.
+func (u UpdateTeamParams) Validate() error {
+	if u.Name != nil {
+		name := strings.TrimSpace(*u.Name)
+		if name == "" || len(name) > 32 {
+			return errors.NewBadRequestError("team name must be 1-32 characters")
+		}
+	}
+	if u.Description != nil && len(*u.Description) > 254 {
+		return errors.NewBadRequestError("team description must be at most 254 characters")
+	}
+	return nil
+}
+
+// TeamLabelsParams replaces the full set of team-scoped labels.
+type TeamLabelsParams struct {
+	Labels []string `json:"labels"`
+}
+
+// UpdateLabelParams renames and/or recolors a single label. A color of ""
+// resets it to the automatic palette color.
+type UpdateLabelParams struct {
+	Name  *string `json:"name,omitempty"`
+	Color *string `json:"color,omitempty"`
+}
+
+// Validate checks the optional fields.
+func (u UpdateLabelParams) Validate() error {
+	if u.Name == nil && u.Color == nil {
+		return errors.NewBadRequestError("nothing to update")
+	}
+	if u.Color != nil && *u.Color != "" && !hexColorRe.MatchString(*u.Color) {
+		return errors.NewBadRequestError("color must be a #rrggbb hex value")
+	}
+	return nil
+}
+
+// PasteLabelsParams replaces the full set of labels attached to a paste.
+type PasteLabelsParams struct {
+	Labels []string `json:"labels"`
+}
+
+// MeSettingsParams is the payload for the authenticated user's own settings.
+type MeSettingsParams struct {
+	Discoverable *bool `json:"discoverable,omitempty"`
+}
+
+// TeamMemberParams invites a user to a team, optionally with a role
+// (defaults to member).
+type TeamMemberParams struct {
+	UserID string `json:"userID"`
+	Role   string `json:"role,omitempty"`
+}
+
+// Validate checks the optional role.
+func (t TeamMemberParams) Validate() error {
+	return validateTeamRole(t.Role, true)
+}
+
+// SetTeamMemberRoleParams assigns a role to an existing member.
+type SetTeamMemberRoleParams struct {
+	Role string `json:"role"`
+}
+
+// Validate checks the role.
+func (s SetTeamMemberRoleParams) Validate() error {
+	return validateTeamRole(s.Role, false)
+}
+
+// TeamTransferParams names the member ownership should transfer to.
+type TeamTransferParams struct {
+	UserID string `json:"userID"`
+}
+
+func validateTeamRole(role string, allowEmpty bool) error {
+	switch role {
+	case "":
+		if allowEmpty {
+			return nil
+		}
+		return errors.NewBadRequestError("role is required")
+	case "admin", "member", "viewer":
+		return nil
+	}
+	return errors.NewBadRequestError("invalid role: use admin, member or viewer")
 }
 
 // UserActionRequest is the payload describing a user ID. This user ID

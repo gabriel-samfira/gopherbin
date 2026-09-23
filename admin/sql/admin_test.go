@@ -11,8 +11,10 @@ import (
 	"gopherbin/auth"
 	"gopherbin/config"
 	gErrors "gopherbin/errors"
+	"gopherbin/models"
 	"gopherbin/params"
 	pasteSQL "gopherbin/paste/sql"
+	"gopherbin/util"
 
 	pkgErrors "github.com/pkg/errors"
 )
@@ -403,5 +405,100 @@ func TestCleanTokens_RemovesExpired(t *testing.T) {
 	// Token should have been pruned; ValidateToken should return nil.
 	if err := mgr.ValidateToken(tokenID); err != nil {
 		t.Fatalf("expected nil after CleanTokens removed expired token, got %v", err)
+	}
+}
+
+// ── Superuser account protection ─────────────────────────────────────────────
+
+func TestAdminCannotTakeOverSuperUser(t *testing.T) {
+	mgr, ctxSuper := newAdminFixture(t)
+
+	admin, err := mgr.Create(ctxSuper, params.NewUserParams{
+		Email:    "admin@example.com",
+		Username: "plainadmin",
+		FullName: "Plain Admin",
+		Password: testPassword,
+		IsAdmin:  true,
+		Enabled:  true,
+	})
+	if err != nil {
+		t.Fatalf("Create admin: %v", err)
+	}
+	ctxAdmin := auth.PopulateContext(context.Background(), admin)
+
+	// The superuser is user ID 1 in the fresh fixture.
+	newPassword := "Another-Correct-Horse-Staple-G0pherbin-2026!"
+	if _, err := mgr.Update(ctxAdmin, 1, params.UpdateUserPayload{
+		Password: &newPassword,
+	}); !isUnauthorized(err) {
+		t.Fatalf("admin resetting superuser password: want Unauthorized, got %v", err)
+	}
+	if err := mgr.Disable(ctxAdmin, 1); !isUnauthorized(err) {
+		t.Fatalf("admin disabling superuser: want Unauthorized, got %v", err)
+	}
+	// The superuser can still manage themselves.
+	if _, err := mgr.Update(ctxSuper, 1, params.UpdateUserPayload{
+		FullName: ptr("Super Admin Renamed"),
+	}); err != nil {
+		t.Fatalf("superuser self-update: %v", err)
+	}
+}
+
+func ptr(s string) *string { return &s }
+
+func isConflict(err error) bool {
+	_, ok := pkgErrors.Cause(err).(*gErrors.ConflictError)
+	return ok
+}
+
+func TestUserDelete_OwnerOfTeamsCannotBeDeleted(t *testing.T) {
+	dbCfg := testDBConfig(t)
+	if _, err := pasteSQL.NewPaster(dbCfg); err != nil {
+		t.Fatalf("migrations: %v", err)
+	}
+	mgr, err := adminSQL.NewUserManager(dbCfg)
+	if err != nil {
+		t.Fatalf("NewUserManager: %v", err)
+	}
+	super, err := mgr.CreateSuperUser(params.NewUserParams{
+		Email:    "super@example.com",
+		Username: "superadmin",
+		FullName: "Super Admin",
+		Password: testPassword,
+	})
+	if err != nil {
+		t.Fatalf("CreateSuperUser: %v", err)
+	}
+	ctx := auth.PopulateContext(context.Background(), super)
+
+	u, err := mgr.Create(ctx, params.NewUserParams{
+		Email:    "teamlead@example.com",
+		Username: "teamlead",
+		FullName: "Team Lead",
+		Password: testPassword,
+		Enabled:  true,
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	db, err := util.NewDBConn(dbCfg)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	if err := db.Create(&models.Teams{OwnerID: u.ID, Name: "owned"}).Error; err != nil {
+		t.Fatalf("create team: %v", err)
+	}
+
+	if err := mgr.Delete(ctx, u.ID); !isConflict(err) {
+		t.Fatalf("delete team owner: want Conflict, got %v", err)
+	}
+
+	// Once the team is gone, deletion succeeds.
+	if err := db.Where("name = ?", "owned").Delete(&models.Teams{}).Error; err != nil {
+		t.Fatalf("delete team: %v", err)
+	}
+	if err := mgr.Delete(ctx, u.ID); err != nil {
+		t.Fatalf("delete after team removal: %v", err)
 	}
 }
