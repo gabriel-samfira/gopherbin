@@ -26,8 +26,9 @@ type Teams struct {
 	Description string       `json:"description,omitempty"`
 	Owner       TeamMember   `json:"owner"`
 	Members     []TeamMember `json:"members,omitempty"`
-	// MyRole is the relation of the requesting user to this team:
-	// "owner", "active" or "pending" (invited, not yet accepted).
+	// MyRole is the relation of the requesting user to this team: "owner",
+	// the member role ("admin", "member", "viewer") or "pending" (invited,
+	// not yet accepted).
 	MyRole       string      `json:"my_role,omitempty"`
 	Labels       []string    `json:"labels,omitempty"`
 	LabelDetails []LabelInfo `json:"label_details,omitempty"`

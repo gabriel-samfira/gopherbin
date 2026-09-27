@@ -59,7 +59,9 @@
 		if (!$auth.token) return;
 		try {
 			const res = await listTeams(1, 100, $auth.token);
-			teams = res.teams || [];
+			// Only teams the user may post to: not pending invitations, not
+			// read-only viewer memberships.
+			teams = (res.teams || []).filter((t) => ['owner', 'admin', 'member'].includes(t.my_role ?? ''));
 		} catch {
 			// Team features are optional; ignore load failures
 		}

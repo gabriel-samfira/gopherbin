@@ -1,13 +1,14 @@
 // apigen enriches the generated swagger.yaml with JSON field schemas derived
 // from the Go structs the API actually marshals, so TypeScript codegen (which
-// cannot see through x-go-type aliases) produces usable types.
+// cannot see through x-go-type aliases) produces usable types. It also turns
+// the x-public operation extension into an empty security requirement, which
+// go-swagger route annotations cannot express.
 package main
 
 import (
 	"fmt"
 	"os"
 	"reflect"
-	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -16,7 +17,8 @@ import (
 	"gopherbin/params"
 )
 
-// aliasMap mirrors the contract test mapping: swagger definition -> Go type.
+// aliasMap maps each x-go-type alias in swagger-models.yaml to the Go type
+// it names. An alias missing here fails the generation.
 func aliasMap() map[string]reflect.Type {
 	return map[string]reflect.Type{
 		"APIErrorResponse":        reflect.TypeOf(responses.APIErrorResponse{}),
@@ -25,6 +27,7 @@ func aliasMap() map[string]reflect.Type {
 		"LabelVocabulary":         reflect.TypeOf(params.LabelVocabulary{}),
 		"MeSettingsParams":        reflect.TypeOf(params.MeSettingsParams{}),
 		"NewTeamParams":           reflect.TypeOf(params.NewTeamParams{}),
+		"NewPasteParams":          reflect.TypeOf(params.NewPasteParams{}),
 		"NewUserParams":           reflect.TypeOf(params.NewUserParams{}),
 		"PasswordLoginParams":     reflect.TypeOf(params.PasswordLoginParams{}),
 		"Paste":                   reflect.TypeOf(params.Paste{}),
@@ -54,94 +57,6 @@ func aliasMap() map[string]reflect.Type {
 	}
 }
 
-func swaggerType(t reflect.Type) (map[string]any, bool) {
-	switch t.Kind() {
-	case reflect.String:
-		return map[string]any{"type": "string"}, true
-	case reflect.Bool:
-		return map[string]any{"type": "boolean"}, true
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
-		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		return map[string]any{"type": "integer"}, true
-	case reflect.Float32, reflect.Float64:
-		return map[string]any{"type": "number"}, true
-	case reflect.Ptr:
-		inner, ok := swaggerType(t.Elem())
-		return inner, ok
-	case reflect.Slice, reflect.Array:
-		if t.Elem().Kind() == reflect.Uint8 {
-			return map[string]any{"type": "string", "format": "byte"}, true
-		}
-		inner, ok := swaggerType(t.Elem())
-		if !ok {
-			return nil, false
-		}
-		return map[string]any{"type": "array", "items": inner}, true
-	case reflect.Map:
-		if t.Elem().Kind() != reflect.String {
-			return nil, false
-		}
-		return map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}}, true
-	case reflect.Struct:
-		if t.PkgPath() == "time" && t.Name() == "Time" {
-			return map[string]any{"type": "string", "format": "date-time"}, true
-		}
-		return structSchema(t), true
-	}
-	return nil, false
-}
-
-// structSchema walks a struct (flattening embedded fields like encoding/json)
-// into a Swagger 2.0 object schema.
-func structSchema(t reflect.Type) map[string]any {
-	props := map[string]any{}
-	var required []string
-	seen := map[string]bool{}
-	var walk func(reflect.Type)
-	walk = func(t reflect.Type) {
-		for i := 0; i < t.NumField(); i++ {
-			f := t.Field(i)
-			if f.Anonymous {
-				ft := f.Type
-				if ft.Kind() == reflect.Ptr {
-					ft = ft.Elem()
-				}
-				if ft.Kind() == reflect.Struct && f.Tag.Get("json") == "" {
-					walk(ft)
-					continue
-				}
-			}
-			tag := f.Tag.Get("json")
-			name := strings.Split(tag, ",")[0]
-			if tag == "-" || name == "-" {
-				continue
-			}
-			if name == "" {
-				name = f.Name
-			}
-			if seen[name] {
-				continue
-			}
-			seen[name] = true
-			s, ok := swaggerType(f.Type)
-			if !ok {
-				continue
-			}
-			props[name] = s
-			if !strings.Contains(tag, "omitempty") {
-				required = append(required, name)
-			}
-		}
-	}
-	walk(t)
-	sort.Strings(required)
-	out := map[string]any{"type": "object", "properties": props}
-	if len(required) > 0 {
-		out["required"] = required
-	}
-	return out
-}
-
 func main() {
 	path := os.Args[1]
 	raw, err := os.ReadFile(path)
@@ -156,7 +71,9 @@ func main() {
 	if defs == nil || defs.Kind != yaml.MappingNode {
 		panic("no definitions block")
 	}
+	markPublicOperations(mapValue(root.Content[0], "paths"))
 	aliases := aliasMap()
+	unknown := 0
 	for i := 0; i+1 < len(defs.Content); i += 2 {
 		name := defs.Content[i].Value
 		def := defs.Content[i+1]
@@ -173,7 +90,8 @@ func main() {
 		}
 		t, known := aliases[goType.Value]
 		if !known {
-			fmt.Fprintf(os.Stderr, "apigen: definition %q aliases unknown type %q\n", name, goType.Value)
+			fmt.Fprintf(os.Stderr, "apigen: definition %q aliases unknown type %q; add it to aliasMap\n", name, goType.Value)
+			unknown++
 			continue
 		}
 		schema := structSchemaNode(t)
@@ -197,12 +115,48 @@ func main() {
 		}
 		def.Content = kept
 	}
+	if unknown > 0 {
+		os.Exit(1)
+	}
 	out, err := yaml.Marshal(&root)
 	if err != nil {
 		panic(err)
 	}
 	if err := os.WriteFile(path, out, 0o644); err != nil {
 		panic(err)
+	}
+}
+
+// markPublicOperations replaces the x-public: true extension of an
+// operation with `security: []`, exempting it from the global Bearer
+// requirement.
+func markPublicOperations(paths *yaml.Node) {
+	if paths == nil || paths.Kind != yaml.MappingNode {
+		return
+	}
+	for i := 1; i < len(paths.Content); i += 2 {
+		ops := paths.Content[i]
+		if ops.Kind != yaml.MappingNode {
+			continue
+		}
+		for j := 1; j < len(ops.Content); j += 2 {
+			op := ops.Content[j]
+			if op.Kind != yaml.MappingNode {
+				continue
+			}
+			for k := 0; k+1 < len(op.Content); k += 2 {
+				if op.Content[k].Value != "x-public" {
+					continue
+				}
+				if op.Content[k+1].Value == "true" {
+					op.Content[k].Value = "security"
+					op.Content[k+1] = &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq", Style: yaml.FlowStyle}
+				} else {
+					op.Content = append(op.Content[:k], op.Content[k+2:]...)
+				}
+				break
+			}
+		}
 	}
 }
 
@@ -242,6 +196,9 @@ func structSchemaNode(t reflect.Type) *yaml.Node {
 					walk(ft)
 					continue
 				}
+			}
+			if !f.IsExported() {
+				continue // encoding/json ignores unexported fields
 			}
 			tag := f.Tag.Get("json")
 			if tag == "-" {

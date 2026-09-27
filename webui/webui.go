@@ -16,15 +16,13 @@ const webDir = "svelte-app/build"
 
 // htmlCSP is the Content-Security-Policy served with HTML documents. The
 // SvelteKit bootstrap script is inlined by adapter-static, so exact-content
-// hashes are added for it; 'unsafe-inline' trails the hashes purely as a
-// fallback for pre-CSP3 browsers (CSP3-compliant browsers ignore it as soon
-// as a hash or nonce is present).
+// hashes are added for it.
 var htmlCSP = buildHTMLCSP()
 
 // buildHTMLCSP hashes every inline <script> body (tags without attributes)
 // of the embedded index.html and embeds the resulting sha256 tokens in the
-// policy. Without an embedded bundle (build without the webui tag) it falls
-// back to script-src 'self'.
+// policy. Without an embedded bundle (build without the webui tag) there is
+// nothing to hash, and script-src falls back to 'self' 'unsafe-inline'.
 func buildHTMLCSP() string {
 	sources := "'self' 'unsafe-inline'"
 	contents, err := webUI.ReadFile(path.Join(webDir, "index.html"))

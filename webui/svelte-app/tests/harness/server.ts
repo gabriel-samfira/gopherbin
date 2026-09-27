@@ -121,30 +121,33 @@ export async function setup(): Promise<void> {
 	const deadline = Date.now() + 60_000;
 	while (Date.now() < deadline) {
 		if (child.exitCode !== null) break;
+		let firstRun: Response;
 		try {
-			const firstRun = await fetch(`${base}/first-run/`, {
+			firstRun = await fetch(`${base}/first-run/`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify(ADMIN)
 			});
-			if (firstRun.ok || firstRun.status === 409) {
-				const login = await fetch(`${base}/auth/login`, {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({ username: ADMIN.username, password: ADMIN.password })
-				});
-				if (login.ok) {
-					adminToken = (await login.json()).token;
-					break;
-				}
-			} else {
-				// A 4xx/5xx with a body means the server is up but rejected
-				// the bootstrap: retrying cannot help.
-				dumpLog();
-				throw new Error(`first-run returned ${firstRun.status}: ${await firstRun.text()}`);
-			}
 		} catch {
 			// server not accepting connections yet
+			await sleep(250);
+			continue;
+		}
+		if (!firstRun.ok && firstRun.status !== 409) {
+			// A 4xx/5xx with a body means the server is up but rejected
+			// the bootstrap: retrying cannot help.
+			dumpLog();
+			await stopServer();
+			throw new Error(`first-run returned ${firstRun.status}: ${await firstRun.text()}`);
+		}
+		const login = await fetch(`${base}/auth/login`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ username: ADMIN.username, password: ADMIN.password })
+		});
+		if (login.ok) {
+			adminToken = (await login.json()).token;
+			break;
 		}
 		await sleep(250);
 	}

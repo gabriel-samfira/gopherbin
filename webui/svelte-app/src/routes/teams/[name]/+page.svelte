@@ -68,6 +68,9 @@
 	$: isInvited = !!team && team.my_role === 'pending';
 	$: isMember = !!team && ['admin', 'member', 'viewer'].includes(team.my_role ?? '');
 	$: canManageMembers = isTeamOwner || (!!team && team.my_role === 'admin');
+	// Viewers are read-only; the backend refuses their label changes.
+	$: canEditLabels = isTeamOwner || (!!team && ['admin', 'member'].includes(team.my_role ?? ''));
+	$: myInviter = members.find((m) => m.id === currentUserId)?.added_by || '';
 	$: transferPending = !!team && !!team.transfer_to;
 	$: canDeleteTeam = isTeamOwner && deleteConfirmation === teamName;
 
@@ -91,6 +94,9 @@
 		return m.role === 'admin' ? 'Admin' : m.role === 'viewer' ? 'Viewer' : 'Member';
 	}
 
+	// The route param the page was last loaded for.
+	let loadedFor = '';
+
 	async function loadTeam() {
 		if (!$auth.token) {
 			const currentPath = encodeURIComponent($page.url.pathname);
@@ -98,6 +104,7 @@
 			return;
 		}
 		if (!teamName) return;
+		loadedFor = teamName;
 
 		loading = true;
 		error = '';
@@ -114,8 +121,11 @@
 
 	onMount(loadTeam);
 
-	// SPA renames keep the component mounted; reload when the route param changes
-	$: if (teamName && team && team.name !== teamName) loadTeam();
+	// SPA renames keep the component mounted; reload when the route param
+	// changes. Compared with the param last loaded rather than team.name, which
+	// may legitimately differ (e.g. case-insensitive name lookups on MySQL)
+	// and would then reload forever.
+	$: if (teamName && loadedFor && teamName !== loadedFor) loadTeam();
 
 	async function handleAddMember(e: Event) {
 		e.preventDefault();
@@ -298,12 +308,40 @@
 		}
 	}
 
-	async function handleLabelsChange(e: CustomEvent<string[]>) {
+	// Removing a team label strips it from every team paste, and a single
+	// Backspace in the label input does it: ask first when a label is in use.
+	let pendingLabels: string[] | null = null;
+	let pendingRemoved: { name: string; usage: number }[] = [];
+
+	function handleLabelsChange(e: CustomEvent<string[]>) {
+		const next = e.detail;
+		const removed = (team?.label_details || []).filter((l) => l.usage > 0 && !next.includes(l.name));
+		if (removed.length > 0) {
+			pendingLabels = next;
+			pendingRemoved = removed.map((l) => ({ name: l.name, usage: l.usage }));
+			return;
+		}
+		void saveLabels(next);
+	}
+
+	function cancelLabelRemoval() {
+		pendingLabels = null;
+		// A new array makes LabelInput drop its local edit.
+		teamLabels = [...teamLabels];
+	}
+
+	function confirmLabelRemoval() {
+		const next = pendingLabels;
+		pendingLabels = null;
+		if (next) void saveLabels(next);
+	}
+
+	async function saveLabels(next: string[]) {
 		if (!$auth.token || !teamName) return;
 		const seq = ++labelsReqSeq;
 		savingLabels = true;
 		try {
-			const updated = await setTeamLabels(teamName, e.detail, $auth.token);
+			const updated = await setTeamLabels(teamName, next, $auth.token);
 			if (seq === labelsReqSeq) {
 				team = updated;
 				teamLabels = updated.labels || [];
@@ -431,8 +469,8 @@
 				<div class="flex-1">
 					<p class="font-medium text-gray-900 dark:text-gray-100">You have been invited to this team.</p>
 					<p class="text-sm text-gray-600 dark:text-gray-400">
-						Invited by {team.owner.full_name || team.owner.username}. You cannot see the team's
-						pastes until you accept.
+						{#if myInviter}Invited by {myInviter}.{/if} You cannot see the team's pastes until
+						you accept.
 					</p>
 				</div>
 				<div class="flex gap-2 shrink-0">
@@ -499,7 +537,7 @@
 			</div>
 		{/if}
 
-		{#if (isTeamOwner || isMember) && team}
+		{#if canEditLabels && team}
 			<div class="p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg space-y-2">
 				<h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">
 				Team labels
@@ -776,14 +814,36 @@
 	</div>
 </Modal>
 
+<Modal show={!!pendingLabels} onClose={cancelLabelRemoval}>
+	<div class="space-y-4">
+		<h2 class="text-xl font-bold text-gray-900 dark:text-gray-100">
+			Remove team label{pendingRemoved.length === 1 ? '' : 's'}?
+		</h2>
+		<div class="p-3 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-md text-sm">
+			<ul class="list-disc list-inside space-y-1 text-gray-600 dark:text-gray-400">
+				{#each pendingRemoved as removed (removed.name)}
+					<li>
+						<strong>{removed.name}</strong> will be removed from {removed.usage} team
+						paste{removed.usage === 1 ? '' : 's'}.
+					</li>
+				{/each}
+			</ul>
+		</div>
+		<div class="flex justify-end gap-2">
+			<Button on:click={cancelLabelRemoval} variant="secondary">Cancel</Button>
+			<Button on:click={confirmLabelRemoval} variant="danger">Remove</Button>
+		</div>
+	</div>
+</Modal>
+
 <Modal show={showLeave} onClose={() => (showLeave = false)}>
 	<div class="space-y-4">
 		<h2 class="text-xl font-bold text-gray-900 dark:text-gray-100">Leave {teamName}?</h2>
 		<div class="p-3 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-md space-y-2 text-sm text-gray-700 dark:text-gray-300">
 			<ul class="list-disc list-inside space-y-1 text-gray-600 dark:text-gray-400">
-				<li>You will no longer see pastes created by other members for <strong>{teamName}</strong>.</li>
+				<li>You will lose access to all pastes of <strong>{teamName}</strong>, including the ones you created.</li>
 				<li>Pastes you created for the team will remain and stay visible to the team.</li>
-				<li>The team owner will have to invite you again if you want to rejoin.</li>
+				<li>The team owner or an admin will have to invite you again if you want to rejoin.</li>
 			</ul>
 		</div>
 		<div class="flex justify-end gap-2">

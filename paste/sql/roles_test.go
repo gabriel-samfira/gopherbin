@@ -36,7 +36,13 @@ func TestTeamRoleInvitePermissions(t *testing.T) {
 		t.Fatalf("member invite: want NotFound, got %v", err)
 	}
 	// An admin cannot invite other admins (same 404 post-load semantics).
-	if _, err := f.teams.AddMember(f.ctxUser2, "engineers", "bob", models.RoleAdmin); !isNotFound(err) {
+	if _, err := f.users.Create(f.ctxSuper, params.NewUserParams{
+		Email: "carol@example.com", Username: "carol", FullName: "Carol Example",
+		Password: testPassword, Enabled: true,
+	}); err != nil {
+		t.Fatalf("Create carol: %v", err)
+	}
+	if _, err := f.teams.AddMember(f.ctxUser2, "engineers", "carol", models.RoleAdmin); !isNotFound(err) {
 		t.Fatalf("admin inviting admin: want NotFound, got %v", err)
 	}
 	// Invalid roles are rejected.

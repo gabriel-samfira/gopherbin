@@ -4,6 +4,7 @@
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { listPastes, searchPastes, deletePaste, updatePaste, getLabelVocabulary, setPasteLabels } from '$lib/api/pastes';
+	import { listTeams } from '$lib/api/teams';
 	import LabelInput from '$lib/components/ui/LabelInput.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import IconButton from '$lib/components/ui/IconButton.svelte';
@@ -40,7 +41,7 @@
 	let totalPages = 1;
 	let maxResults = 20;
 	let deletingPaste: Paste | null = null;
-	let sharingPaste: { id: string; name: string; owner: boolean } | null = null;
+	let sharingPaste: { id: string; name: string; owner: boolean; team: string } | null = null;
 	let copyTooltip: string | null = null;
 	let searchQuery = '';
 	let isSearching = false;
@@ -53,8 +54,31 @@
 	let editingLabels: Paste | null = null;
 	let editingLabelList: string[] = [];
 	let savingLabels = false;
+	// Team name -> the viewer's role (accepted memberships only).
+	let myTeamRoles: Record<string, string> = {};
+	let listReqSeq = 0;
 
 	$: allSuggestions = [...new Set([...personalLabels, ...vocabTeams.flatMap((t) => t.labels)])];
+	$: teamOptions = Object.keys(myTeamRoles).sort();
+	// A paste only accepts labels from its own scope: the owner's personal
+	// vocabulary, or its team's. Suggesting others would create them there.
+	$: editingSuggestions = editingLabels?.team
+		? vocabTeams.find((t) => t.team === editingLabels?.team)?.labels || []
+		: personalLabels;
+
+	async function loadTeamRoles() {
+		if (!$auth.token) return;
+		try {
+			const res = await listTeams(1, 100, $auth.token);
+			myTeamRoles = Object.fromEntries(
+				(res.teams || [])
+					.filter((t) => t.my_role && t.my_role !== 'pending')
+					.map((t) => [t.name, t.my_role as string])
+			);
+		} catch {
+			// Best-effort: team filter and team-owner actions stay hidden.
+		}
+	}
 
 	async function loadVocabulary() {
 		if (!$auth.token) return;
@@ -73,6 +97,12 @@
 		return !!$auth.username && paste.owner_id === Number($auth.username);
 	}
 
+	// Mirrors the server's canManage: the paste owner, or for team pastes
+	// also the team owner.
+	function canManage(paste: Paste): boolean {
+		return isOwner(paste) || (!!paste.team && myTeamRoles[paste.team] === 'owner');
+	}
+
 	async function loadPastes() {
 		if (!$auth.token) {
 			const currentPath = encodeURIComponent($appPage.url.pathname);
@@ -82,6 +112,9 @@
 
 		loading = true;
 		error = '';
+		// Tabs, filters and paging can fire overlapping requests; only the
+		// latest one may update the list.
+		const seq = ++listReqSeq;
 
 		try {
 			let response;
@@ -90,18 +123,20 @@
 			} else {
 				response = await listPastes(page, maxResults, $auth.token, scope, labelFilters, teamFilter);
 			}
+			if (seq !== listReqSeq) return;
 			pastes = response.pastes || [];
 			totalPages = response.total_pages;
 		} catch (err) {
-			error = formatApiError(err);
+			if (seq === listReqSeq) error = formatApiError(err);
 		} finally {
-			loading = false;
+			if (seq === listReqSeq) loading = false;
 		}
 	}
 
 	onMount(() => {
 		loadPastes();
 		loadVocabulary();
+		loadTeamRoles();
 	});
 
 	function handlePageChange(newPage: number) {
@@ -206,7 +241,7 @@
 
 	function initShare(paste: Paste, event: Event) {
 		event.stopPropagation();
-		sharingPaste = { id: paste.paste_id, name: paste.name, owner: isOwner(paste) };
+		sharingPaste = { id: paste.paste_id, name: paste.name, owner: canManage(paste), team: paste.team || '' };
 	}
 
 	async function copyPasteUrl(paste: Paste, event: Event) {
@@ -298,8 +333,8 @@
 			title="Filter by team"
 		>
 			<option value="">All teams</option>
-			{#each vocabTeams as t}
-				<option value={t.team}>{t.team}</option>
+			{#each teamOptions as t}
+				<option value={t}>{t}</option>
 			{/each}
 		</select>
 	</div>
@@ -362,10 +397,10 @@
 						<!-- Left: Title and metadata -->
 						<div class="flex-1 min-w-0">
 							<div class="flex items-center gap-2 flex-wrap">
-								<h3
-									class="text-base font-semibold text-gray-900 dark:text-gray-100 truncate"
-								>
-									{paste.name}
+								<h3 class="text-base font-semibold text-gray-900 dark:text-gray-100 truncate">
+									<button type="button" class="hover:underline text-left" on:click={() => viewPaste(paste)}>
+										{paste.name}
+									</button>
 								</h3>
 								<div class="flex items-center gap-2">
 									{#if paste.public}
@@ -419,12 +454,15 @@
 								{/if}
 							</div>
 
-							{#if isOwner(paste)}
+							{#if canManage(paste)}
 								<IconButton title="Edit labels" on:click={(e) => initEditLabels(paste, e)}>
 									<Tag class="w-4 h-4" />
 								</IconButton>
 
-								<IconButton title="Share paste" on:click={(e) => initShare(paste, e)}>
+								<IconButton
+									title={paste.team ? 'Transfer ownership' : 'Share paste'}
+									on:click={(e) => initShare(paste, e)}
+								>
 									<Share2 class="w-4 h-4" />
 								</IconButton>
 
@@ -462,6 +500,17 @@
 							tabindex="0"
 						>
 							<PastePreview content={decodeBase64(paste.preview)} language={paste.language} />
+						</div>
+					{:else if paste.max_accesses != null}
+						<!-- The server withholds previews of limited-view pastes from non-owners. -->
+						<div
+							class="border-t border-gray-200 dark:border-gray-700 px-3 py-4 text-sm text-gray-500 dark:text-gray-400 cursor-pointer hover:opacity-80 transition-opacity"
+							on:click={() => viewPaste(paste)}
+							on:keydown={(e) => e.key === 'Enter' && viewPaste(paste)}
+							role="button"
+							tabindex="0"
+						>
+							This paste has limited views, so no preview is shown. Opening it uses up one view.
 						</div>
 					{/if}
 				</div>
@@ -533,7 +582,7 @@
 		</p>
 		<LabelInput
 			labels={editingLabelList}
-			suggestions={allSuggestions}
+			suggestions={editingSuggestions}
 			colorMap={vocabColors}
 			disabled={savingLabels}
 			on:change={(e) => (editingLabelList = e.detail)}
@@ -553,6 +602,7 @@
 		pasteId={sharingPaste.id}
 		pasteName={sharingPaste.name}
 		isOwner={sharingPaste.owner}
+		team={sharingPaste.team}
 		token={$auth.token}
 		onClose={() => {
 			sharingPaste = null;

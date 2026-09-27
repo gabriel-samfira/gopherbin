@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -345,5 +347,34 @@ func TestLoginHandlerSuccessClearsFailuresAndIssuesToken(t *testing.T) {
 	if blockedAt != loginMaxFailures {
 		t.Fatalf("limiter engaged at attempt %d, want %d (stale failures survived the success)",
 			blockedAt, loginMaxFailures)
+	}
+}
+
+// Parallel attempts must not overrun the budget: each attempt is counted
+// when it is admitted, not after the (slow) password check returns.
+func TestLoginRateLimiterReserveIsAtomic(t *testing.T) {
+	l := newLoginRateLimiter(nil)
+	key := loginKey{ip: "10.0.0.1", username: "alice"}
+	var admitted atomic.Int32
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	for i := 0; i < 5*loginMaxFailures; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			if l.reserve(key) {
+				admitted.Add(1)
+			}
+		}()
+	}
+	close(start)
+	wg.Wait()
+	if got := admitted.Load(); got != loginMaxFailures {
+		t.Fatalf("admitted %d parallel attempts, want %d", got, loginMaxFailures)
+	}
+	l.recordSuccess(key)
+	if !l.reserve(key) {
+		t.Fatal("a success must reopen the budget")
 	}
 }

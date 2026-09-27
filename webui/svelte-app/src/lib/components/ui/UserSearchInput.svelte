@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { createEventDispatcher } from 'svelte';
+	import { createEventDispatcher, onDestroy } from 'svelte';
 	import { searchUsers } from '$lib/api/users';
 	import type { UserSearchResult } from '$lib/types/user';
 
@@ -19,8 +19,12 @@
 	let highlight = -1;
 	let timer: ReturnType<typeof setTimeout>;
 	let container: HTMLDivElement;
+	// Bumped for every request and whenever results must be discarded, so a
+	// late response for an older query cannot reopen the dropdown.
+	let reqSeq = 0;
 
 	async function fetchResults() {
+		const seq = ++reqSeq;
 		if (value.trim().length < 2) {
 			results = [];
 			open = false;
@@ -28,14 +32,19 @@
 		}
 		loading = true;
 		try {
-			results = await searchUsers(value.trim(), team, token);
+			const found = await searchUsers(value.trim(), team, token);
+			if (seq !== reqSeq) return;
+			results = found;
 			open = results.length > 0;
-			highlight = results.length > 0 ? 0 : -1;
+			// Nothing is preselected: Enter submits what was typed unless a
+			// suggestion was picked with the arrow keys.
+			highlight = -1;
 		} catch {
+			if (seq !== reqSeq) return;
 			results = [];
 			open = false;
 		} finally {
-			loading = false;
+			if (seq === reqSeq) loading = false;
 		}
 	}
 
@@ -45,11 +54,16 @@
 	}
 
 	function pick(user: UserSearchResult) {
+		clearTimeout(timer);
+		reqSeq++;
+		loading = false;
 		value = user.username;
 		open = false;
 		results = [];
 		dispatch('select', user);
 	}
+
+	onDestroy(() => clearTimeout(timer));
 
 	function onKeydown(e: KeyboardEvent) {
 		if (!open) return;
@@ -58,7 +72,7 @@
 			highlight = (highlight + 1) % results.length;
 		} else if (e.key === 'ArrowUp') {
 			e.preventDefault();
-			highlight = (highlight - 1 + results.length) % results.length;
+			highlight = highlight <= 0 ? results.length - 1 : highlight - 1;
 		} else if (e.key === 'Enter' && highlight >= 0) {
 			e.preventDefault();
 			pick(results[highlight]);

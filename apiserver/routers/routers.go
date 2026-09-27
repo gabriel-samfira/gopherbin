@@ -66,6 +66,7 @@ func AddAPIURLs(router *mux.Router, han *controllers.APIController, authMiddlewa
 	// First run
 	// FirstRunHandler
 	firstRunRouter := apiSubRouter.PathPrefix("/first-run").Subrouter()
+	firstRunRouter.Handle("", log(os.Stdout, http.HandlerFunc(han.FirstRunHandler))).Methods("POST", "OPTIONS")
 	firstRunRouter.Handle("/", log(os.Stdout, http.HandlerFunc(han.FirstRunHandler))).Methods("POST", "OPTIONS")
 
 	// Public API endpoints

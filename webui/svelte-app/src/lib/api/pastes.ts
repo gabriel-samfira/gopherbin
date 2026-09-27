@@ -1,25 +1,39 @@
 import { apiClient } from './client';
 import type { Paste, PasteCreate, PasteList, PasteScope, PasteUpdate, PasteShare, LabelInfo } from '$lib/types/paste';
+import type { ApiError } from '$lib/types/api';
 
 export async function createPaste(data: PasteCreate, token: string): Promise<{ paste_id: string }> {
 	return apiClient.post<{ paste_id: string }>('/paste', data, token);
 }
 
 // Views of a paste with max_accesses set consume one of its accesses. The
-// server requires the X-Consume-Access header on such views and answers
-// 403 without it; a cross-origin drive-by (<img>, simple fetch) cannot
-// attach custom headers, which is what stops it from burning pastes. The
-// app sends the header unconditionally on every single-paste read so a
-// legitimate user never sees the 403 (pastes without an access budget
-// ignore the header entirely).
+// server only serves such a view when the request carries the
+// X-Consume-Access header, and answers 403 without it (consuming nothing).
+// The app asks without the header first and repeats the request with it
+// only after the user confirmed, so opening (or being redirected to) a
+// paste link never burns a view by itself. Pastes without an access budget
+// are served either way.
 const CONSUME_ACCESS_HEADERS = { 'X-Consume-Access': '1' };
 
-export async function getPaste(pasteId: string, token: string): Promise<Paste> {
-	return apiClient.get<Paste>(`/paste/${pasteId}`, token, CONSUME_ACCESS_HEADERS);
+export async function getPaste(pasteId: string, token: string, consume = false): Promise<Paste> {
+	return apiClient.get<Paste>(
+		`/paste/${encodeURIComponent(pasteId)}`,
+		token,
+		consume ? CONSUME_ACCESS_HEADERS : undefined
+	);
 }
 
-export async function getPublicPaste(pasteId: string): Promise<Paste> {
-	return apiClient.get<Paste>(`/public/paste/${pasteId}`, null, CONSUME_ACCESS_HEADERS);
+export async function getPublicPaste(pasteId: string, consume = false): Promise<Paste> {
+	return apiClient.get<Paste>(
+		`/public/paste/${encodeURIComponent(pasteId)}`,
+		null,
+		consume ? CONSUME_ACCESS_HEADERS : undefined
+	);
+}
+
+/** Reports whether a paste read was refused until the view is confirmed. */
+export function needsViewConfirmation(err: unknown): boolean {
+	return (err as ApiError | undefined)?.status === 403;
 }
 
 export async function listPastes(

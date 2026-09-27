@@ -1,6 +1,6 @@
 SHELL := bash
 
-.PHONY: help fmt fmt-check tests build build-ui no-ui with-ui all-no-ui all build-image container-start app
+.PHONY: help fmt fmt-check tests generate build build-ui no-ui with-ui all-no-ui all build-image container-start app
 .DEFAULT_GOAL := help
 
 IMAGE_NAME    = gopherbin
@@ -18,6 +18,8 @@ help:
 	@echo "  make fmt          -> run gofmt -s -l (excluding vendor)"
 	@echo "  make fmt-check    -> fail if any non-vendor Go file is unformatted"
 	@echo "  make tests        -> fmt-check + run all tests (requires SQLite FTS5)"
+	@echo "  make generate     -> regenerate swagger.yaml and the web UI API types"
+	@echo "                      (requires go-swagger v0.31.0 and Node.js)"
 	@echo "  make build        -> build gopherbin with embedded web UI"
 	@echo "  make no-ui        -> build gopherbin without web UI"
 	@echo "  make with-ui      -> build gopherbin with embedded web UI (requires Node.js)"
@@ -42,6 +44,10 @@ fmt-check:
 
 tests: fmt-check
 	go test -mod vendor -tags fts5 ./...
+
+generate:
+	cd apiserver/routers && GOFLAGS=-mod=vendor go generate ./...
+	cd webui/svelte-app && npm run gen:api
 
 build-ui:
 	cd webui/svelte-app && npm install && npm run build

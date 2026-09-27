@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -132,8 +133,8 @@ backend = "sqlite3"
   [database.sqlite3]
   db_file = %q
 `, dbFile))
-	if _, err := config.NewConfig(path); err == nil {
-		t.Fatal("expected error for time_to_live below the minimum")
+	if _, err := config.NewConfig(path); err == nil || !strings.Contains(err.Error(), "time_to_live") {
+		t.Fatalf("time_to_live below the minimum: want a time_to_live error, got %v", err)
 	}
 }
 

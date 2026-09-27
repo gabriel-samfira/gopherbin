@@ -28,6 +28,42 @@ jobs:
       - name: Build binary
         run: go build -mod vendor -tags fts5 ./cmd/...
 
+  mysql:
+    name: Test (MySQL)
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: gopherbin
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -pgopherbin"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SQLite dev headers
+        run: sudo apt-get install -y libsqlite3-dev
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      # Every test opens fresh connection pools against its own database;
+      # the default limit of 151 connections runs out mid-suite.
+      - name: Raise MySQL connection limit
+        run: mysql -h 127.0.0.1 -uroot -pgopherbin -e "SET GLOBAL max_connections = 4000"
+
+      - name: Run SQL tests against MySQL
+        env:
+          GOPHERBIN_TEST_MYSQL: root:gopherbin@127.0.0.1:3306
+        run: go test -mod vendor -tags fts5 ./paste/sql/ ./admin/sql/ ./workers/...
+
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
@@ -62,3 +98,17 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      # The hash-based CSP tests need the embedded production bundle.
+      - name: Test embedded UI
+        working-directory: .
+        run: go test -mod vendor -tags fts5,webui ./webui/
+
+      - name: Install go-swagger
+        run: go install github.com/go-swagger/go-swagger/cmd/swagger@v0.31.0
+
+      - name: Check generated API spec and types are current
+        working-directory: .
+        run: |
+          make generate
+          git diff --exit-code -- apiserver/swagger.yaml webui/svelte-app/src/lib/api/generated

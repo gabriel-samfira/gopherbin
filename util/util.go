@@ -18,6 +18,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"regexp"
+	"strings"
 	"unicode"
 
 	"gopherbin/config"
@@ -51,6 +52,22 @@ func IsAlphanumeric(s string) bool {
 		}
 	}
 	return true
+}
+
+// LikeEscape is the SQL fragment to append to every LIKE whose pattern was
+// built with EscapeLike. A backslash would be the natural choice, but MySQL
+// treats it as an escape inside string literals ('\' is an unterminated
+// literal there), so a character that is inert in both SQLite and MySQL
+// literals is used instead.
+const LikeEscape = "ESCAPE '!'"
+
+var likeEscaper = strings.NewReplacer(`!`, `!!`, `%`, `!%`, `_`, `!_`)
+
+// EscapeLike escapes the LIKE wildcards (and the escape character itself) so
+// user input is matched literally instead of acting as a pattern. Pair it
+// with LikeEscape on every LIKE the result is bound to.
+func EscapeLike(s string) string {
+	return likeEscaper.Replace(s)
 }
 
 // NewDBConn returns a new gorm db connection, given the config

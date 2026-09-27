@@ -3,9 +3,12 @@ package sql_test
 import (
 	"testing"
 
+	gErrors "gopherbin/errors"
 	"gopherbin/models"
 	"gopherbin/params"
 	pasteCommon "gopherbin/paste/common"
+
+	pkgErrors "github.com/pkg/errors"
 )
 
 // ── Team update / stats / labels ─────────────────────────────────────────────
@@ -58,8 +61,8 @@ func TestTeamUpdateRenameAndDescription(t *testing.T) {
 	if _, err := f.teams.Create(f.ctxUser2, "second", ""); err != nil {
 		t.Fatalf("Create second: %v", err)
 	}
-	if _, err := f.teams.Update(f.ctxUser2, "second", params.UpdateTeamParams{Name: &newName}); err == nil {
-		t.Fatal("expected duplicate-name rename to fail")
+	if _, err := f.teams.Update(f.ctxUser2, "second", params.UpdateTeamParams{Name: &newName}); !pkgErrors.Is(err, gErrors.ErrDuplicateEntity) {
+		t.Fatalf("duplicate-name rename: want ErrDuplicateEntity, got %v", err)
 	}
 
 	// Membership follows the rename.
@@ -435,8 +438,8 @@ func TestLabelManagementColorRenameDelete(t *testing.T) {
 	}
 
 	// Invalid color rejected by the payload contract.
-	if err := (params.UpdateLabelParams{Color: strPtr("crimson")}).Validate(); err == nil {
-		t.Fatal("expected invalid color rejection")
+	if err := (params.UpdateLabelParams{Color: strPtr("crimson")}).Validate(); !isBadRequest(err) {
+		t.Fatalf("invalid color: want BadRequest, got %v", err)
 	}
 
 	// Foreign users cannot touch personal labels. The label row was loaded
@@ -519,3 +522,142 @@ func TestTeamLabelColorPermissions(t *testing.T) {
 }
 
 func strPtr(s string) *string { return &s }
+
+// Viewers are read-only members: they may see the team's labels but not
+// curate the shared vocabulary, which would strip labels from every team
+// paste.
+func TestTeamLabelsReadOnlyForViewers(t *testing.T) {
+	f := newTeamFixture(t)
+	if _, err := f.teams.Create(f.ctxSuper, "engineers", ""); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	team, err := f.teams.SetLabels(f.ctxSuper, "engineers", []string{"infra"})
+	if err != nil {
+		t.Fatalf("SetLabels: %v", err)
+	}
+	labelID := team.LabelDetails[0].ID
+	f.inviteAndAcceptRole(t, f.ctxSuper, "engineers", "alice", models.RoleViewer, f.ctxUser2)
+
+	if _, err := f.teams.SetLabels(f.ctxUser2, "engineers", nil); !isNotFound(err) {
+		t.Fatalf("viewer SetLabels: want NotFound, got %v", err)
+	}
+	teal := "#008080"
+	if _, err := f.paster.UpdateLabel(f.ctxUser2, labelID, params.UpdateLabelParams{Color: &teal}); !isNotFound(err) {
+		t.Fatalf("viewer UpdateLabel: want NotFound, got %v", err)
+	}
+	if err := f.paster.DeleteLabel(f.ctxUser2, labelID); !isNotFound(err) {
+		t.Fatalf("viewer DeleteLabel: want NotFound, got %v", err)
+	}
+	if got, err := f.teams.Get(f.ctxUser2, "engineers"); err != nil {
+		t.Fatalf("viewer Get: %v", err)
+	} else if len(got.Labels) != 1 {
+		t.Fatalf("viewer should still see the labels, got %v", got.Labels)
+	}
+}
+
+// A rename that merges into an existing label applies a requested color to
+// the label that survives the merge.
+func TestLabelRenameMergeKeepsRequestedColor(t *testing.T) {
+	f := newTeamFixture(t)
+	if _, err := f.paster.Create(f.ctxUser2, []byte("a"), "one.txt", "text", "", nil, false, "", nil, nil, []string{"urgent", "wip"}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	owned, err := f.paster.ListOwnedLabels(f.ctxUser2)
+	if err != nil {
+		t.Fatalf("ListOwnedLabels: %v", err)
+	}
+	urgent := ownedLabel(t, owned, "urgent")
+	wip := ownedLabel(t, owned, "wip")
+
+	name, red := "urgent", "#ff0000"
+	info, err := f.paster.UpdateLabel(f.ctxUser2, wip.ID, params.UpdateLabelParams{Name: &name, Color: &red})
+	if err != nil {
+		t.Fatalf("rename merge: %v", err)
+	}
+	if info.ID != urgent.ID || info.Color != red {
+		t.Fatalf("merged label: want id %d color %s, got %+v", urgent.ID, red, info)
+	}
+	owned, _ = f.paster.ListOwnedLabels(f.ctxUser2)
+	if len(owned) != 1 || owned[0].Color != red || owned[0].Usage != 1 {
+		t.Fatalf("post-merge vocabulary: %+v", owned)
+	}
+}
+
+// Transferring a personal paste must not hand the previous owner's personal
+// labels (names included) to the new owner.
+func TestTransferDropsPreviousOwnersLabels(t *testing.T) {
+	f := newTeamFixture(t)
+	pst, err := f.paster.Create(f.ctxSuper, []byte("x"), "p", "text", "", nil, false, "", nil, nil, []string{"secret-project"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if _, err := f.paster.ShareWithUser(f.ctxSuper, pst.PasteID, "alice"); err != nil {
+		t.Fatalf("ShareWithUser: %v", err)
+	}
+	got, err := f.paster.TransferOwnership(f.ctxSuper, pst.PasteID, "alice")
+	if err != nil {
+		t.Fatalf("TransferOwnership: %v", err)
+	}
+	if len(got.Labels) != 0 {
+		t.Fatalf("transfer response carries old labels: %+v", got.Labels)
+	}
+	view, err := f.paster.Get(f.ctxUser2, pst.PasteID)
+	if err != nil {
+		t.Fatalf("new owner Get: %v", err)
+	}
+	if len(view.Labels) != 0 {
+		t.Fatalf("new owner sees the previous owner's labels: %+v", view.Labels)
+	}
+	owned, _ := f.paster.ListOwnedLabels(f.ctxSuper)
+	if len(owned) != 1 || owned[0].Usage != 0 {
+		t.Fatalf("previous owner's label should stay but be unused: %+v", owned)
+	}
+	shares, err := f.paster.ListShares(f.ctxUser2, pst.PasteID)
+	if err != nil {
+		t.Fatalf("ListShares: %v", err)
+	}
+	if len(shares.Users) != 0 {
+		t.Fatalf("new owner should not remain a sharee: %+v", shares.Users)
+	}
+}
+
+// The invite type-ahead only honors the team filter for teams the caller
+// belongs to; otherwise it would reveal foreign rosters.
+func TestUserSearchTeamFilterRequiresMembership(t *testing.T) {
+	f := newTeamFixture(t)
+	if _, err := f.teams.Create(f.ctxSuper, "secret", ""); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if _, err := f.teams.AddMember(f.ctxSuper, "secret", "alice", models.RoleMember); err != nil {
+		t.Fatalf("AddMember: %v", err)
+	}
+	// bob is an outsider: the filter is ignored for him.
+	res, err := f.users.SearchUsers(f.ctxUser3, "alice", "secret")
+	if err != nil {
+		t.Fatalf("SearchUsers: %v", err)
+	}
+	if len(res) != 1 {
+		t.Fatalf("outsider search should ignore the team filter, got %+v", res)
+	}
+	// For the owner, pending invitees are filtered out.
+	res, err = f.users.SearchUsers(f.ctxSuper, "alice", "secret")
+	if err != nil {
+		t.Fatalf("SearchUsers: %v", err)
+	}
+	if len(res) != 0 {
+		t.Fatalf("pending invitee should be filtered for the owner, got %+v", res)
+	}
+	// An admin inviting on the owner's behalf does not get the owner back.
+	f.inviteAndAcceptRole(t, f.ctxSuper, "secret", "bob", models.RoleAdmin, f.ctxUser3)
+	res, err = f.users.SearchUsers(f.ctxUser3, "super", "secret")
+	if err != nil {
+		t.Fatalf("SearchUsers: %v", err)
+	}
+	if len(res) != 0 {
+		t.Fatalf("team owner should be filtered out, got %+v", res)
+	}
+	// LIKE wildcards in the query are matched literally.
+	if res, err := f.users.SearchUsers(f.ctxUser3, "%%", ""); err != nil || len(res) != 0 {
+		t.Fatalf("wildcard query should match nothing: %+v %v", res, err)
+	}
+}

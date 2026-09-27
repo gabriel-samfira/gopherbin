@@ -34,12 +34,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/APIErrorResponse"
-        "403":
-          description: APIErrorResponse
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/APIErrorResponse"
       summary: List all user accounts (admin only).
       tags:
         - admin
@@ -71,7 +65,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/APIErrorResponse"
-        "403":
+        "409":
           description: APIErrorResponse
           content:
             application/json:
@@ -99,13 +93,13 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/APIErrorResponse"
-        "403":
+        "404":
           description: APIErrorResponse
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/APIErrorResponse"
-        "404":
+        "409":
           description: APIErrorResponse
           content:
             application/json:
@@ -131,12 +125,6 @@ paths:
               schema:
                 $ref: "#/components/schemas/Users"
         "401":
-          description: APIErrorResponse
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/APIErrorResponse"
-        "403":
           description: APIErrorResponse
           content:
             application/json:
@@ -186,13 +174,13 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/APIErrorResponse"
-        "403":
+        "404":
           description: APIErrorResponse
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/APIErrorResponse"
-        "404":
+        "409":
           description: APIErrorResponse
           content:
             application/json:
@@ -233,6 +221,7 @@ paths:
       summary: Exchange username/email and password for a JWT token.
       tags:
         - auth
+      security: []
   /first-run:
     post:
       description: >-
@@ -269,6 +258,7 @@ paths:
                 $ref: "#/components/schemas/APIErrorResponse"
       tags:
         - system
+      security: []
   /labels:
     get:
       operationId: listLabels
@@ -491,7 +481,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Paste"
+              $ref: "#/components/schemas/NewPasteParams"
         description: Paste payload.
         required: true
       responses:
@@ -508,6 +498,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/APIErrorResponse"
         "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "404":
           description: APIErrorResponse
           content:
             application/json:
@@ -559,6 +555,13 @@ paths:
           required: true
           schema:
             type: string
+        - description: Any non-empty value confirms a view of a paste with limited views
+            (max_accesses), which consumes one of them. Without it such pastes
+            answer 403 and nothing is consumed.
+          in: header
+          name: X-Consume-Access
+          schema:
+            type: string
       responses:
         "200":
           description: Paste
@@ -567,6 +570,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/Paste"
         "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "403":
           description: APIErrorResponse
           content:
             application/json:
@@ -635,10 +644,23 @@ paths:
           required: true
           schema:
             type: string
+        - description: Any non-empty value confirms a view of a paste with limited views
+            (max_accesses), which consumes one of them. Without it such pastes
+            answer 403 and nothing is consumed.
+          in: header
+          name: X-Consume-Access
+          schema:
+            type: string
       responses:
         "200":
           $ref: "#/components/responses/file"
         "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "403":
           description: APIErrorResponse
           content:
             application/json:
@@ -926,6 +948,13 @@ paths:
           required: true
           schema:
             type: string
+        - description: Any non-empty value confirms a view of a paste with limited views
+            (max_accesses), which consumes one of them. Without it such pastes
+            answer 403 and nothing is consumed.
+          in: header
+          name: X-Consume-Access
+          schema:
+            type: string
       responses:
         "200":
           description: Paste
@@ -933,6 +962,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Paste"
+        "403":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
         "404":
           description: APIErrorResponse
           content:
@@ -942,6 +977,7 @@ paths:
       summary: Fetch a paste that has been marked public, without authentication.
       tags:
         - pastes
+      security: []
   /teams:
     get:
       operationId: listTeams
@@ -995,6 +1031,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/APIErrorResponse"
         "401":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "409":
           description: APIErrorResponse
           content:
             application/json:
@@ -1098,6 +1140,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/APIErrorResponse"
         "404":
+          description: APIErrorResponse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorResponse"
+        "409":
           description: APIErrorResponse
           content:
             application/json:
@@ -1473,7 +1521,9 @@ paths:
           schema:
             type: string
             enum:
-              - accept decline cancel
+              - accept
+              - decline
+              - cancel
       responses:
         "200":
           description: Teams
@@ -1671,6 +1721,49 @@ components:
       properties:
         discoverable:
           type: boolean
+    NewPasteParams:
+      type: object
+      properties:
+        data:
+          type: string
+          format: byte
+        name:
+          type: string
+        language:
+          type: string
+        description:
+          type: string
+        expires:
+          type: string
+          format: date-time
+        max_accesses:
+          type: integer
+        public:
+          type: boolean
+        team:
+          type: string
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+        labels:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              color:
+                type: string
+              scope:
+                type: string
+              team:
+                type: string
+            required:
+              - name
+      required:
+        - data
+        - name
     NewTeamParams:
       type: object
       properties:

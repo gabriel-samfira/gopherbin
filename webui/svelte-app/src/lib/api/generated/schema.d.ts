@@ -591,6 +591,27 @@ export interface components {
         MeSettingsParams: {
             discoverable?: boolean;
         };
+        NewPasteParams: {
+            /** Format: byte */
+            data: string;
+            name: string;
+            language?: string;
+            description?: string;
+            /** Format: date-time */
+            expires?: string;
+            max_accesses?: number;
+            public?: boolean;
+            team?: string;
+            metadata?: {
+                [key: string]: string;
+            };
+            labels?: {
+                name: string;
+                color?: string;
+                scope?: string;
+                team?: string;
+            }[];
+        };
         NewTeamParams: {
             name: string;
             description?: string;
@@ -963,15 +984,6 @@ export interface operations {
                     "application/json": components["schemas"]["APIErrorResponse"];
                 };
             };
-            /** @description APIErrorResponse */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["APIErrorResponse"];
-                };
-            };
         };
     };
     createUser: {
@@ -1016,7 +1028,7 @@ export interface operations {
                 };
             };
             /** @description APIErrorResponse */
-            403: {
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1049,15 +1061,6 @@ export interface operations {
             };
             /** @description APIErrorResponse */
             401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["APIErrorResponse"];
-                };
-            };
-            /** @description APIErrorResponse */
-            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1121,7 +1124,7 @@ export interface operations {
                 };
             };
             /** @description APIErrorResponse */
-            403: {
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1130,7 +1133,7 @@ export interface operations {
                 };
             };
             /** @description APIErrorResponse */
-            404: {
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1163,7 +1166,7 @@ export interface operations {
                 };
             };
             /** @description APIErrorResponse */
-            403: {
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1172,7 +1175,7 @@ export interface operations {
                 };
             };
             /** @description APIErrorResponse */
-            404: {
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1548,7 +1551,7 @@ export interface operations {
         /** @description Paste payload. */
         requestBody: {
             content: {
-                "application/json": components["schemas"]["Paste"];
+                "application/json": components["schemas"]["NewPasteParams"];
             };
         };
         responses: {
@@ -1579,12 +1582,24 @@ export interface operations {
                     "application/json": components["schemas"]["APIErrorResponse"];
                 };
             };
+            /** @description APIErrorResponse */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIErrorResponse"];
+                };
+            };
         };
     };
     getPaste: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Any non-empty value confirms a view of a paste with limited views (max_accesses), which consumes one of them. Without it such pastes answer 403 and nothing is consumed. */
+                "X-Consume-Access"?: string;
+            };
             path: {
                 /** @description Paste identifier. */
                 pasteID: string;
@@ -1604,6 +1619,15 @@ export interface operations {
             };
             /** @description APIErrorResponse */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIErrorResponse"];
+                };
+            };
+            /** @description APIErrorResponse */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1722,7 +1746,10 @@ export interface operations {
     downloadPaste: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Any non-empty value confirms a view of a paste with limited views (max_accesses), which consumes one of them. Without it such pastes answer 403 and nothing is consumed. */
+                "X-Consume-Access"?: string;
+            };
             path: {
                 /** @description Paste identifier. */
                 pasteID: string;
@@ -1734,6 +1761,15 @@ export interface operations {
             200: components["responses"]["file"];
             /** @description APIErrorResponse */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIErrorResponse"];
+                };
+            };
+            /** @description APIErrorResponse */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2056,7 +2092,10 @@ export interface operations {
     publicPasteView: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Any non-empty value confirms a view of a paste with limited views (max_accesses), which consumes one of them. Without it such pastes answer 403 and nothing is consumed. */
+                "X-Consume-Access"?: string;
+            };
             path: {
                 /** @description Paste identifier. */
                 pasteID: string;
@@ -2072,6 +2111,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Paste"];
+                };
+            };
+            /** @description APIErrorResponse */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIErrorResponse"];
                 };
             };
             /** @description APIErrorResponse */
@@ -2153,6 +2201,15 @@ export interface operations {
             };
             /** @description APIErrorResponse */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIErrorResponse"];
+                };
+            };
+            /** @description APIErrorResponse */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2249,6 +2306,15 @@ export interface operations {
             };
             /** @description APIErrorResponse */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIErrorResponse"];
+                };
+            };
+            /** @description APIErrorResponse */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2713,7 +2779,7 @@ export interface operations {
                 /** @description Team name. */
                 teamName: string;
                 /** @description Transfer action. */
-                action: "accept decline cancel";
+                action: "accept" | "decline" | "cancel";
             };
             cookie?: never;
         };

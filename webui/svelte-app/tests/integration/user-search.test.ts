@@ -31,16 +31,20 @@ describe('user type-ahead against the real server', () => {
 
 	it('excludes members of the target team from the results', async () => {
 		const h = harness();
-		const member = await makeUser({ prefix: 'teammate' });
+		const prefix = `tm${Date.now().toString(36)}`;
+		const member = await makeUser({ prefix });
+		const outsider = await makeUser({ prefix });
 		const team = `search-team-${Date.now().toString(36)}`;
 		await createTeam(team, h.admin.token);
 		await addTeamMember(team, member.username, h.admin.token);
 
 		render(UserSearchInput, { props: { token: h.admin.token, team } });
 		const input = screen.getByPlaceholderText('Username or email');
-		await userEvent.type(input, member.username);
+		await userEvent.type(input, prefix);
 
-		await new Promise((r) => setTimeout(r, 800));
+		// Positive control: the search ran and lists the non-member...
+		await screen.findByRole('option', { name: new RegExp(outsider.username) }, { timeout: 5000 });
+		// ...but not the invited member.
 		expect(screen.queryByRole('option', { name: new RegExp(member.username) })).toBeNull();
 	});
 

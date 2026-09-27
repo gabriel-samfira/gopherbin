@@ -71,6 +71,26 @@ func (l *loginRateLimiter) allow(key loginKey) bool {
 	return len(l.prune(key, l.now())) < loginMaxFailures
 }
 
+// reserve atomically checks the budget for key and, when an attempt may
+// proceed, counts it as a failure up front. The caller clears the bucket
+// with recordSuccess if the attempt succeeds. Checking and recording under
+// one lock is what bounds concurrent attempts: with a separate allow and
+// recordFailure, any number of parallel requests could pass the check
+// before the first failure was recorded.
+func (l *loginRateLimiter) reserve(key loginKey) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	now := l.now()
+	if len(l.prune(key, now)) >= loginMaxFailures {
+		return false
+	}
+	l.failures[key] = append(l.failures[key], now)
+	if len(l.failures) > loginEvictThreshold {
+		l.evict(now)
+	}
+	return true
+}
+
 // retryAfter returns the whole seconds until the oldest recorded failure
 // leaves the window (i.e. until one slot frees up). It returns 0 when the
 // key is not currently blocked.

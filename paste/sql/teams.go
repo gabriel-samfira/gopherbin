@@ -332,6 +332,9 @@ func (t *teamManager) Create(ctx context.Context, name string, description strin
 	if err != nil {
 		return params.Teams{}, errors.Wrap(err, "fetching user from context")
 	}
+	if err := (params.NewTeamParams{Name: name, Description: description}).Validate(); err != nil {
+		return params.Teams{}, errors.Wrap(err, "validating team")
+	}
 	_, err = t.get(name)
 	if err != nil {
 		if !errors.Is(err, gErrors.ErrNotFound) {
@@ -343,7 +346,6 @@ func (t *teamManager) Create(ctx context.Context, name string, description strin
 
 	team := models.Teams{
 		OwnerID:     user.ID,
-		Owner:       user,
 		Name:        name,
 		Description: description,
 	}
@@ -352,6 +354,7 @@ func (t *teamManager) Create(ctx context.Context, name string, description strin
 	if q.Error != nil {
 		return params.Teams{}, errors.Wrap(q.Error, "creating team")
 	}
+	team.Owner = user
 
 	return t.sqlToCommonTeams(team, user.ID, nil, nil, "", true), nil
 }
@@ -378,26 +381,30 @@ func (t *teamManager) Delete(ctx context.Context, name string) error {
 	}
 
 	err = t.conn.Transaction(func(tx *gorm.DB) error {
-		// Delete the team's pastes explicitly: foreign key cascades are not
+		// Everything that references the team or its pastes is deleted
+		// explicitly, children first: foreign key cascades are not
 		// guaranteed to exist on databases created before the constraints
-		// were added to the model.
-		if err := tx.Unscoped().Where("team_id = ?", team.ID).Delete(&models.Paste{}).Error; err != nil {
-			return errors.Wrap(err, "deleting team pastes")
-		}
-		// Remove join rows that FK cascades may not cover on older databases.
+		// were added to the model. The join rows must go before the pastes
+		// they are selected through.
 		if err := tx.Exec("DELETE FROM paste_labels WHERE paste_id IN (SELECT id FROM pastes WHERE team_id = ?)", team.ID).Error; err != nil {
 			return errors.Wrap(err, "clearing team paste labels")
 		}
 		if err := tx.Exec("DELETE FROM paste_users WHERE paste_id IN (SELECT id FROM pastes WHERE team_id = ?)", team.ID).Error; err != nil {
 			return errors.Wrap(err, "clearing team paste shares")
 		}
+		if err := tx.Where("team_id = ?", team.ID).Delete(&models.Paste{}).Error; err != nil {
+			return errors.Wrap(err, "deleting team pastes")
+		}
+		if err := tx.Exec("DELETE FROM paste_labels WHERE label_id IN (SELECT id FROM labels WHERE team_id = ?)", team.ID).Error; err != nil {
+			return errors.Wrap(err, "clearing team label usage")
+		}
+		if err := tx.Where("team_id = ?", team.ID).Delete(&models.Label{}).Error; err != nil {
+			return errors.Wrap(err, "deleting team labels")
+		}
 		if err := tx.Where("teams_id = ?", team.ID).Delete(&models.TeamUser{}).Error; err != nil {
 			return errors.Wrap(err, "disassociating team members")
 		}
-		if err := tx.Model(&team).Association("Members").Clear(); err != nil {
-			return errors.Wrap(err, "clearing team members")
-		}
-		if err := tx.Delete(&team).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		if err := tx.Delete(&models.Teams{}, team.ID).Error; err != nil {
 			return errors.Wrap(err, "deleting team")
 		}
 		return nil
@@ -426,19 +433,29 @@ func (t *teamManager) Update(ctx context.Context, name string, update params.Upd
 		return params.Teams{}, errors.Wrap(gErrors.ErrNotFound, "updating team")
 	}
 
+	changes := map[string]interface{}{}
 	if update.Name != nil && *update.Name != team.Name {
 		newName := *update.Name
 		if _, dupErr := t.get(newName); dupErr == nil {
 			return params.Teams{}, errors.Wrap(gErrors.ErrDuplicateEntity, "renaming team")
+		} else if !errors.Is(dupErr, gErrors.ErrNotFound) {
+			return params.Teams{}, errors.Wrap(dupErr, "checking new team name")
 		}
+		changes["name"] = newName
 		team.Name = newName
 	}
 	if update.Description != nil {
-		team.Description = *update.Description
+		changes["description"] = *update.Description
 	}
 
-	if err := t.conn.Save(&team).Error; err != nil {
-		return params.Teams{}, errors.Wrap(err, "saving team")
+	// A column update, not Save: the loaded team carries its preloaded
+	// Members, and Save would re-insert their team_users rows, resurrecting
+	// (as active members, the column default) anyone removed, or any
+	// invitation declined, since the team was loaded.
+	if len(changes) > 0 {
+		if err := t.conn.Model(&models.Teams{}).Where("id = ?", team.ID).Updates(changes).Error; err != nil {
+			return params.Teams{}, errors.Wrap(err, "saving team")
+		}
 	}
 	team, err = t.get(team.Name)
 	if err != nil {
@@ -451,8 +468,9 @@ func (t *teamManager) Update(ctx context.Context, name string, update params.Upd
 	return t.sqlToCommonTeams(team, user.ID, joinRows, addedBy, "", false), nil
 }
 
-// SetLabels replaces the full set of team-scoped labels. Any active member
-// (or the owner) may manage the shared team label vocabulary.
+// SetLabels replaces the full set of team-scoped labels. The owner and any
+// active member except viewers (who are read-only) may manage the shared
+// team label vocabulary.
 func (t *teamManager) SetLabels(ctx context.Context, teamName string, names []string) (params.Teams, error) {
 	team, err := t.getTeam(ctx, teamName)
 	if err != nil {
@@ -462,9 +480,9 @@ func (t *teamManager) SetLabels(ctx context.Context, teamName string, names []st
 	if err != nil {
 		return params.Teams{}, errors.Wrap(err, "fetching user from context")
 	}
-	if !t.isMember(team, user) {
-		// Post-load denial (a pending invitee reaches this point via
-		// canAccess): answer with the 404 sentinel, as everywhere a
+	if !t.canShareToTeam(team, user) {
+		// Post-load denial (pending invitees and viewers reach this point
+		// via canAccess): answer with the 404 sentinel, as everywhere a
 		// found-but-forbidden team is denied.
 		return params.Teams{}, errors.Wrap(gErrors.ErrNotFound, "managing team labels")
 	}
@@ -839,10 +857,27 @@ func (t *teamManager) LeaveTeam(ctx context.Context, teamName string) error {
 	if row.Status != models.TeamMembershipActive {
 		return gErrors.NewBadRequestError("you have not joined this team yet; decline the invitation instead")
 	}
-	if err := t.conn.Delete(row).Error; err != nil {
+	if err := t.dropMembership(team.ID, user.ID); err != nil {
 		return errors.Wrap(err, "leaving team")
 	}
 	return nil
+}
+
+// dropMembership deletes a user's team_users row and withdraws an ownership
+// transfer offered to them: a stale offer would otherwise survive the
+// membership and could be accepted after a later re-invitation.
+func (t *teamManager) dropMembership(teamID, userID uint) error {
+	return t.conn.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("teams_id = ? AND users_id = ?", teamID, userID).Delete(&models.TeamUser{}).Error; err != nil {
+			return errors.Wrap(err, "deleting membership")
+		}
+		if err := tx.Model(&models.Teams{}).
+			Where("id = ? AND transfer_to_user_id = ?", teamID, userID).
+			Update("transfer_to_user_id", nil).Error; err != nil {
+			return errors.Wrap(err, "withdrawing ownership transfer")
+		}
+		return nil
+	})
 }
 
 func (t *teamManager) RemoveMember(ctx context.Context, teamName, member string) error {
@@ -885,7 +920,7 @@ func (t *teamManager) RemoveMember(ctx context.Context, teamName, member string)
 		return errors.Wrap(gErrors.ErrNotFound, "only the team owner can remove admins")
 	}
 
-	if err := t.conn.Where("teams_id = ? AND users_id = ?", team.ID, memberUser.ID).Delete(&models.TeamUser{}).Error; err != nil {
+	if err := t.dropMembership(team.ID, memberUser.ID); err != nil {
 		return errors.Wrap(err, "removing member")
 	}
 	return nil
@@ -1013,14 +1048,24 @@ func (t *teamManager) AcceptTransfer(ctx context.Context, teamName string) (para
 	if team.TransferToUserID == nil || *team.TransferToUserID != user.ID {
 		return params.Teams{}, gErrors.NewBadRequestError("there is no pending transfer for you on this team")
 	}
+	if !t.isActiveMember(team.ID, user.ID) {
+		// Offers are withdrawn when the target leaves or is removed; this
+		// guards rows left behind by older versions.
+		return params.Teams{}, gErrors.NewBadRequestError("only accepted team members can take over a team")
+	}
 
 	previousOwnerID := team.OwnerID
 	err = t.conn.Transaction(func(tx *gorm.DB) error {
-		team.OwnerID = user.ID
-		team.TransferToUserID = nil
-		if err := tx.Model(&models.Teams{}).Where("id = ?", team.ID).
-			Updates(map[string]interface{}{"owner_id": user.ID, "transfer_to_user_id": nil}).Error; err != nil {
-			return errors.Wrap(err, "updating team owner")
+		// Conditional on the state checked above, so a transfer cancelled
+		// (or an owner changed) concurrently cannot be completed anyway.
+		res := tx.Model(&models.Teams{}).
+			Where("id = ? AND owner_id = ? AND transfer_to_user_id = ?", team.ID, previousOwnerID, user.ID).
+			Updates(map[string]interface{}{"owner_id": user.ID, "transfer_to_user_id": nil})
+		if res.Error != nil {
+			return errors.Wrap(res.Error, "updating team owner")
+		}
+		if res.RowsAffected != 1 {
+			return gErrors.NewBadRequestError("there is no pending transfer for you on this team")
 		}
 		// The new owner holds no join row (ownership is not membership).
 		if err := tx.Where("teams_id = ? AND users_id = ?", team.ID, user.ID).
@@ -1028,8 +1073,11 @@ func (t *teamManager) AcceptTransfer(ctx context.Context, teamName string) (para
 			return errors.Wrap(err, "clearing new owner membership")
 		}
 		// The previous owner remains on the team as admin.
-		row, err := t.membership(team.ID, previousOwnerID)
-		if err != nil {
+		var row *models.TeamUser
+		var existing models.TeamUser
+		if err := tx.Where("teams_id = ? AND users_id = ?", team.ID, previousOwnerID).First(&existing).Error; err == nil {
+			row = &existing
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return errors.Wrap(err, "checking previous owner membership")
 		}
 		if row == nil {

@@ -177,6 +177,12 @@
 		<!-- Reset Password -->
 		<div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 sm:p-6">
 			<h2 class="text-lg sm:text-xl font-bold text-gray-900 dark:text-gray-100 mb-4">Reset Password</h2>
+			{#if isSelf}
+				<!-- Changing your own password requires the current one. -->
+				<p class="text-sm text-gray-600 dark:text-gray-400">
+					To change your own password, use <a href="/settings" class="text-blue-600 dark:text-blue-400 hover:underline">Settings</a>.
+				</p>
+			{:else}
 			{#if passwordError}
 				<div class="p-3 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded-md mb-4">
 					{passwordError}
@@ -202,6 +208,7 @@
 					Reset Password
 				</Button>
 			</div>
+			{/if}
 		</div>
 
 		<!-- Danger Zone -->

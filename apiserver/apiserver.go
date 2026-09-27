@@ -107,7 +107,9 @@ func newServerHandler(router *mux.Router, cfg *config.Config) http.Handler {
 	if len(cfg.APIServer.CORSOrigins) > 0 {
 		allowedOrigins := handlers.AllowedOrigins(cfg.APIServer.CORSOrigins)
 		methodsOk := handlers.AllowedMethods([]string{"GET", "HEAD", "POST", "PUT", "OPTIONS", "DELETE"})
-		headersOk := handlers.AllowedHeaders([]string{"X-Requested-With", "Content-Type", "Authorization"})
+		// Configured origins are trusted clients of the API, so they may
+		// also confirm limited-access views.
+		headersOk := handlers.AllowedHeaders([]string{"X-Requested-With", "Content-Type", "Authorization", controllers.ConsumeAccessHeader})
 		handler = handlers.CORS(methodsOk, headersOk, allowedOrigins)(handler)
 	}
 	return securityHeadersMiddleware(handler)

@@ -3,7 +3,6 @@ package sql_test
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -13,6 +12,7 @@ import (
 	"gopherbin/auth"
 	"gopherbin/config"
 	gErrors "gopherbin/errors"
+	"gopherbin/internal/testdb"
 	"gopherbin/models"
 	"gopherbin/params"
 	pasteSQL "gopherbin/paste/sql"
@@ -23,12 +23,11 @@ import (
 
 const testPassword = "Correct-Horse-Battery-Staple-G0pherbin-2024!"
 
+// testDBConfig returns a fresh database for one test (SQLite, or MySQL when
+// testdb.MySQLEnv is set).
 func testDBConfig(t *testing.T) config.Database {
 	t.Helper()
-	return config.Database{
-		DbBackend: config.SQLiteBackend,
-		SQLite:    config.SQLite{DBFile: filepath.Join(t.TempDir(), "test.db")},
-	}
+	return testdb.Config(t)
 }
 
 // newAdminFixture creates a fresh DB (migrations via NewPaster), a UserManager,
@@ -236,7 +235,7 @@ func TestAuthenticate_UniformFailureMessage(t *testing.T) {
 	mgr, superCtx := newAdminFixture(t)
 
 	disabled, err := mgr.Create(superCtx, params.NewUserParams{
-		Email:    "off@example.com", Username: "offuser", FullName: "Off User",
+		Email: "off@example.com", Username: "offuser", FullName: "Off User",
 		Password: testPassword, Enabled: false,
 	})
 	if err != nil {

@@ -2,7 +2,8 @@
 	import { page } from '$app/stores';
 	import { onMount } from 'svelte';
 	import { editorTheme } from '$lib/stores/editorTheme';
-	import { getPublicPaste } from '$lib/api/pastes';
+	import { getPublicPaste, needsViewConfirmation } from '$lib/api/pastes';
+	import ConfirmViewNotice from '$lib/components/paste/ConfirmViewNotice.svelte';
 	import CodeEditor from '$lib/components/editor/CodeEditor.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Spinner from '$lib/components/ui/Spinner.svelte';
@@ -18,6 +19,10 @@
 	let error = '';
 	let pasteContent = '';
 	let showCopyTooltip = false;
+	// Set when the paste has limited views and the server wants the view
+	// confirmed before it serves (and consumes) one.
+	let confirmView = false;
+	let consuming = false;
 
 	$: pasteId = $page.params.id;
 
@@ -28,16 +33,32 @@
 			return;
 		}
 
+		await load(false);
+		loading = false;
+	});
+
+	async function load(consume: boolean) {
+		if (!pasteId) return;
 		try {
-			paste = await getPublicPaste(pasteId);
+			paste = await getPublicPaste(pasteId, consume);
 			// Decode base64 content
 			pasteContent = paste.data ? decodeBase64(paste.data) : '';
+			confirmView = false;
 		} catch (err) {
-			error = formatApiError(err);
-		} finally {
-			loading = false;
+			if (!consume && needsViewConfirmation(err)) {
+				confirmView = true;
+			} else {
+				confirmView = false;
+				error = formatApiError(err);
+			}
 		}
-	});
+	}
+
+	async function viewPaste() {
+		consuming = true;
+		await load(true);
+		consuming = false;
+	}
 
 	async function copyToClipboard() {
 		if (pasteContent) {
@@ -64,6 +85,8 @@
 	<div class="p-4 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded-md">
 		{error}
 	</div>
+{:else if confirmView}
+	<ConfirmViewNotice busy={consuming} on:click={viewPaste} />
 {:else if paste}
 	<div class="space-y-4">
 		<div class="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">

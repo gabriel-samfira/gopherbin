@@ -89,26 +89,45 @@ func TestSuspendSQLiteForeignKeys(t *testing.T) {
 	}
 }
 
-// A failing migration must not leave foreign keys suspended.
-func TestSuspendSQLiteForeignKeysRestoredOnMigrateError(t *testing.T) {
-	conn := openEnforcedSQLite(t)
-	if err := conn.Exec(`CREATE TABLE teams (id integer PRIMARY KEY, name varchar(32))`).Error; err != nil {
-		t.Fatalf("create teams: %v", err)
+// migrateDB must hand the pool back as it found it, whether the migration
+// succeeds or fails: foreign keys enforced and the pool no longer pinned to
+// a single connection (a pinned pool would serialize, or deadlock, every
+// later request).
+func TestMigrateDBRestoresConnectionState(t *testing.T) {
+	check := func(t *testing.T, conn *gorm.DB) {
+		t.Helper()
+		if !foreignKeysEnabled(t, conn) {
+			t.Error("foreign keys left suspended after migration")
+		}
+		sqlDB, err := conn.DB()
+		if err != nil {
+			t.Fatalf("raw DB handle: %v", err)
+		}
+		if got := sqlDB.Stats().MaxOpenConnections; got != 0 {
+			t.Errorf("MaxOpenConnections after migration = %d, want 0 (unlimited)", got)
+		}
 	}
 
-	restore, err := suspendSQLiteForeignKeys(conn)
-	if err != nil {
-		t.Fatalf("suspendSQLiteForeignKeys: %v", err)
-	}
+	t.Run("success", func(t *testing.T) {
+		conn := openEnforcedSQLite(t)
+		p := &paste{conn: conn, dbBackend: config.SQLiteBackend, teamMgr: &teamManager{conn: conn}}
+		if err := p.migrateDB(); err != nil {
+			t.Fatalf("migrateDB: %v", err)
+		}
+		check(t, conn)
+	})
 
-	// Simulate AutoMigrate failing half-way through; migrateDB defers the
-	// restore regardless of the migration outcome.
-	if err := conn.Exec(`INSERT INTO does_not_exist (id) VALUES (1)`).Error; err == nil {
-		t.Fatal("expected error from bogus statement")
-	}
-	restore()
-
-	if !foreignKeysEnabled(t, conn) {
-		t.Error("foreign keys left suspended after migration failure")
-	}
+	t.Run("failure", func(t *testing.T) {
+		conn := openEnforcedSQLite(t)
+		// A view occupying a model table's name makes AutoMigrate fail
+		// half-way through.
+		if err := conn.Exec(`CREATE VIEW users AS SELECT 1 AS id`).Error; err != nil {
+			t.Fatalf("create blocking view: %v", err)
+		}
+		p := &paste{conn: conn, dbBackend: config.SQLiteBackend, teamMgr: &teamManager{conn: conn}}
+		if err := p.migrateDB(); err == nil {
+			t.Fatal("expected the migration to fail")
+		}
+		check(t, conn)
+	})
 }

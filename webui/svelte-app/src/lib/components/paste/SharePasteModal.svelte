@@ -11,6 +11,9 @@
 	export let pasteName: string = '';
 	export let token: string;
 	export let isOwner: boolean = true;
+	/** Set for team pastes: those are shared with the whole team, so only
+	 * the ownership transfer applies. */
+	export let team: string = '';
 	export let onClose: () => void;
 
 	let shares: PasteShare[] = [];
@@ -32,6 +35,11 @@
 
 	async function loadShares() {
 		if (!pasteId) return;
+		if (team) {
+			shares = [];
+			loading = false;
+			return;
+		}
 
 		loading = true;
 		error = '';
@@ -114,7 +122,7 @@
 <Modal show={!!pasteId} onClose={onClose}>
 	<div class="space-y-4">
 		<h2 class="text-xl font-bold text-gray-900 dark:text-gray-100">
-			Share: <span class="text-blue-600 dark:text-blue-500">{pasteName}</span>
+			{team ? 'Transfer' : 'Share'}: <span class="text-blue-600 dark:text-blue-500">{pasteName}</span>
 		</h2>
 
 		{#if error}
@@ -123,7 +131,12 @@
 			</div>
 		{/if}
 
-		{#if isOwner}
+		{#if isOwner && team}
+			<p class="text-sm text-gray-600 dark:text-gray-400">
+				Team pastes are shared with every member of <strong>{team}</strong>; they cannot be shared
+				with individual users.
+			</p>
+		{:else if isOwner}
 			<div class="flex gap-2">
 				<Input
 					bind:value={shareUsername}
@@ -210,12 +223,17 @@
 					</table>
 				</div>
 			{/if}
+		{/if}
 
+		{#if isOwner}
 			<div class="border-t border-gray-200 dark:border-gray-700 pt-4 space-y-2">
 				<h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Transfer ownership</h3>
 				<p class="text-xs text-gray-600 dark:text-gray-400">
-					Give another user full control of this paste. Team pastes can only be transferred
-					within the team.
+					{#if team}
+						Hand this paste over to another member of {team} who can create pastes (not a viewer).
+					{:else}
+						Give another user full control of this paste.
+					{/if}
 				</p>
 				<div class="flex gap-2">
 					<Input
@@ -251,9 +269,14 @@
 							Transfer "{pasteName}" to <strong>{transferUsername.trim()}</strong>?
 						</p>
 						<ul class="list-disc list-inside space-y-1 text-gray-600 dark:text-gray-400">
-							<li>The other user becomes the owner and gains full control (view, delete, change privacy, re-share, transfer again).</li>
-							<li>You will lose owner control; the paste will appear under "Shared with me" only if the new owner shares it back.</li>
-							<li>Existing shares with other users remain in place.</li>
+							{#if team}
+								<li>They become the owner of this team paste and can delete or transfer it.</li>
+								<li>Unless you own the team, you lose owner control; you keep access as a team member.</li>
+							{:else}
+								<li>The other user becomes the owner and gains full control (view, delete, change privacy, re-share, transfer again).</li>
+								<li>You will lose owner control; the paste will appear under "Shared with me" only if the new owner shares it back.</li>
+								<li>Your personal labels are removed from it; existing shares with other users remain in place.</li>
+							{/if}
 						</ul>
 					</div>
 				{/if}

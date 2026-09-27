@@ -18,6 +18,7 @@ import (
 	"context"
 	"math"
 	"strings"
+	"sync"
 	"time"
 
 	"gopherbin/admin/common"
@@ -49,6 +50,17 @@ func NewUserManager(dbCfg config.Database) (common.UserManager, error) {
 type userManager struct {
 	conn *gorm.DB
 }
+
+// dummyPasswordHash returns a bcrypt hash (at the cost used for real
+// passwords) that login attempts for unknown accounts are verified against.
+// It is computed once, on first use.
+var dummyPasswordHash = sync.OnceValue(func() []byte {
+	hash, err := util.PaswsordToBcrypt("gopherbin-timing-equalizer")
+	if err != nil {
+		return nil
+	}
+	return []byte(hash)
+})
 
 func (u *userManager) HasSuperUser() bool {
 	var tmpUser models.Users
@@ -129,11 +141,12 @@ func (u *userManager) Authenticate(ctx context.Context, info params.PasswordLogi
 
 	if err != nil {
 		if err == gErrors.ErrNotFound {
-			// Burn a comparable amount of CPU to a real bcrypt
-			// verification, so "no such account" cannot be told apart
-			// from "wrong password" by response timing.
-			if dummyHash, hashErr := util.PaswsordToBcrypt("x"); hashErr == nil {
-				_ = bcrypt.CompareHashAndPassword([]byte(dummyHash), []byte(info.Password))
+			// Run one bcrypt verification, exactly like the wrong-password
+			// path does, so "no such account" cannot be told apart from
+			// "wrong password" by response timing. Hashing here instead
+			// would cost roughly twice a verification.
+			if dummyHash := dummyPasswordHash(); dummyHash != nil {
+				_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(info.Password))
 			}
 			return ctx, unauthorized
 		}
@@ -445,16 +458,21 @@ func (u *userManager) Update(ctx context.Context, userID uint, update params.Upd
 	// sign the user out of their own sessions.
 	sensitive := update.Password != nil || update.Email != nil || update.FullName != nil ||
 		update.Enabled != nil || update.Username != nil || update.IsAdmin != nil
-	if sensitive {
-		tmpUser.UpdatedAt = time.Now()
-	}
-	save := u.conn
 	if !sensitive {
-		// GORM's Save refreshes UpdatedAt automatically; preference-only
-		// changes must leave it untouched so issued tokens stay valid.
-		save = save.Omit("UpdatedAt")
+		// Preference-only change: write that column alone. UpdateColumn
+		// leaves UpdatedAt untouched, so issued tokens stay valid (Save
+		// would refresh it, and on MySQL an unchanged row even makes Save
+		// fall back to an upsert).
+		if update.Discoverable != nil {
+			if err := u.conn.Model(&models.Users{}).Where("id = ?", tmpUser.ID).
+				UpdateColumn("discoverable", tmpUser.Discoverable).Error; err != nil {
+				return params.Users{}, errors.Wrap(err, "saving user to database")
+			}
+		}
+		return u.sqlUserToParams(tmpUser), nil
 	}
-	q := save.Save(&tmpUser)
+	tmpUser.UpdatedAt = time.Now()
+	q := u.conn.Save(&tmpUser)
 	if q.Error != nil {
 		return params.Users{}, errors.Wrap(q.Error, "saving user to database")
 	}
@@ -617,18 +635,36 @@ func (u *userManager) Delete(ctx context.Context, userID uint) error {
 		return gErrors.NewConflictError("this user still owns one or more teams; delete those teams first")
 	}
 
-	q := u.conn.Delete(&usr)
-	if q.Error != nil {
-		return errors.Wrap(q.Error, "deleting user")
-	}
-	return nil
+	err = u.conn.Transaction(func(tx *gorm.DB) error {
+		// teams.transfer_to_user_id references users without a cascade: a
+		// pending ownership offer would make the delete fail.
+		if err := tx.Model(&models.Teams{}).Where("transfer_to_user_id = ?", userID).
+			Update("transfer_to_user_id", nil).Error; err != nil {
+			return errors.Wrap(err, "withdrawing ownership transfers")
+		}
+		// Personal labels have no foreign key to their owner; drop them
+		// rather than leaving an orphaned vocabulary behind.
+		if err := tx.Exec("DELETE FROM paste_labels WHERE label_id IN (SELECT id FROM labels WHERE owner_user_id = ? AND team_id IS NULL)", userID).Error; err != nil {
+			return errors.Wrap(err, "clearing personal label usage")
+		}
+		if err := tx.Where("owner_user_id = ? AND team_id IS NULL", userID).Delete(&models.Label{}).Error; err != nil {
+			return errors.Wrap(err, "deleting personal labels")
+		}
+		if err := tx.Delete(&usr).Error; err != nil {
+			return errors.Wrap(err, "deleting user")
+		}
+		return nil
+	})
+	return err
 }
 
 // SearchUsers returns enabled, discoverable users matching the query for the
 // team-invite type-ahead. Matches are username prefix, full-name substring or
 // email prefix. Users who opted out of discovery are never listed; they can
-// still be invited by exact username/email. If excludeTeam is set, members
-// (active or pending) of that team and the caller are filtered out.
+// still be invited by exact username/email. The caller is never listed. If
+// excludeTeam names a team the caller owns or has joined, its owner and
+// members (active or pending) are filtered out as well; for any other team
+// the filter is ignored, so it cannot be used to probe foreign rosters.
 func (u *userManager) SearchUsers(ctx context.Context, query string, excludeTeam string) ([]params.UserSearchResult, error) {
 	viewer := auth.UserID(ctx)
 	if viewer == 0 {
@@ -638,24 +674,32 @@ func (u *userManager) SearchUsers(ctx context.Context, query string, excludeTeam
 	if len(q) < 2 {
 		return []params.UserSearchResult{}, nil
 	}
-	escaped := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(q)
+	escaped := util.EscapeLike(q)
 
 	tx := u.conn.Model(&models.Users{}).
 		Where("enabled = ? AND discoverable = ?", true, true).
 		Where("id <> ?", viewer).
 		Where(
-			u.conn.Where("username LIKE ? ESCAPE '\\'", escaped+"%").
-				Or("full_name LIKE ? ESCAPE '\\'", "%"+escaped+"%").
-				Or("email LIKE ? ESCAPE '\\'", escaped+"%"),
+			u.conn.Where("username LIKE ? "+util.LikeEscape, escaped+"%").
+				Or("full_name LIKE ? "+util.LikeEscape, "%"+escaped+"%").
+				Or("email LIKE ? "+util.LikeEscape, escaped+"%"),
 		)
 
 	if excludeTeam != "" {
 		var team models.Teams
 		if err := u.conn.Where("name = ?", excludeTeam).First(&team).Error; err == nil {
-			sub := u.conn.Table("team_users").
-				Select("users_id").
-				Where("teams_id = ?", team.ID)
-			tx = tx.Where("id NOT IN (?)", sub)
+			var joined int64
+			if err := u.conn.Model(&models.TeamUser{}).
+				Where("teams_id = ? AND users_id = ? AND status = ?", team.ID, viewer, models.TeamMembershipActive).
+				Count(&joined).Error; err != nil {
+				return nil, errors.Wrap(err, "checking team membership")
+			}
+			if team.OwnerID == viewer || joined > 0 {
+				sub := u.conn.Table("team_users").
+					Select("users_id").
+					Where("teams_id = ?", team.ID)
+				tx = tx.Where("id NOT IN (?) AND id <> ?", sub, team.OwnerID)
+			}
 		}
 	}
 

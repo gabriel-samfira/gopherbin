@@ -128,7 +128,8 @@ func resolveExistingLabels(tx *gorm.DB, names []string, ownerID uint, teamID uin
 
 // canManageLabel reports whether the user may rename/recolor/delete a label:
 // personal labels belong to their owner; team labels to the team owner or any
-// active member (the vocabulary is collectively curated).
+// active member except viewers (the vocabulary is collectively curated, and
+// viewers are read-only).
 func canManageLabel(tx *gorm.DB, label *models.Label, userID uint) (bool, error) {
 	if label.TeamID == nil {
 		return label.OwnerUserID != nil && *label.OwnerUserID == userID, nil
@@ -145,11 +146,24 @@ func canManageLabel(tx *gorm.DB, label *models.Label, userID uint) (bool, error)
 	}
 	var cnt int64
 	if err := tx.Model(&models.TeamUser{}).
-		Where("teams_id = ? AND users_id = ? AND status = ?", team.ID, userID, models.TeamMembershipActive).
+		Where("teams_id = ? AND users_id = ? AND status = ? AND (role IS NULL OR role <> ?)",
+			team.ID, userID, models.TeamMembershipActive, models.RoleViewer).
 		Count(&cnt).Error; err != nil {
 		return false, errors.Wrap(err, "counting team membership")
 	}
 	return cnt > 0, nil
+}
+
+// labelScope restricts a label query to the scope (personal owner or team)
+// of the given label.
+func labelScope(q *gorm.DB, label models.Label) *gorm.DB {
+	if label.TeamID != nil {
+		return q.Where("team_id = ? AND owner_user_id IS NULL", *label.TeamID)
+	}
+	if label.OwnerUserID != nil {
+		return q.Where("owner_user_id = ? AND team_id IS NULL", *label.OwnerUserID)
+	}
+	return q.Where("owner_user_id IS NULL AND team_id IS NULL")
 }
 
 func labelUsage(tx *gorm.DB, labelID uint) (int64, error) {
@@ -168,14 +182,15 @@ func (p *paste) ListOwnedLabels(ctx context.Context) ([]params.LabelInfo, error)
 		return nil, errors.Wrap(err, "fetching user")
 	}
 	type row struct {
-		ID    uint
-		Name  string
-		Color string
-		Usage int64
+		ID         uint
+		Name       string
+		Color      string
+		UsageCount int64
 	}
 	var rows []row
+	// "usage" is a reserved word in MySQL, hence the longer alias.
 	if err := p.conn.Model(&models.Label{}).
-		Select("labels.id, labels.name, labels.color, COUNT(pl.paste_id) AS usage").
+		Select("labels.id, labels.name, labels.color, COUNT(pl.paste_id) AS usage_count").
 		Joins("LEFT JOIN paste_labels pl ON pl.label_id = labels.id").
 		Where("labels.owner_user_id = ? AND labels.team_id IS NULL", user.ID).
 		Group("labels.id").
@@ -185,7 +200,7 @@ func (p *paste) ListOwnedLabels(ctx context.Context) ([]params.LabelInfo, error)
 	}
 	out := make([]params.LabelInfo, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, params.LabelInfo{ID: r.ID, Name: r.Name, Color: r.Color, Usage: r.Usage})
+		out = append(out, params.LabelInfo{ID: r.ID, Name: r.Name, Color: r.Color, Usage: r.UsageCount})
 	}
 	return out, nil
 }
@@ -222,16 +237,9 @@ func (p *paste) UpdateLabel(ctx context.Context, labelID uint, args params.Updat
 			// any logged-in user enumerate label IDs. Deny with 404 instead.
 			return gErrors.ErrNotFound
 		}
-		if args.Color != nil {
-			if err := tx.Model(&label).Update("color", *args.Color).Error; err != nil {
-				return errors.Wrap(err, "updating label color")
-			}
-			label.Color = *args.Color
-		}
 		if newName != "" && newName != label.Name {
 			var existing models.Label
-			err := tx.Where("name = ? AND owner_user_id IS ? AND team_id IS ?", newName, label.OwnerUserID, label.TeamID).
-				First(&existing).Error
+			err := labelScope(tx.Where("name = ?", newName), label).First(&existing).Error
 			if err == nil {
 				// merge into the existing label of the same scope
 				var pasteIDs []uint
@@ -265,6 +273,14 @@ func (p *paste) UpdateLabel(ctx context.Context, labelID uint, args params.Updat
 			} else {
 				return errors.Wrap(err, "looking up rename target")
 			}
+		}
+		// Applied after a possible merge so the color lands on the label
+		// that survives it.
+		if args.Color != nil {
+			if err := tx.Model(&models.Label{}).Where("id = ?", label.ID).Update("color", *args.Color).Error; err != nil {
+				return errors.Wrap(err, "updating label color")
+			}
+			label.Color = *args.Color
 		}
 		usage, err := labelUsage(tx, label.ID)
 		if err != nil {

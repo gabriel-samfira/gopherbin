@@ -10,6 +10,7 @@
 		teamTransferAction
 	} from '$lib/api/teams';
 	import type { TeamInviteInfo, TeamTransferInfo } from '$lib/types/team';
+	import type { ApiError } from '$lib/types/api';
 	import { toast } from '$lib/stores/toast';
 	import { noticesTick } from '$lib/stores/notices';
 	import { formatApiError } from '$lib/utils/errors';
@@ -42,8 +43,13 @@
 					listPendingTransfers($auth.token)
 				]);
 			}
-		} catch {
-			// notice is best-effort; the teams page remains the source of truth
+		} catch (err) {
+			// notice is best-effort; the teams page remains the source of truth.
+			// A rejected session must not leave stale, unactionable entries.
+			if ((err as ApiError)?.status === 401) {
+				invites = [];
+				transfers = [];
+			}
 		} finally {
 			refreshing = false;
 			if (refetchQueued) {

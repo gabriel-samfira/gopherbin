@@ -2,7 +2,6 @@ package sql_test
 
 import (
 	"context"
-	"path/filepath"
 	"sync"
 	"testing"
 
@@ -10,6 +9,7 @@ import (
 	"gopherbin/auth"
 	"gopherbin/config"
 	gErrors "gopherbin/errors"
+	"gopherbin/internal/testdb"
 	"gopherbin/params"
 	pasteCommon "gopherbin/paste/common"
 	pasteSQL "gopherbin/paste/sql"
@@ -19,12 +19,11 @@ import (
 
 const testPassword = "Correct-Horse-Battery-Staple-G0pherbin-2024!"
 
+// testDBConfig returns a fresh database for one test (SQLite, or MySQL when
+// testdb.MySQLEnv is set).
 func testDBConfig(t *testing.T) config.Database {
 	t.Helper()
-	return config.Database{
-		DbBackend: config.SQLiteBackend,
-		SQLite:    config.SQLite{DBFile: filepath.Join(t.TempDir(), "test.db")},
-	}
+	return testdb.Config(t)
 }
 
 // newPasterFixture creates a DB, runs migrations, creates a superuser, and
@@ -316,6 +315,11 @@ func TestSearch_FTSExpressionInjectionIsNeutralized(t *testing.T) {
 		}
 	}
 
+	if testdb.IsMySQL() {
+		// MySQL searches with FULLTEXT or a substring LIKE, not with FTS5
+		// query semantics; only the isolation checks above apply there.
+		return
+	}
 	// The plain-text meaning of a hostile-looking query survives:
 	// `hello "world` becomes the implicit-AND phrase query and still
 	// matches Alice's paste, and Bob's never shows up.
@@ -329,6 +333,9 @@ func TestSearch_FTSExpressionInjectionIsNeutralized(t *testing.T) {
 }
 
 func TestSearch_MultiWordImplicitANDStillWorks(t *testing.T) {
+	if testdb.IsMySQL() {
+		t.Skip("FTS5 implicit-AND semantics; MySQL searches with FULLTEXT or LIKE")
+	}
 	paster, aliceCtx, _ := newSearchFixture(t)
 
 	both, err := paster.Create(aliceCtx, []byte("quantum flux capacitor"), "both.txt", "text", "", nil, false, "", nil, nil, nil)
@@ -471,28 +478,42 @@ func TestGetPublicPaste_ConcurrentBudgetServesExactlyN(t *testing.T) {
 }
 
 func TestPeekMaxAccesses(t *testing.T) {
-	paster, aliceCtx, _ := newSearchFixture(t)
+	paster, aliceCtx, bobCtx := newSearchFixture(t)
 	limited := mustCreate(t, paster, aliceCtx, "limited", true, pInt(3))
 	unlimited := mustCreate(t, paster, aliceCtx, "unlimited", true, nil)
+	private := mustCreate(t, paster, aliceCtx, "private", false, pInt(1))
 
 	peeker, ok := paster.(interface {
-		PeekMaxAccesses(context.Context, string) (*int, error)
+		PeekMaxAccesses(context.Context, string, bool) (*int, error)
 	})
 	if !ok {
 		t.Fatal("concrete paster does not implement PeekMaxAccesses")
 	}
-	if got, err := peeker.PeekMaxAccesses(aliceCtx, limited.PasteID); err != nil || got == nil || *got != 3 {
-		t.Errorf("limited: got (%v, %v), want (3, nil)", got, err)
+	for _, publicOnly := range []bool{true, false} {
+		if got, err := peeker.PeekMaxAccesses(aliceCtx, limited.PasteID, publicOnly); err != nil || got == nil || *got != 3 {
+			t.Errorf("limited (publicOnly=%v): got (%v, %v), want (3, nil)", publicOnly, got, err)
+		}
+		if got, err := peeker.PeekMaxAccesses(aliceCtx, unlimited.PasteID, publicOnly); err != nil || got != nil {
+			t.Errorf("unlimited (publicOnly=%v): got (%v, %v), want (nil, nil)", publicOnly, got, err)
+		}
+		if _, err := peeker.PeekMaxAccesses(aliceCtx, "doesnotexist1234567890ab", publicOnly); !isNotFound(err) {
+			t.Errorf("missing paste (publicOnly=%v): want NotFound, got %v", publicOnly, err)
+		}
 	}
-	if got, err := peeker.PeekMaxAccesses(aliceCtx, unlimited.PasteID); err != nil || got != nil {
-		t.Errorf("unlimited: got (%v, %v), want (nil, nil)", got, err)
+	// Only readable pastes are reported: the budget gate must not answer
+	// differently for a paste the caller cannot see.
+	if got, err := peeker.PeekMaxAccesses(aliceCtx, private.PasteID, false); err != nil || got == nil || *got != 1 {
+		t.Errorf("owner peek of private paste: got (%v, %v), want (1, nil)", got, err)
 	}
-	if _, err := peeker.PeekMaxAccesses(aliceCtx, "doesnotexist1234567890ab"); err == nil {
-		t.Error("missing paste: want error, got nil")
+	if _, err := peeker.PeekMaxAccesses(bobCtx, private.PasteID, false); !isNotFound(err) {
+		t.Errorf("foreign private paste: want NotFound, got %v", err)
+	}
+	if _, err := peeker.PeekMaxAccesses(aliceCtx, private.PasteID, true); !isNotFound(err) {
+		t.Errorf("private paste on the public route: want NotFound, got %v", err)
 	}
 	// Peeking must not consume budget: three peeks leave all three serves.
 	for i := 0; i < 3; i++ {
-		if _, err := peeker.PeekMaxAccesses(aliceCtx, limited.PasteID); err != nil {
+		if _, err := peeker.PeekMaxAccesses(aliceCtx, limited.PasteID, false); err != nil {
 			t.Fatalf("peek %d: %v", i, err)
 		}
 	}
@@ -504,5 +525,35 @@ func TestPeekMaxAccesses(t *testing.T) {
 	}
 	if served != 3 {
 		t.Errorf("peeks consumed budget: served %d, want 3", served)
+	}
+}
+
+// Previews are served without consuming an access, so access-limited
+// pastes only preview for their owner.
+func TestListPreviewWithheldForLimitedPastesOfOthers(t *testing.T) {
+	paster, aliceCtx, bobCtx := newSearchFixture(t)
+	limited := mustCreate(t, paster, aliceCtx, "limited", false, pInt(1))
+	if _, err := paster.ShareWithUser(aliceCtx, limited.PasteID, "bob"); err != nil {
+		t.Fatalf("ShareWithUser: %v", err)
+	}
+	for _, tc := range []struct {
+		who         string
+		ctx         context.Context
+		wantPreview bool
+	}{{"owner", aliceCtx, true}, {"sharee", bobCtx, false}} {
+		list, err := paster.List(tc.ctx, 1, 50, pasteCommon.ScopeAll, nil, "")
+		if err != nil {
+			t.Fatalf("%s List: %v", tc.who, err)
+		}
+		if len(list.Pastes) != 1 {
+			t.Fatalf("%s List: want 1 paste, got %d", tc.who, len(list.Pastes))
+		}
+		if got := len(list.Pastes[0].Preview) > 0; got != tc.wantPreview {
+			t.Errorf("%s preview present = %v, want %v", tc.who, got, tc.wantPreview)
+		}
+	}
+	// Listing consumed nothing: the single view is still available.
+	if _, err := paster.Get(bobCtx, limited.PasteID); err != nil {
+		t.Fatalf("sharee Get: %v", err)
 	}
 }

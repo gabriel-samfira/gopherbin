@@ -11,7 +11,8 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "gen:api": "npx --yes swagger2openapi@7.0.8 ../../apiserver/swagger.yaml -y -o src/lib/api/generated/openapi3.yaml && npx --yes openapi-typescript@7.13.0 src/lib/api/generated/openapi3.yaml -o src/lib/api/generated/schema.d.ts"
   },
   "author": "",
   "license": "Apache-2.0",

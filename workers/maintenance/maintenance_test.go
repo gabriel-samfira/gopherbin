@@ -1,21 +1,20 @@
 package maintenance_test
 
 import (
-	"path/filepath"
 	"testing"
 	"time"
 
 	"gopherbin/config"
+	"gopherbin/internal/testdb"
 	pasteSQL "gopherbin/paste/sql"
 	"gopherbin/workers/maintenance"
 )
 
+// testDBConfig returns a fresh database for one test (SQLite, or MySQL when
+// testdb.MySQLEnv is set).
 func testDBConfig(t *testing.T) config.Database {
 	t.Helper()
-	return config.Database{
-		DbBackend: config.SQLiteBackend,
-		SQLite:    config.SQLite{DBFile: filepath.Join(t.TempDir(), "test.db")},
-	}
+	return testdb.Config(t)
 }
 
 func TestNewMaintenanceWorker(t *testing.T) {

@@ -248,7 +248,7 @@ type budgetPaster struct {
 	peeks       int
 }
 
-func (f *budgetPaster) PeekMaxAccesses(ctx context.Context, pasteID string) (*int, error) {
+func (f *budgetPaster) PeekMaxAccesses(ctx context.Context, pasteID string, publicOnly bool) (*int, error) {
 	f.peeks++
 	return f.maxAccesses, f.peekErr
 }
@@ -257,7 +257,7 @@ func get(t *testing.T, h http.HandlerFunc, header string) *httptest.ResponseReco
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/public/paste/abc123", nil)
 	if header != "" {
-		req.Header.Set(consumeAccessHeader, header)
+		req.Header.Set(ConsumeAccessHeader, header)
 	}
 	req = mux.SetURLVars(req, map[string]string{"pasteID": "abc123"})
 	w := httptest.NewRecorder()

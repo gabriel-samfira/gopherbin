@@ -173,6 +173,13 @@ definitions:
     # ---------------------------------------------------------------------
     # Request models
     # ---------------------------------------------------------------------
+    NewPasteParams:
+        type: object
+        x-go-type:
+            type: NewPasteParams
+            import:
+                package: gopherbin/params
+                alias: gopherbin_params
     NewUserParams:
         type: object
         x-go-type:

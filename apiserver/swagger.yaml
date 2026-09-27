@@ -72,6 +72,49 @@ definitions:
         properties:
             discoverable:
                 type: boolean
+    NewPasteParams:
+        type: object
+        properties:
+            data:
+                type: string
+                format: byte
+            name:
+                type: string
+            language:
+                type: string
+            description:
+                type: string
+            expires:
+                type: string
+                format: date-time
+            max_accesses:
+                type: integer
+            public:
+                type: boolean
+            team:
+                type: string
+            metadata:
+                type: object
+                additionalProperties:
+                    type: string
+            labels:
+                type: array
+                items:
+                    type: object
+                    properties:
+                        name:
+                            type: string
+                        color:
+                            type: string
+                        scope:
+                            type: string
+                        team:
+                            type: string
+                    required:
+                        - name
+        required:
+            - data
+            - name
     NewTeamParams:
         type: object
         properties:
@@ -876,10 +919,6 @@ paths:
                     description: APIErrorResponse
                     schema:
                         $ref: '#/definitions/APIErrorResponse'
-                "403":
-                    description: APIErrorResponse
-                    schema:
-                        $ref: '#/definitions/APIErrorResponse'
             summary: List all user accounts (admin only).
             tags:
                 - admin
@@ -907,7 +946,7 @@ paths:
                     description: APIErrorResponse
                     schema:
                         $ref: '#/definitions/APIErrorResponse'
-                "403":
+                "409":
                     description: APIErrorResponse
                     schema:
                         $ref: '#/definitions/APIErrorResponse'
@@ -930,11 +969,11 @@ paths:
                     description: APIErrorResponse
                     schema:
                         $ref: '#/definitions/APIErrorResponse'
-                "403":
+                "404":
                     description: APIErrorResponse
                     schema:
                         $ref: '#/definitions/APIErrorResponse'
-                "404":
+                "409":
                     description: APIErrorResponse
                     schema:
                         $ref: '#/definitions/APIErrorResponse'
@@ -955,10 +994,6 @@ paths:
                     schema:
                         $ref: '#/definitions/Users'
                 "401":
-                    description: APIErrorResponse
-                    schema:
-                        $ref: '#/definitions/APIErrorResponse'
-                "403":
                     description: APIErrorResponse
                     schema:
                         $ref: '#/definitions/APIErrorResponse'
@@ -998,11 +1033,11 @@ paths:
                     description: APIErrorResponse
                     schema:
                         $ref: '#/definitions/APIErrorResponse'
-                "403":
+                "404":
                     description: APIErrorResponse
                     schema:
                         $ref: '#/definitions/APIErrorResponse'
-                "404":
+                "409":
                     description: APIErrorResponse
                     schema:
                         $ref: '#/definitions/APIErrorResponse'
@@ -1037,6 +1072,7 @@ paths:
             summary: Exchange username/email and password for a JWT token.
             tags:
                 - auth
+            security: []
     /first-run:
         post:
             description: |-
@@ -1067,6 +1103,7 @@ paths:
                         $ref: '#/definitions/APIErrorResponse'
             tags:
                 - system
+            security: []
     /labels:
         get:
             operationId: listLabels
@@ -1253,7 +1290,7 @@ paths:
                   name: Body
                   required: true
                   schema:
-                    $ref: '#/definitions/Paste'
+                    $ref: '#/definitions/NewPasteParams'
                     description: Paste payload.
                     type: object
             responses:
@@ -1266,6 +1303,10 @@ paths:
                     schema:
                         $ref: '#/definitions/APIErrorResponse'
                 "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "404":
                     description: APIErrorResponse
                     schema:
                         $ref: '#/definitions/APIErrorResponse'
@@ -1307,12 +1348,20 @@ paths:
                   name: pasteID
                   required: true
                   type: string
+                - description: Any non-empty value confirms a view of a paste with limited views (max_accesses), which consumes one of them. Without it such pastes answer 403 and nothing is consumed.
+                  in: header
+                  name: X-Consume-Access
+                  type: string
             responses:
                 "200":
                     description: Paste
                     schema:
                         $ref: '#/definitions/Paste'
                 "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "403":
                     description: APIErrorResponse
                     schema:
                         $ref: '#/definitions/APIErrorResponse'
@@ -1368,10 +1417,18 @@ paths:
                   name: pasteID
                   required: true
                   type: string
+                - description: Any non-empty value confirms a view of a paste with limited views (max_accesses), which consumes one of them. Without it such pastes answer 403 and nothing is consumed.
+                  in: header
+                  name: X-Consume-Access
+                  type: string
             responses:
                 "200":
                     $ref: '#/responses/file'
                 "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "403":
                     description: APIErrorResponse
                     schema:
                         $ref: '#/definitions/APIErrorResponse'
@@ -1603,11 +1660,19 @@ paths:
                   name: pasteID
                   required: true
                   type: string
+                - description: Any non-empty value confirms a view of a paste with limited views (max_accesses), which consumes one of them. Without it such pastes answer 403 and nothing is consumed.
+                  in: header
+                  name: X-Consume-Access
+                  type: string
             responses:
                 "200":
                     description: Paste
                     schema:
                         $ref: '#/definitions/Paste'
+                "403":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
                 "404":
                     description: APIErrorResponse
                     schema:
@@ -1615,6 +1680,7 @@ paths:
             summary: Fetch a paste that has been marked public, without authentication.
             tags:
                 - pastes
+            security: []
     /teams:
         get:
             operationId: listTeams
@@ -1660,6 +1726,10 @@ paths:
                     schema:
                         $ref: '#/definitions/APIErrorResponse'
                 "401":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "409":
                     description: APIErrorResponse
                     schema:
                         $ref: '#/definitions/APIErrorResponse'
@@ -1743,6 +1813,10 @@ paths:
                     schema:
                         $ref: '#/definitions/APIErrorResponse'
                 "404":
+                    description: APIErrorResponse
+                    schema:
+                        $ref: '#/definitions/APIErrorResponse'
+                "409":
                     description: APIErrorResponse
                     schema:
                         $ref: '#/definitions/APIErrorResponse'
@@ -2043,7 +2117,9 @@ paths:
                   type: string
                 - description: Transfer action.
                   enum:
-                    - accept decline cancel
+                    - accept
+                    - decline
+                    - cancel
                   in: path
                   name: action
                   required: true

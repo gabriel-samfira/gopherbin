@@ -67,9 +67,11 @@ describe('notice bell against the real server', () => {
 
 		await userEvent.click(await bellButton('1'));
 		await userEvent.click(await screen.findByRole('button', { name: 'Decline' }));
-		// First click only arms the confirmation.
-		expect(screen.queryByRole('button', { name: /Team invitations and transfers \(0\)/ })).toBeNull();
-		await userEvent.click(await screen.findByRole('button', { name: 'Confirm decline' }));
+		// First click only arms the confirmation: the invite is still pending.
+		const confirm = await screen.findByRole('button', { name: 'Confirm decline' });
+		const pending = await listTeamMembers(team, h.admin.token);
+		expect(pending.find((m) => m.username === invitee.username)?.status).toBe('pending');
+		await userEvent.click(confirm);
 
 		await waitFor(
 			async () => {

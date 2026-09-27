@@ -37,7 +37,6 @@ import (
 
 	adminSQL "gopherbin/admin/sql"
 	"gopherbin/apiserver/controllers"
-	"gopherbin/apiserver/responses"
 	"gopherbin/apiserver/routers"
 	"gopherbin/auth"
 	"gopherbin/config"
@@ -47,76 +46,48 @@ import (
 
 const contractSecret = "contract-test-secret-0123456789abcdef"
 
-// rxRouteRegex rewrites gorilla/mux templates from {name:[0-9a-zA-Z]+} to
-// the plain {name} placeholders used in swagger.yaml.
-var rxRouteRegex = regexp.MustCompile(`\{([A-Za-z]+):[^}]+\}`)
+// rxRouteVar matches a gorilla/mux path variable carrying a regex,
+// {name:pattern}.
+var rxRouteVar = regexp.MustCompile(`\{([A-Za-z]+):([^}]+)\}`)
 
-// rxRouteRegistration captures every group.Handle("/path", ...).Methods("M", ...)
-// registration in apiserver/routers/routers.go, including the subrouter
-// prefix it was mounted on.
-var rxRouteRegistration = regexp.MustCompile(
-	`(?m)^\t(\w+)\.Handle\("([^"]+)",.*?\.Methods\(([^\n]+)\)\.Options`)
-
-// rxSubrouterPrefix captures `name := parent.PathPrefix("/prefix")...Subrouter()`.
-var rxSubrouterPrefix = regexp.MustCompile(`(?m)\b(\w+) := \w+\.PathPrefix\("([^"]+)"\)`)
-
-// routerOperations reconstructs the definitive set of "METHOD /path" tuples
-// the API router serves by parsing the route registration file. Group
-// prefixes are resolved; the "/{login:login\\/?}" style regex variables are
-// normalized to "{name}".
-func routerOperations(t *testing.T) map[string]bool {
-	t.Helper()
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("cannot locate apiserver package source")
-	}
-	src, err := os.ReadFile(filepath.Join(filepath.Dir(thisFile), "routers", "routers.go"))
-	if err != nil {
-		t.Fatalf("reading routers.go: %v", err)
-	}
-	prefixes := map[string]string{}
-	for _, m := range rxSubrouterPrefix.FindAllStringSubmatch(string(src), -1) {
-		prefixes[m[1]] = m[2]
-	}
+// routerOperations lists the "METHOD /path" operations the live router
+// serves under the API base path, in swagger.yaml's notation: base path
+// stripped, trailing slash dropped, and the {name:name\/?} variables (which
+// only make a trailing slash optional) written as their literal segment.
+func (c *contract) routerOperations() map[string]bool {
+	c.t.Helper()
 	ops := map[string]bool{}
-	for _, m := range rxRouteRegistration.FindAllStringSubmatch(string(src), -1) {
-		path := prefixes[m[1]] + m[2]
-		if !strings.HasPrefix(path, "/api/v1") {
-			continue
+	err := c.router.Walk(func(route *mux.Route, _ *mux.Router, _ []*mux.Route) error {
+		tmpl, err := route.GetPathTemplate()
+		if err != nil {
+			return nil
 		}
-		path = strings.TrimPrefix(path, "/api/v1")
-		path = rxRouteRegex.ReplaceAllString(path, "{$1}")
-		for _, method := range strings.Split(m[3], ",") {
-			method = strings.ToLower(strings.TrimSpace(strings.Trim(strings.TrimSpace(method), `"`)))
-			if method == "options" {
-				continue
-			}
-			if method == "logout" || method == "login" {
-				// regex-tailored path variables (/{login:login\/?}) stand
-				// for their literal route segment.
-				continue
-			}
-			ops[strings.ToUpper(method)+" "+strings.TrimSuffix(path, "/")] = true
+		methods, err := route.GetMethods()
+		if err != nil {
+			return nil // prefix-only routes (subrouters, catch-alls)
 		}
+		if tmpl != c.spec.BasePath && !strings.HasPrefix(tmpl, c.spec.BasePath+"/") {
+			return nil
+		}
+		path := rxRouteVar.ReplaceAllStringFunc(strings.TrimPrefix(tmpl, c.spec.BasePath), func(v string) string {
+			m := rxRouteVar.FindStringSubmatch(v)
+			if m[2] == m[1]+`\/?` {
+				return m[1]
+			}
+			return "{" + m[1] + "}"
+		})
+		path = strings.TrimSuffix(path, "/")
+		for _, method := range methods {
+			if method != http.MethodOptions {
+				ops[method+" "+path] = true
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		c.t.Fatalf("walking the router: %v", err)
 	}
 	return ops
-}
-
-// legacyGaps lists routes the router still serves but swagger.yaml omits on
-// purpose. Any OTHER undocumented route fails TestAPIContract coverage.
-var legacyGaps = map[string]bool{
-	// served by the JWT group for API compatibility; undocumented on
-	// purpose, but exercised below to pin its token-blacklisting behaviour.
-	"GET /logout": true,
-}
-
-// exercisedGaps lists routes the contract exercises although no swagger.yaml
-// operation documents them (kept alive only for API compatibility). Any
-// OTHER call against an undocumented route fails the coverage check.
-var exercisedGaps = map[string]bool{
-	// served by the JWT group for API compatibility, but the webapp logs
-	// out client-side; undocumented on purpose.
-	"GET /logout": true,
 }
 
 // specDoc is the slice of the generated swagger.yaml that the contract checks
@@ -138,16 +109,12 @@ type specDef struct {
 	Items      *specDef           `yaml:"items"`
 	GoType     specGoType         `yaml:"x-go-type"`
 	Properties map[string]specDef `yaml:"properties"`
+	Required   []string           `yaml:"required"`
 }
 
 type specGoType struct {
 	Type    string `yaml:"type"`
 	Package string `yaml:"package"`
-}
-
-type specProp struct {
-	Required bool    `yaml:"required"`
-	Schema   specDef `yaml:"schema"`
 }
 
 type specOp struct {
@@ -196,7 +163,7 @@ func (s *specDoc) modelFor(path, method string) (name string, def specDef, docum
 		return "", specDef{}, true, false
 	}
 	if !strings.HasPrefix(resp.Schema.Ref, "#/definitions/") {
-		if resp.Schema.Type == "object" && len(resp.Schema.Properties) > 0 {
+		if (resp.Schema.Type == "object" && len(resp.Schema.Properties) > 0) || resp.Schema.Type == "array" {
 			return "(inline)", resp.Schema, true, true
 		}
 		return "", specDef{}, true, false
@@ -241,38 +208,8 @@ func jsonKeys(body []byte) ([]string, error) {
 	return keys, nil
 }
 
-// jsonFields returns the top level JSON field names of a struct type.
-// omitemptyKeys returns the json names of fields that may be absent from the
-// wire (they carry the omitempty option).
-func omitemptyKeys(t reflect.Type) []string {
-	names := []string{}
-	var walk func(reflect.Type)
-	walk = func(t reflect.Type) {
-		for i := 0; i < t.NumField(); i++ {
-			f := t.Field(i)
-			if f.Anonymous {
-				ft := f.Type
-				if ft.Kind() == reflect.Ptr {
-					ft = ft.Elem()
-				}
-				if ft.Kind() == reflect.Struct && f.Tag.Get("json") == "" {
-					walk(ft)
-					continue
-				}
-			}
-			if strings.Contains(f.Tag.Get("json"), "omitempty") {
-				name := strings.Split(f.Tag.Get("json"), ",")[0]
-				if name != "" {
-					names = append(names, name)
-				}
-			}
-		}
-	}
-	walk(t)
-	sort.Strings(names)
-	return names
-}
-
+// jsonFields returns the JSON names of the fields of a struct type that are
+// always present on the wire (no omitempty), flattening embedded structs.
 func jsonFields(t reflect.Type) []string {
 	names := []string{}
 	seen := map[string]bool{}
@@ -379,9 +316,7 @@ func (c *contract) invoke(method, specPath, actualPath, token string, body inter
 	c.t.Helper()
 	c.exercised[method+" "+specPath] = true
 	if _, _, documented, _ := c.spec.modelFor(specPath, method); !documented {
-		if !exercisedGaps[method+" "+specPath] {
-			c.t.Errorf("%s %s is not documented in swagger.yaml", method, specPath)
-		}
+		c.t.Errorf("%s %s is not documented in swagger.yaml", method, specPath)
 		return nil
 	}
 	status, raw := c.do(method, actualPath, token, body)
@@ -420,25 +355,8 @@ func (c *contract) objOpts(o opts, method, specPath, actualPath, token string, b
 	if err != nil {
 		c.t.Fatalf("%s %s: 200 body is not a JSON object (%v): %s", method, specPath, err, raw)
 	}
-	if len(def.Properties) == 0 && def.GoType.Type != "" {
-		// x-go-type alias without inlined schema (hand-written spec): the
-		// Go struct the spec points at must match both the wire and the
-		// type the contract expected.
-		alias := specGoTypes()[def.GoType.Type]
-		if goType != nil && alias != goType {
-			c.t.Errorf("%s %s: spec model %s aliases %s, contract expects %s", method, specPath, name, def.GoType.Type, goType)
-		}
-		want := o.expect
-		if want == nil {
-			want = jsonFields(alias)
-		}
-		if missing := missingKeys(keys, want); len(missing) > 0 {
-			c.t.Errorf("%s %s: response lacks keys %v of %s", method, specPath, missing, alias)
-		}
-		allowed := append(append([]string{}, want...), omitemptyKeys(alias)...)
-		if extra := missingKeys(allowed, keys); len(extra) > 0 {
-			c.t.Errorf("%s %s: response carries unexpected keys %v beyond %s", method, specPath, extra, alias)
-		}
+	if len(def.Properties) == 0 {
+		c.t.Errorf("%s %s: spec model %s declares no properties (regenerate swagger.yaml: make generate)", method, specPath, name)
 		return raw
 	}
 	// The spec carries the full property list (apigen inlines it from the
@@ -481,19 +399,27 @@ func (c *contract) arrOpts(o opts, method, specPath, actualPath, token string, b
 	if err := json.Unmarshal(raw, &list); err != nil {
 		c.t.Fatalf("%s %s: 200 body is not a JSON array: %s", method, specPath, raw)
 	}
-	if _, def, documented, ok := c.spec.modelFor(specPath, method); documented && ok && def.Items != nil && def.Items.GoType.Type != "" {
-		if alias, known := specGoTypes()[def.Items.GoType.Type]; known {
-			wantElem := jsonFields(alias)
-			for i, item := range list {
-				keys, err := jsonKeys(item)
+	if name, def, documented, ok := c.spec.modelFor(specPath, method); documented && ok {
+		item, itemName := c.spec.arrayItem(def)
+		if item == nil {
+			c.t.Errorf("%s %s: spec model %s is not an array of objects", method, specPath, name)
+		} else {
+			for i, elem := range list {
+				keys, err := jsonKeys(elem)
 				if err != nil {
-					continue
+					c.t.Fatalf("%s %s: element %d is not a JSON object: %s", method, specPath, i, elem)
 				}
-				if !reflect.DeepEqual(keys, wantElem) {
-					c.t.Errorf("%s %s: element %d keys %v differ from JSON tags of %s %v", method, specPath, i, keys, alias, wantElem)
+				specKeys := make([]string, 0, len(item.Properties))
+				for k := range item.Properties {
+					specKeys = append(specKeys, k)
+				}
+				if extra := missingKeys(specKeys, keys); len(extra) > 0 {
+					c.t.Errorf("%s %s: element %d keys %v are not declared by spec model %s", method, specPath, i, extra, itemName)
+				}
+				if missing := missingKeys(keys, item.Required); len(missing) > 0 {
+					c.t.Errorf("%s %s: element %d lacks required keys %v of %s", method, specPath, i, missing, itemName)
 				}
 			}
-			return raw
 		}
 	}
 	if o.permissiveArray {
@@ -526,7 +452,39 @@ func (c *contract) empty(method, specPath, actualPath, token string) {
 	if hasRef && name != "OK" {
 		c.t.Errorf("%s %s: contract expects the empty OK response, spec says %s", method, specPath, name)
 	}
-	c.invoke(method, specPath, actualPath, token, nil)
+	if raw := c.invoke(method, specPath, actualPath, token, nil); len(bytes.TrimSpace(raw)) > 0 {
+		c.t.Errorf("%s %s: documented as body-less, got %s", method, specPath, raw)
+	}
+}
+
+// arrayItem resolves the item schema of an array response definition.
+func (s *specDoc) arrayItem(def specDef) (*specDef, string) {
+	if def.Type != "array" || def.Items == nil {
+		return nil, ""
+	}
+	if !strings.HasPrefix(def.Items.Ref, "#/definitions/") {
+		if len(def.Items.Properties) == 0 {
+			return nil, ""
+		}
+		return def.Items, "(inline)"
+	}
+	name := strings.TrimPrefix(def.Items.Ref, "#/definitions/")
+	item, ok := s.Defs[name]
+	if !ok || len(item.Properties) == 0 {
+		return nil, name
+	}
+	return &item, name
+}
+
+// sub runs fn as a subtest and points the helpers at it, so their failures
+// (including Fatal) belong to the subtest that made the call.
+func (c *contract) sub(name string, fn func(t *testing.T)) {
+	parent := c.t
+	parent.Run(name, func(t *testing.T) {
+		c.t = t
+		defer func() { c.t = parent }()
+		fn(t)
+	})
 }
 
 func newContract(t *testing.T) *contract {
@@ -571,7 +529,7 @@ func newContract(t *testing.T) *contract {
 
 	// Bootstrap: the only superuser can come from /first-run on an empty
 	// instance, which doubles as coverage for that endpoint.
-	status, raw := c.do(http.MethodPost, "/first-run/", "", params.NewUserParams{
+	status, raw := c.do(http.MethodPost, "/first-run", "", params.NewUserParams{
 		Username: "contractadmin", Email: "admin@contract.test",
 		Password: "Kx7#mQ2vLp9!wRt4", FullName: "Contract Admin",
 		IsAdmin: true, Enabled: true,
@@ -637,8 +595,7 @@ func TestAPIContract(t *testing.T) {
 }
 
 func (c *contract) runBootstrap() {
-	t := c.t
-	t.Run("bootstrap", func(t *testing.T) {
+	c.sub("bootstrap", func(t *testing.T) {
 		// A bootstrapped instance must refuse further first-runs.
 		status, _ := c.do(http.MethodPost, "/first-run/", "", params.NewUserParams{
 			Username: "late", Email: "late@contract.test",
@@ -651,8 +608,7 @@ func (c *contract) runBootstrap() {
 }
 
 func (c *contract) runAuth() {
-	t := c.t
-	t.Run("auth", func(t *testing.T) {
+	c.sub("auth", func(t *testing.T) {
 		c.obj(http.MethodPost, "/auth/login", "/auth/login", "", params.PasswordLoginParams{
 			Username: "contractmember", Password: "Zq8$nvL2tY6#hKd5",
 		}, reflect.TypeOf(params.JWTResponse{}))
@@ -670,7 +626,7 @@ func (c *contract) runAuth() {
 			t.Fatal(err)
 		}
 		c.obj(http.MethodGet, "/public/paste/{pasteID}", "/public/paste/"+p.PasteID, "", nil,
-			nil) // spec declares `schema: file`; no JSON body
+			reflect.TypeOf(params.Paste{}))
 
 		// Authenticated routes must reject anonymous callers.
 		if status, _ := c.do(http.MethodGet, "/paste", "", nil); status != http.StatusUnauthorized {
@@ -680,8 +636,7 @@ func (c *contract) runAuth() {
 }
 
 func (c *contract) runPastes() {
-	t := c.t
-	t.Run("pastes", func(t *testing.T) {
+	c.sub("pastes", func(t *testing.T) {
 		created := c.obj(http.MethodPost, "/paste", "/paste", c.admin.token, params.Paste{
 			Data:        []byte("contract paste body"),
 			Name:        "contract.txt",
@@ -732,8 +687,7 @@ func (c *contract) runPastes() {
 }
 
 func (c *contract) runLabels() {
-	t := c.t
-	t.Run("labels", func(t *testing.T) {
+	c.sub("labels", func(t *testing.T) {
 		c.obj(http.MethodGet, "/labels", "/labels", c.admin.token, nil, reflect.TypeOf(params.LabelVocabulary{}))
 		owned := c.arr(http.MethodGet, "/labels/mine", "/labels/mine", c.admin.token, nil)
 		list := []params.LabelInfo{}
@@ -765,8 +719,7 @@ func (c *contract) runLabels() {
 }
 
 func (c *contract) runUsers() {
-	t := c.t
-	t.Run("users", func(t *testing.T) {
+	c.sub("users", func(t *testing.T) {
 		c.obj(http.MethodGet, "/me", "/me", c.member.token, nil, reflect.TypeOf(params.Users{}))
 		c.obj(http.MethodPut, "/me", "/me", c.member.token,
 			params.MeSettingsParams{Discoverable: ptr(true)}, reflect.TypeOf(params.Users{}))
@@ -785,8 +738,7 @@ func (c *contract) runUsers() {
 }
 
 func (c *contract) runTeams() {
-	t := c.t
-	t.Run("teams", func(t *testing.T) {
+	c.sub("teams", func(t *testing.T) {
 		c.obj(http.MethodPost, "/teams", "/teams", c.admin.token,
 			params.NewTeamParams{Name: "contract-team", Description: "created by the contract test"},
 			reflect.TypeOf(params.Teams{}))
@@ -834,6 +786,17 @@ func (c *contract) runTeams() {
 		c.arr(http.MethodGet, "/teams/invites", "/teams/invites", c.secondUser.token, nil)
 		c.empty(http.MethodPost, "/teams/{teamName}/decline", "/teams/contract-team/decline", c.secondUser.token)
 
+		// An ownership offer the owner withdraws, then one the member
+		// declines: both actions answer with the team, like accept.
+		c.obj(http.MethodPost, "/teams/{teamName}/transfer", "/teams/contract-team/transfer", c.admin.token,
+			params.TeamTransferParams{UserID: "contractmember"}, reflect.TypeOf(params.Teams{}))
+		c.obj(http.MethodPost, "/teams/{teamName}/transfer/{action}", "/teams/contract-team/transfer/cancel",
+			c.admin.token, nil, reflect.TypeOf(params.Teams{}))
+		c.obj(http.MethodPost, "/teams/{teamName}/transfer", "/teams/contract-team/transfer", c.admin.token,
+			params.TeamTransferParams{UserID: "contractmember"}, reflect.TypeOf(params.Teams{}))
+		c.obj(http.MethodPost, "/teams/{teamName}/transfer/{action}", "/teams/contract-team/transfer/decline",
+			c.member.token, nil, reflect.TypeOf(params.Teams{}))
+
 		// The owner hands the team over to the member, who accepts.
 		c.obj(http.MethodPost, "/teams/{teamName}/transfer", "/teams/contract-team/transfer", c.admin.token,
 			params.TeamTransferParams{UserID: "contractmember"}, reflect.TypeOf(params.Teams{}))
@@ -869,8 +832,7 @@ func (c *contract) runTeams() {
 }
 
 func (c *contract) runAdmin() {
-	t := c.t
-	t.Run("admin", func(t *testing.T) {
+	c.sub("admin", func(t *testing.T) {
 		c.obj(http.MethodGet, "/admin/users", "/admin/users", c.admin.token, nil, reflect.TypeOf(params.UserListResult{}))
 		c.obj(http.MethodGet, "/admin/users/{userID}", fmt.Sprintf("/admin/users/%d", c.member.id), c.admin.token, nil,
 			reflect.TypeOf(params.Users{}))
@@ -911,157 +873,10 @@ func (c *contract) runAdmin() {
 	})
 }
 
-// runCoverage fails when the spec and the router disagree about the surface,
-// in either direction.
-// specGoTypes maps every definition in swagger.yaml to the Go struct it is an
-// x-go-type alias of. The definitions carry no properties (they are pure
-// aliases), so validating the spec means resolving each alias and walking the
-// Go type the server actually marshals.
-func specGoTypes() map[string]reflect.Type {
-	return map[string]reflect.Type{
-		"APIErrorResponse":        reflect.TypeOf(responses.APIErrorResponse{}),
-		"JWTResponse":             reflect.TypeOf(params.JWTResponse{}),
-		"LabelInfo":               reflect.TypeOf(params.LabelInfo{}),
-		"LabelVocabulary":         reflect.TypeOf(params.LabelVocabulary{}),
-		"MeSettingsParams":        reflect.TypeOf(params.MeSettingsParams{}),
-		"NewTeamParams":           reflect.TypeOf(params.NewTeamParams{}),
-		"NewUserParams":           reflect.TypeOf(params.NewUserParams{}),
-		"PasswordLoginParams":     reflect.TypeOf(params.PasswordLoginParams{}),
-		"Paste":                   reflect.TypeOf(params.Paste{}),
-		"PasteLabelsParams":       reflect.TypeOf(params.PasteLabelsParams{}),
-		"PasteListResult":         reflect.TypeOf(params.PasteListResult{}),
-		"PasteShareListResponse":  reflect.TypeOf(params.PasteShareListResponse{}),
-		"SetTeamMemberRoleParams": reflect.TypeOf(params.SetTeamMemberRoleParams{}),
-		"TeamInviteInfo":          reflect.TypeOf(params.TeamInviteInfo{}),
-		"TeamLabelGroup":          reflect.TypeOf(params.TeamLabelGroup{}),
-		"TeamLabelsParams":        reflect.TypeOf(params.TeamLabelsParams{}),
-		"TeamListResult":          reflect.TypeOf(params.TeamListResult{}),
-		"TeamMember":              reflect.TypeOf(params.TeamMember{}),
-		"TeamMemberParams":        reflect.TypeOf(params.TeamMemberParams{}),
-		"TeamStats":               reflect.TypeOf(params.TeamStats{}),
-		"TeamTransferInfo":        reflect.TypeOf(params.TeamTransferInfo{}),
-		"TeamTransferParams":      reflect.TypeOf(params.TeamTransferParams{}),
-		"Teams":                   reflect.TypeOf(params.Teams{}),
-		"UpdateLabelParams":       reflect.TypeOf(params.UpdateLabelParams{}),
-		"UpdatePasteParams":       reflect.TypeOf(params.UpdatePasteParams{}),
-		"UpdateTeamParams":        reflect.TypeOf(params.UpdateTeamParams{}),
-		"UpdateUserPayload":       reflect.TypeOf(params.UpdateUserPayload{}),
-		"UserActionRequest":       reflect.TypeOf(params.UserActionRequest{}),
-		"UserListResult":          reflect.TypeOf(params.UserListResult{}),
-		"UserSearchResult":        reflect.TypeOf(params.UserSearchResult{}),
-		"Users":                   reflect.TypeOf(params.Users{}),
-	}
-}
-
-// specShape returns the JSON field names the type contributes to the wire
-// format: exported fields with a usable json tag, matching encoding/json.
-// Embedded structs are flattened (params.User embeds params.BaseUser).
-func specShape(t reflect.Type) []string {
-	names := []string{}
-	seen := map[string]bool{}
-	var walk func(reflect.Type)
-	walk = func(t reflect.Type) {
-		for i := 0; i < t.NumField(); i++ {
-			f := t.Field(i)
-			if f.Anonymous {
-				walk(f.Type)
-				continue
-			}
-			tag := f.Tag.Get("json")
-			if tag == "-" {
-				continue
-			}
-			name := strings.Split(tag, ",")[0]
-			if name == "" {
-				name = f.Name
-			}
-			if !seen[name] {
-				seen[name] = true
-				names = append(names, name)
-			}
-		}
-	}
-	walk(t)
-	sort.Strings(names)
-	return names
-}
-
-// runSpecTypes walks every definition, resolves its x-go-type alias and
-// compares the Go struct against the spec's declared properties (inline or
-// $ref'd). It also fails for definitions the spec documents but the map
-// forgets, and for map entries no definition uses any more.
-func (c *contract) runSpecTypes() {
-	t := c.t
-	t.Run("spec types", func(t *testing.T) {
-		aliases := specGoTypes()
-		used := map[string]bool{}
-		for name, def := range c.spec.Defs {
-			switch {
-			case def.GoType.Type != "":
-				used[name] = true
-				if _, known := aliases[def.GoType.Type]; !known {
-					t.Errorf("definition %q aliases %s but the test does not know the Go type", name, def.GoType.Type)
-					continue
-				}
-				if def.GoType.Package != "" && def.GoType.Package != "gopherbin/params" && def.GoType.Package != "gopherbin/apiserver/responses" {
-					t.Errorf("definition %q aliases unknown package %q", name, def.GoType.Package)
-				}
-				if len(def.Properties) > 0 {
-					t.Errorf("definition %q is an x-go-type alias but also declares properties", name)
-				}
-			case len(def.Properties) > 0: // inline object definitions
-				used[name] = true
-			}
-		}
-		for name := range aliases {
-			def, exists := c.spec.Defs[name]
-			if !exists || def.GoType.Type == "" {
-				t.Errorf("spec no longer defines %q as an x-go-type alias; clean up specGoTypes", name)
-			}
-		}
-		// Response conformance: every object response the spec names must
-		// match the wire shape of the Go type the handler marshals. An
-		// alias with no explicit properties is checked against the Go
-		// type unconditionally; if the two ever disagree, the fix is in
-		// the annotation (or in the handler), never in this test.
-		for path, ops := range c.spec.Paths {
-			for method, op := range ops {
-				resp, ok := op.Responses["200"]
-				if !ok {
-					continue
-				}
-				opName := strings.ToUpper(method) + " " + path
-				if strings.HasPrefix(resp.Schema.Ref, "#/definitions/") {
-					target := strings.TrimPrefix(resp.Schema.Ref, "#/definitions/")
-					def, exists := c.spec.Defs[target]
-					if !exists || def.GoType.Type == "" {
-						continue
-					}
-					goType, known := aliases[def.GoType.Type]
-					if !known {
-						continue
-					}
-					if len(def.Properties) == 0 {
-						continue // pure alias: wire shape == Go shape by construction
-					}
-					specFields := make([]string, 0, len(def.Properties))
-					for k := range def.Properties {
-						specFields = append(specFields, k)
-					}
-					sort.Strings(specFields)
-					if goFields := specShape(goType); !reflect.DeepEqual(specFields, goFields) {
-						t.Errorf("%s: spec model %s properties %v differ from Go shape of %s %v",
-							opName, target, specFields, def.GoType.Type, goFields)
-					}
-				}
-			}
-		}
-	})
-}
-
+// runCoverage fails when the spec, the router and the calls made above
+// disagree about the API surface, in any direction.
 func (c *contract) runCoverage() {
-	t := c.t
-	t.Run("coverage", func(t *testing.T) {
+	c.sub("coverage", func(t *testing.T) {
 		documented := map[string]bool{}
 		for path, ops := range c.spec.Paths {
 			for method := range ops {
@@ -1079,12 +894,16 @@ func (c *contract) runCoverage() {
 			}
 		}
 
-		// The router registration file is the authority on what the API
-		// serves; anything under /api/v1 not in the spec (apart from the
-		// legacy gaps) is drift.
-		for op := range routerOperations(t) {
-			if !documented[op] && !legacyGaps[op] {
+		// The live router is the authority on what the API serves.
+		served := c.routerOperations()
+		for op := range served {
+			if !documented[op] {
 				t.Errorf("router serves %q but swagger.yaml does not document it", op)
+			}
+		}
+		for op := range documented {
+			if !served[op] {
+				t.Errorf("swagger.yaml documents %q but the router does not serve it", op)
 			}
 		}
 	})

@@ -23,12 +23,10 @@ package controllers
 // ---------------------------------------------------------------------------
 // System / bootstrap
 //
-// The first-run and login endpoints are registered on their own mux groups
-// (see apiserver/routers/routers.go) that do not run the JWT middleware, so
-// they carry no operation-level security annotation; the global `security`
-// from swagger-models.yaml only applies to the authenticated apiRouter tree.
-// GET /logout is intentionally undocumented: it exists only as a
-// compatibility alias for GET /auth/logout, which the webapp never calls.
+// The first-run, login and public paste endpoints are registered on mux
+// groups (see apiserver/routers/routers.go) that do not run the JWT
+// middleware. They carry the x-public extension, which cmd/apigen turns into
+// `security: []` so they are exempt from the global Bearer requirement.
 // ---------------------------------------------------------------------------
 
 // swagger:route POST /first-run system firstRun
@@ -48,6 +46,9 @@ package controllers
 //	  200: Users
 //	  400: APIErrorResponse
 //	  409: APIErrorResponse
+//
+//	Extensions:
+//	  x-public: true
 const opFirstRun = "firstRun"
 
 // swagger:route POST /auth/login auth login
@@ -66,6 +67,9 @@ const opFirstRun = "firstRun"
 //	  200: JWTResponse
 //	  400: APIErrorResponse
 //	  401: APIErrorResponse
+//
+//	Extensions:
+//	  x-public: true
 const opLogin = "login"
 
 // swagger:route GET /logout auth logout
@@ -89,11 +93,19 @@ const opLogin = "login"
 //	    in: path
 //	    type: string
 //	    required: true
-//
+//	  + name: X-Consume-Access
+//	    description: Any non-empty value confirms a view of a paste with limited views (max_accesses), which consumes one of them. Without it such pastes answer 403 and nothing is consumed.
+//	    in: header
+//	    type: string
+//	    required: false
 //
 //	Responses:
 //	  200: Paste
+//	  403: APIErrorResponse
 //	  404: APIErrorResponse
+//
+//	Extensions:
+//	  x-public: true
 const opPublicPasteView = "publicPasteView"
 
 // ---------------------------------------------------------------------------
@@ -145,13 +157,14 @@ const opListPastes = "listPastes"
 //	  + name: Body
 //	    description: Paste payload.
 //	    in: body
-//	    type: Paste
+//	    type: NewPasteParams
 //	    required: true
 //
 //	Responses:
 //	  200: Paste
 //	  400: APIErrorResponse
 //	  401: APIErrorResponse
+//	  404: APIErrorResponse
 const opCreatePaste = "createPaste"
 
 // swagger:route GET /paste/{pasteID} pastes getPaste
@@ -164,10 +177,16 @@ const opCreatePaste = "createPaste"
 //	    in: path
 //	    type: string
 //	    required: true
+//	  + name: X-Consume-Access
+//	    description: Any non-empty value confirms a view of a paste with limited views (max_accesses), which consumes one of them. Without it such pastes answer 403 and nothing is consumed.
+//	    in: header
+//	    type: string
+//	    required: false
 //
 //	Responses:
 //	  200: Paste
 //	  401: APIErrorResponse
+//	  403: APIErrorResponse
 //	  404: APIErrorResponse
 const opGetPaste = "getPaste"
 
@@ -181,10 +200,16 @@ const opGetPaste = "getPaste"
 //	    in: path
 //	    type: string
 //	    required: true
+//	  + name: X-Consume-Access
+//	    description: Any non-empty value confirms a view of a paste with limited views (max_accesses), which consumes one of them. Without it such pastes answer 403 and nothing is consumed.
+//	    in: header
+//	    type: string
+//	    required: false
 //
 //	Responses:
 //	  200: file
 //	  401: APIErrorResponse
+//	  403: APIErrorResponse
 //	  404: APIErrorResponse
 const opDownloadPaste = "downloadPaste"
 
@@ -534,6 +559,7 @@ const opListTeams = "listTeams"
 //	  200: Teams
 //	  400: APIErrorResponse
 //	  401: APIErrorResponse
+//	  409: APIErrorResponse
 const opCreateTeam = "createTeam"
 
 // swagger:route GET /teams/invites teams listTeamInvites
@@ -592,6 +618,7 @@ const opGetTeam = "getTeam"
 //	  400: APIErrorResponse
 //	  401: APIErrorResponse
 //	  404: APIErrorResponse
+//	  409: APIErrorResponse
 const opUpdateTeam = "updateTeam"
 
 // swagger:route DELETE /teams/{teamName} teams deleteTeam
@@ -815,7 +842,7 @@ const opTransferTeam = "transferTeam"
 //	    description: Transfer action.
 //	    in: path
 //	    type: string
-//	    enum: accept decline cancel
+//	    enum: accept,decline,cancel
 //	    required: true
 //
 //	Responses:
@@ -848,7 +875,6 @@ const opTeamTransferAction = "teamTransferAction"
 //	Responses:
 //	  200: UserListResult
 //	  401: APIErrorResponse
-//	  403: APIErrorResponse
 const opListUsers = "listUsers"
 
 // swagger:route POST /admin/users admin createUser
@@ -866,7 +892,7 @@ const opListUsers = "listUsers"
 //	  200: Users
 //	  400: APIErrorResponse
 //	  401: APIErrorResponse
-//	  403: APIErrorResponse
+//	  409: APIErrorResponse
 const opCreateUser = "createUser"
 
 // swagger:route GET /admin/users/{userID} admin getUser
@@ -883,7 +909,6 @@ const opCreateUser = "createUser"
 //	Responses:
 //	  200: Users
 //	  401: APIErrorResponse
-//	  403: APIErrorResponse
 //	  404: APIErrorResponse
 const opGetUser = "getUser"
 
@@ -907,8 +932,8 @@ const opGetUser = "getUser"
 //	  200: Users
 //	  400: APIErrorResponse
 //	  401: APIErrorResponse
-//	  403: APIErrorResponse
 //	  404: APIErrorResponse
+//	  409: APIErrorResponse
 const opUpdateUser = "updateUser"
 
 // swagger:route DELETE /admin/users/{userID} admin deleteUser
@@ -925,6 +950,6 @@ const opUpdateUser = "updateUser"
 //	Responses:
 //	  200: OK
 //	  401: APIErrorResponse
-//	  403: APIErrorResponse
 //	  404: APIErrorResponse
+//	  409: APIErrorResponse
 const opDeleteUser = "deleteUser"

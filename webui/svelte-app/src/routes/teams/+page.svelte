@@ -61,7 +61,7 @@
 			newTeamDescription = '';
 			showCreate = false;
 			await loadTeams();
-			goto(`/teams/${team.name}`);
+			goto(`/teams/${encodeURIComponent(team.name)}`);
 		} catch (err) {
 			error = formatApiError(err);
 		} finally {
@@ -143,7 +143,7 @@
 							<Users class="w-5 h-5 text-purple-600 dark:text-purple-400" />
 							<button
 								type="button"
-								on:click={() => goto(`/teams/${team.name}`)}
+								on:click={() => goto(`/teams/${encodeURIComponent(team.name)}`)}
 								class="font-semibold text-gray-900 dark:text-gray-100 truncate hover:underline text-left"
 							>
 								{team.name}
@@ -153,7 +153,8 @@
 							</span>
 						</div>
 						<p class="text-sm text-gray-600 dark:text-gray-400">
-							{team.owner.full_name || team.owner.username} invited you to join this team.
+							You have been invited to join this team, owned by
+							{team.owner.full_name || team.owner.username}.
 						</p>
 						<div class="flex justify-end gap-2">
 							<Button on:click={() => (decliningTeam = team)} variant="secondary" disabled={actionInProgress}>
@@ -192,7 +193,7 @@
 				{#each joined as team}
 					<button
 						type="button"
-						on:click={() => goto(`/teams/${team.name}`)}
+						on:click={() => goto(`/teams/${encodeURIComponent(team.name)}`)}
 						class="text-left bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md transition-shadow space-y-2"
 					>
 						<div class="flex items-center gap-2">
@@ -204,7 +205,7 @@
 								</span>
 							{:else}
 								<span class="ml-auto px-2 py-0.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded">
-									Member
+									{team.my_role === 'admin' ? 'Admin' : team.my_role === 'viewer' ? 'Viewer' : 'Member'}
 								</span>
 							{/if}
 						</div>
@@ -244,8 +245,8 @@
 		></textarea>
 		<p class="text-xs text-gray-600 dark:text-gray-400">
 			Team pastes are private and visible to all team members. Team members can create pastes
-			for the team; only the team owner can manage members or delete the team. Invited users
-			must accept before they get access.
+			for the team; the owner and admins can manage members, and only the owner can delete the
+			team. Invited users must accept before they get access.
 		</p>
 		<div class="flex justify-end gap-2">
 			<Button on:click={() => (showCreate = false)} variant="secondary" type="button">Cancel</Button>

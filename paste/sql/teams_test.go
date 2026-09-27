@@ -264,21 +264,33 @@ func TestTeamPastePrivacyRules(t *testing.T) {
 		t.Fatalf("make team paste public: want BadRequest, got %v", err)
 	}
 
-	// A regular member cannot change paste privacy; the team owner can.
+	// The paste owner (a member) and the team owner may manage it.
 	if _, err := f.paster.SetPrivacy(f.ctxUser2, pst.PasteID, false); err != nil {
-		t.Logf("note: paste owner (member) allowed to set privacy: %v", err)
+		t.Fatalf("paste owner SetPrivacy: %v", err)
+	}
+	if _, err := f.paster.SetPrivacy(f.ctxSuper, pst.PasteID, false); err != nil {
+		t.Fatalf("team owner SetPrivacy: %v", err)
 	}
 	// Outsider: canManage denial after a successful load answers 404,
 	// indistinguishable from a nonexistent paste.
 	if _, err := f.paster.SetPrivacy(f.ctxUser3, pst.PasteID, false); !isNotFound(err) {
 		t.Fatalf("outsider SetPrivacy: want NotFound, got %v", err)
 	}
-
-	// Only the paste owner or team owner may delete. A non-owner member
-	// (bob is not in the team here) cannot delete; the denial is a 404 so
-	// foreign-but-existing pastes are not enumerable.
 	if err := f.paster.Delete(f.ctxUser3, pst.PasteID); !isNotFound(err) {
 		t.Fatalf("outsider Delete: want NotFound, got %v", err)
+	}
+
+	// A member who does not own the paste can read it but not manage it;
+	// the denial is the same 404.
+	f.inviteAndAccept(t, f.ctxSuper, "engineers", "bob", f.ctxUser3)
+	if _, err := f.paster.Get(f.ctxUser3, pst.PasteID); err != nil {
+		t.Fatalf("member Get: %v", err)
+	}
+	if _, err := f.paster.SetPrivacy(f.ctxUser3, pst.PasteID, false); !isNotFound(err) {
+		t.Fatalf("non-owner member SetPrivacy: want NotFound, got %v", err)
+	}
+	if err := f.paster.Delete(f.ctxUser3, pst.PasteID); !isNotFound(err) {
+		t.Fatalf("non-owner member Delete: want NotFound, got %v", err)
 	}
 	if err := f.paster.Delete(f.ctxSuper, pst.PasteID); err != nil {
 		t.Fatalf("team owner Delete: %v", err)
@@ -747,5 +759,191 @@ func TestTeamRosterRedactedForPendingInvitee(t *testing.T) {
 		t.Fatalf("ListMembers as owner: %v", err)
 	} else if len(asOwner) == 0 || asOwner[0].Email == "" {
 		t.Errorf("owner must still see member emails: %+v", asOwner)
+	}
+}
+
+// ── Membership ends access ───────────────────────────────────────────────────
+
+// Team pastes are governed by membership alone: a member who is removed (or
+// leaves) loses access to the team pastes they created, and can no longer
+// manage them or grow the team's label vocabulary through them.
+func TestFormerMemberLosesTeamPasteAccess(t *testing.T) {
+	f := newTeamFixture(t)
+	if _, err := f.teams.Create(f.ctxSuper, "engineers", ""); err != nil {
+		t.Fatalf("Create team: %v", err)
+	}
+	f.inviteAndAccept(t, f.ctxSuper, "engineers", "alice", f.ctxUser2)
+	f.inviteAndAccept(t, f.ctxSuper, "engineers", "bob", f.ctxUser3)
+	removed, err := f.paster.Create(f.ctxUser2, []byte("team"), "by-alice", "text", "", nil, false, "engineers", nil, nil, nil)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	left, err := f.paster.Create(f.ctxUser3, []byte("team"), "by-bob", "text", "", nil, false, "engineers", nil, nil, nil)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := f.teams.RemoveMember(f.ctxSuper, "engineers", "alice"); err != nil {
+		t.Fatalf("RemoveMember: %v", err)
+	}
+	if err := f.teams.LeaveTeam(f.ctxUser3, "engineers"); err != nil {
+		t.Fatalf("LeaveTeam: %v", err)
+	}
+
+	for _, tc := range []struct {
+		who   string
+		ctx   context.Context
+		paste string
+	}{{"removed alice", f.ctxUser2, removed.PasteID}, {"departed bob", f.ctxUser3, left.PasteID}} {
+		if _, err := f.paster.Get(tc.ctx, tc.paste); !isNotFound(err) {
+			t.Errorf("%s Get: want NotFound, got %v", tc.who, err)
+		}
+		if _, err := f.paster.SetLabels(tc.ctx, tc.paste, []string{"injected"}); !isNotFound(err) {
+			t.Errorf("%s SetLabels: want NotFound, got %v", tc.who, err)
+		}
+		if _, err := f.paster.TransferOwnership(tc.ctx, tc.paste, "superadmin"); !isNotFound(err) {
+			t.Errorf("%s TransferOwnership: want NotFound, got %v", tc.who, err)
+		}
+		if err := f.paster.Delete(tc.ctx, tc.paste); !isNotFound(err) {
+			t.Errorf("%s Delete: want NotFound, got %v", tc.who, err)
+		}
+		for _, scope := range []string{pasteCommon.ScopeMine, pasteCommon.ScopeAll} {
+			list, err := f.paster.List(tc.ctx, 1, 50, scope, nil, "")
+			if err != nil {
+				t.Fatalf("%s List(%s): %v", tc.who, scope, err)
+			}
+			if len(list.Pastes) != 0 {
+				t.Errorf("%s List(%s): want no pastes, got %d", tc.who, scope, len(list.Pastes))
+			}
+		}
+	}
+
+	// The pastes stay with the team.
+	list, err := f.paster.List(f.ctxSuper, 1, 50, pasteCommon.ScopeAll, nil, "engineers")
+	if err != nil {
+		t.Fatalf("owner List: %v", err)
+	}
+	if len(list.Pastes) != 2 {
+		t.Fatalf("owner should still see both team pastes, got %d", len(list.Pastes))
+	}
+	team, err := f.teams.Get(f.ctxSuper, "engineers")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if len(team.Labels) != 0 {
+		t.Fatalf("former members must not add team labels: %v", team.Labels)
+	}
+}
+
+// ── Stale ownership transfers ────────────────────────────────────────────────
+
+func TestTransferOfferWithdrawnWhenTargetDeparts(t *testing.T) {
+	f := newTeamFixture(t)
+	if _, err := f.teams.Create(f.ctxSuper, "engineers", ""); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	f.inviteAndAccept(t, f.ctxSuper, "engineers", "alice", f.ctxUser2)
+	if _, err := f.teams.RequestTransfer(f.ctxSuper, "engineers", "alice"); err != nil {
+		t.Fatalf("RequestTransfer: %v", err)
+	}
+	if err := f.teams.LeaveTeam(f.ctxUser2, "engineers"); err != nil {
+		t.Fatalf("LeaveTeam: %v", err)
+	}
+	team, err := f.teams.Get(f.ctxSuper, "engineers")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if team.TransferTo != nil {
+		t.Fatalf("offer should be withdrawn when the target leaves: %+v", team.TransferTo)
+	}
+	if notices, _ := f.teams.ListPendingTransfers(f.ctxUser2); len(notices) != 0 {
+		t.Fatalf("departed target still notified: %+v", notices)
+	}
+	// Re-invited but not accepted: there is nothing to accept.
+	if _, err := f.teams.AddMember(f.ctxSuper, "engineers", "alice", models.RoleViewer); err != nil {
+		t.Fatalf("AddMember: %v", err)
+	}
+	if _, err := f.teams.AcceptTransfer(f.ctxUser2, "engineers"); !isBadRequest(err) {
+		t.Fatalf("stale AcceptTransfer: want BadRequest, got %v", err)
+	}
+
+	// Same for removal by the owner.
+	f.inviteAndAccept(t, f.ctxSuper, "engineers", "bob", f.ctxUser3)
+	if _, err := f.teams.RequestTransfer(f.ctxSuper, "engineers", "bob"); err != nil {
+		t.Fatalf("RequestTransfer: %v", err)
+	}
+	if err := f.teams.RemoveMember(f.ctxSuper, "engineers", "bob"); err != nil {
+		t.Fatalf("RemoveMember: %v", err)
+	}
+	if team, err := f.teams.Get(f.ctxSuper, "engineers"); err != nil || team.TransferTo != nil {
+		t.Fatalf("offer should be withdrawn on removal: %+v %v", team.TransferTo, err)
+	}
+	if got, err := f.teams.Get(f.ctxSuper, "engineers"); err != nil || got.Owner.Username != "superadmin" {
+		t.Fatalf("ownership must not move: %+v %v", got.Owner, err)
+	}
+}
+
+func TestDeleteUserWithPendingTransferOffer(t *testing.T) {
+	f := newTeamFixture(t)
+	if _, err := f.teams.Create(f.ctxSuper, "engineers", ""); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	f.inviteAndAccept(t, f.ctxSuper, "engineers", "alice", f.ctxUser2)
+	if _, err := f.teams.RequestTransfer(f.ctxSuper, "engineers", "alice"); err != nil {
+		t.Fatalf("RequestTransfer: %v", err)
+	}
+	if _, err := f.paster.Create(f.ctxUser2, []byte("x"), "p", "text", "", nil, false, "", nil, nil, []string{"mine"}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := f.users.Delete(f.ctxSuper, f.user2.ID); err != nil {
+		t.Fatalf("Delete user with pending transfer offer: %v", err)
+	}
+	team, err := f.teams.Get(f.ctxSuper, "engineers")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if team.TransferTo != nil {
+		t.Fatalf("offer should be gone with the user: %+v", team.TransferTo)
+	}
+}
+
+// ── Team names and deletion ──────────────────────────────────────────────────
+
+func TestTeamNameValidation(t *testing.T) {
+	f := newTeamFixture(t)
+	for _, name := range []string{"", " ", "a/b", "..", ".hidden", "q?x", "50%", "invites", "Transfers", "trailing ", "123456789012345678901234567890123"} {
+		if _, err := f.teams.Create(f.ctxSuper, name, ""); !isBadRequest(err) {
+			t.Errorf("Create(%q): want BadRequest, got %v", name, err)
+		}
+	}
+	if _, err := f.teams.Create(f.ctxSuper, "Platform team_1.2-x", ""); err != nil {
+		t.Fatalf("Create valid: %v", err)
+	}
+	bad := "a/b"
+	if _, err := f.teams.Update(f.ctxSuper, "Platform team_1.2-x", params.UpdateTeamParams{Name: &bad}); !isBadRequest(err) {
+		t.Fatalf("rename to %q: want BadRequest, got %v", bad, err)
+	}
+}
+
+func TestTeamDeleteRemovesTeamLabels(t *testing.T) {
+	f := newTeamFixture(t)
+	if _, err := f.teams.Create(f.ctxSuper, "engineers", ""); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if _, err := f.paster.Create(f.ctxSuper, []byte("x"), "p", "text", "", nil, false, "engineers", nil, nil, []string{"infra"}); err != nil {
+		t.Fatalf("Create paste: %v", err)
+	}
+	if err := f.teams.Delete(f.ctxSuper, "engineers"); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	// A new team with the same name starts with an empty vocabulary.
+	if _, err := f.teams.Create(f.ctxSuper, "engineers", ""); err != nil {
+		t.Fatalf("re-Create: %v", err)
+	}
+	vocab, err := f.paster.ListLabels(f.ctxSuper)
+	if err != nil {
+		t.Fatalf("ListLabels: %v", err)
+	}
+	if len(vocab.Teams) != 0 {
+		t.Fatalf("labels of the deleted team leaked: %+v", vocab.Teams)
 	}
 }

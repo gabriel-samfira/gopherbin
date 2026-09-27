@@ -55,7 +55,6 @@ type APIController struct {
 	loginLimiter *loginRateLimiter
 }
 
-
 // decodeJSONError maps a JSON body decode failure to the client-facing error.
 // A body truncated by the transport-level size cap surfaces as an
 // http.MaxBytesError, which handleError renders as 413; anything else is a
@@ -206,17 +205,17 @@ func (p *APIController) NotFoundHandler(w http.ResponseWriter, r *http.Request) 
 	json.NewEncoder(w).Encode(responses.NotFoundResponse)
 }
 
-// consumeAccessHeader must be sent (any non-empty value) on the paste-read
+// ConsumeAccessHeader must be sent (any non-empty value) on the paste-read
 // routes whose read consumes one of a paste's limited accesses
 // (max_accesses set). Browsers cannot attach custom headers to drive-by
 // requests (an <img> src cannot set them at all; a cross-origin fetch that
-// tries one is blocked by the CORS preflight, which never lists this
-// header), so its presence is a positive confirmation that a real viewer
-// asked for the content, not a page burning pastes from a third-party
-// origin. Same-origin app fetches set it unconditionally (see
-// webui/svelte-app/src/lib/api/pastes.ts), so legitimate users never see
-// the 403.
-const consumeAccessHeader = "X-Consume-Access"
+// tries one is blocked by the CORS preflight unless its origin is one of
+// the configured cors_origins), so its presence is a positive confirmation
+// that a real viewer asked for the content, not a page burning pastes from
+// a third-party origin. The web UI first reads without it and repeats the
+// read with it once the user confirmed the view (see
+// webui/svelte-app/src/lib/api/pastes.ts).
+const ConsumeAccessHeader = "X-Consume-Access"
 
 // accessBudgetPeeker is an OPTIONAL read-only capability a common.Paster
 // implementation may provide to report a paste's access budget without
@@ -229,7 +228,7 @@ const consumeAccessHeader = "X-Consume-Access"
 // ones and keeps the pre-gate behavior (NewAPIController logs a warning
 // at startup so the gap is visible rather than silent).
 type accessBudgetPeeker interface {
-	PeekMaxAccesses(ctx context.Context, pasteID string) (*int, error)
+	PeekMaxAccesses(ctx context.Context, pasteID string, publicOnly bool) (*int, error)
 }
 
 // confirmLimitedAccess guards the read handlers that consume an access
@@ -240,10 +239,11 @@ type accessBudgetPeeker interface {
 // behaves exactly as before this gate existed). A budget paste read without
 // the header is answered with a typed 403 and no manager call is made, so
 // nothing is consumed and nothing is destroyed.
-func (p *APIController) confirmLimitedAccess(w http.ResponseWriter, r *http.Request, pasteID string) bool {
+// publicOnly selects the anonymous public-paste semantics for the peek.
+func (p *APIController) confirmLimitedAccess(w http.ResponseWriter, r *http.Request, pasteID string, publicOnly bool) bool {
 	// Any non-empty value counts: the header's presence is the
 	// confirmation, its content carries no meaning.
-	if r.Header.Get(consumeAccessHeader) != "" {
+	if r.Header.Get(ConsumeAccessHeader) != "" {
 		return true
 	}
 	peeker, ok := p.paster.(accessBudgetPeeker)
@@ -252,7 +252,7 @@ func (p *APIController) confirmLimitedAccess(w http.ResponseWriter, r *http.Requ
 		// consuming an access to find out; keep serving as before.
 		return true
 	}
-	maxAccesses, err := peeker.PeekMaxAccesses(r.Context(), pasteID)
+	maxAccesses, err := peeker.PeekMaxAccesses(r.Context(), pasteID, publicOnly)
 	if err != nil || maxAccesses == nil {
 		// Unknown, unreadable or not found: proceed and let the getter
 		// produce exactly the same not-found / internal responses it
@@ -260,7 +260,7 @@ func (p *APIController) confirmLimitedAccess(w http.ResponseWriter, r *http.Requ
 		return true
 	}
 	handleError(w, gErrors.NewForbiddenError(
-		"viewing this paste consumes one of its limited accesses; send header %s to confirm the view", consumeAccessHeader))
+		"viewing this paste consumes one of its limited accesses; send header %s to confirm the view", ConsumeAccessHeader))
 	return false
 }
 
@@ -301,10 +301,11 @@ func (p *APIController) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	// Brute-force defense: while this (clientIP, username) pair is over the
 	// failure budget, answer with the exact body the manager produces for
-	// bad credentials, without calling it (no oracle, no timing
-	// difference). See ratelimit.go.
+	// bad credentials, without calling it. The attempt is counted before
+	// authenticating (reserve) so parallel requests cannot overrun the
+	// budget; a success clears the bucket. See ratelimit.go.
 	attemptKey := loginAttemptKey(r, loginInfo.Username)
-	if !p.loginLimiter.allow(attemptKey) {
+	if !p.loginLimiter.reserve(attemptKey) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Retry-After", strconv.Itoa(p.loginLimiter.retryAfter(attemptKey)))
 		w.WriteHeader(http.StatusUnauthorized)
@@ -317,7 +318,6 @@ func (p *APIController) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	ctx, err := p.manager.Authenticate(ctx, loginInfo)
 	if err != nil {
-		p.loginLimiter.recordFailure(attemptKey)
 		handleError(w, err)
 		return
 	}
@@ -375,7 +375,7 @@ func (p *APIController) PasteViewHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if !p.confirmLimitedAccess(w, r, pasteID) {
+	if !p.confirmLimitedAccess(w, r, pasteID, false) {
 		return
 	}
 	pasteInfo, err := p.paster.Get(ctx, pasteID)
@@ -398,7 +398,7 @@ func (p *APIController) PasteDownloadHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	if !p.confirmLimitedAccess(w, r, pasteID) {
+	if !p.confirmLimitedAccess(w, r, pasteID, false) {
 		return
 	}
 
@@ -428,7 +428,7 @@ func (p *APIController) PublicPasteViewHandler(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	if !p.confirmLimitedAccess(w, r, pasteID) {
+	if !p.confirmLimitedAccess(w, r, pasteID, true) {
 		return
 	}
 	pasteInfo, err := p.paster.GetPublicPaste(ctx, pasteID)
@@ -547,7 +547,7 @@ func (p *APIController) UserListHandler(w http.ResponseWriter, r *http.Request) 
 func (p *APIController) CreatePasteHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	var pasteData params.Paste
+	var pasteData params.NewPasteParams
 	if err := json.NewDecoder(r.Body).Decode(&pasteData); err != nil {
 		handleError(w, decodeJSONError(err))
 		return
@@ -784,7 +784,7 @@ func (p *APIController) UpdateUserHandler(w http.ResponseWriter, r *http.Request
 	}
 	var updateUserPayload params.UpdateUserPayload
 	if err := json.NewDecoder(r.Body).Decode(&updateUserPayload); err != nil {
-		handleError(w, gErrors.NewBadRequestError("failed to unmarshal request: %v", err))
+		handleError(w, decodeJSONError(err))
 		return
 	}
 
@@ -810,7 +810,7 @@ func (p *APIController) DeleteUserHandler(w http.ResponseWriter, r *http.Request
 		})
 		return
 	}
-	userIDInt, err := strconv.ParseInt(userID, 10, 64)
+	userIDInt, err := strconv.ParseUint(userID, 10, 64)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(responses.APIErrorResponse{
@@ -1170,21 +1170,18 @@ func (p *APIController) TeamTransferActionHandler(w http.ResponseWriter, r *http
 	if !teamOK {
 		return
 	}
+	var team params.Teams
 	var err error
 	switch mux.Vars(r)["action"] {
 	case "accept":
-		var team params.Teams
 		team, err = p.teamManager.AcceptTransfer(ctx, teamName)
-		if err == nil {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(team)
-			return
+	case "decline":
+		if err = p.teamManager.DeclineTransfer(ctx, teamName); err == nil {
+			team, err = p.teamManager.Get(ctx, teamName)
 		}
-	case "decline", "cancel":
-		if mux.Vars(r)["action"] == "decline" {
-			err = p.teamManager.DeclineTransfer(ctx, teamName)
-		} else {
-			err = p.teamManager.CancelTransfer(ctx, teamName)
+	case "cancel":
+		if err = p.teamManager.CancelTransfer(ctx, teamName); err == nil {
+			team, err = p.teamManager.Get(ctx, teamName)
 		}
 	default:
 		handleError(w, gErrors.ErrBadRequest)
@@ -1194,7 +1191,9 @@ func (p *APIController) TeamTransferActionHandler(w http.ResponseWriter, r *http
 		handleError(w, err)
 		return
 	}
-	w.WriteHeader(http.StatusOK)
+	// Every action answers with the updated team, as documented.
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(team)
 }
 
 // ListTeamTransfersHandler returns the ownership transfers awaiting the

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { createEventDispatcher } from 'svelte';
+	import { createEventDispatcher, tick } from 'svelte';
 	import { labelColor, labelStyle } from '$lib/utils/labelColor';
 
 	export let labels: string[] = [];
@@ -88,7 +88,9 @@
 		}
 	}
 
-	function onInput() {
+	async function onInput() {
+		// `filtered` is reactive; let it catch up with the new draft first.
+		await tick();
 		open = filtered.length > 0 && draft.trim() !== '';
 		highlight = open ? 0 : -1;
 	}

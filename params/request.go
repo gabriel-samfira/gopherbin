@@ -20,6 +20,8 @@ import (
 	"gopherbin/util"
 	"regexp"
 	"strings"
+	"time"
+	"unicode"
 
 	zxcvbn "github.com/nbutton23/zxcvbn-go"
 )
@@ -123,6 +125,23 @@ func (p PasswordLoginParams) Validate() error {
 	return nil
 }
 
+// NewPasteParams is the payload for creating a paste. Data is the paste
+// content (base64 encoded in JSON). Labels accept bare label names as well
+// as label objects. Setting Team creates a team paste, which is always
+// private.
+type NewPasteParams struct {
+	Data        []byte            `json:"data"`
+	Name        string            `json:"name"`
+	Language    string            `json:"language,omitempty"`
+	Description string            `json:"description,omitempty"`
+	Expires     *time.Time        `json:"expires,omitempty"`
+	MaxAccesses *int              `json:"max_accesses,omitempty"`
+	Public      bool              `json:"public,omitempty"`
+	Team        string            `json:"team,omitempty"`
+	Metadata    map[string]string `json:"metadata,omitempty"`
+	Labels      []PasteLabel      `json:"labels,omitempty"`
+}
+
 // UpdatePasteParams is the payload we can send to update a paste.
 type UpdatePasteParams struct {
 	Public bool `json:"public"`
@@ -134,6 +153,50 @@ type NewTeamParams struct {
 	Description string `json:"description,omitempty"`
 }
 
+// Validate checks the team name and description.
+func (n NewTeamParams) Validate() error {
+	if err := ValidateTeamName(n.Name); err != nil {
+		return err
+	}
+	return validateTeamDescription(n.Description)
+}
+
+// reservedTeamNames collide with fixed routes under /teams/.
+var reservedTeamNames = map[string]bool{"invites": true, "transfers": true}
+
+// ValidateTeamName checks a team name. Names are used verbatim as a path
+// segment (/teams/{name}), so they are limited to letters, digits, spaces,
+// dots, dashes and underscores (no "/", "?", "#", "%" or dot segments),
+// must start with a letter or digit, and must not shadow a fixed route.
+func ValidateTeamName(name string) error {
+	runes := []rune(name)
+	if len(runes) == 0 || len(runes) > 32 {
+		return errors.NewBadRequestError("team name must be 1-32 characters")
+	}
+	if !unicode.IsLetter(runes[0]) && !unicode.IsDigit(runes[0]) {
+		return errors.NewBadRequestError("team name must start with a letter or digit")
+	}
+	for _, r := range runes {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && !strings.ContainsRune(" ._-", r) {
+			return errors.NewBadRequestError("team name may only contain letters, digits, spaces, dots, dashes and underscores")
+		}
+	}
+	if strings.TrimSpace(name) != name {
+		return errors.NewBadRequestError("team name must not end with a space")
+	}
+	if reservedTeamNames[strings.ToLower(name)] {
+		return errors.NewBadRequestError("%q is a reserved team name", name)
+	}
+	return nil
+}
+
+func validateTeamDescription(description string) error {
+	if len([]rune(description)) > 254 {
+		return errors.NewBadRequestError("team description must be at most 254 characters")
+	}
+	return nil
+}
+
 // UpdateTeamParams holds the mutable attributes of a team. Both fields are
 // optional; only the ones that are set are applied.
 type UpdateTeamParams struct {
@@ -141,16 +204,15 @@ type UpdateTeamParams struct {
 	Description *string `json:"description,omitempty"`
 }
 
-// Validate rejects empty or oversized values.
+// Validate rejects invalid names and oversized descriptions.
 func (u UpdateTeamParams) Validate() error {
 	if u.Name != nil {
-		name := strings.TrimSpace(*u.Name)
-		if name == "" || len(name) > 32 {
-			return errors.NewBadRequestError("team name must be 1-32 characters")
+		if err := ValidateTeamName(*u.Name); err != nil {
+			return err
 		}
 	}
-	if u.Description != nil && len(*u.Description) > 254 {
-		return errors.NewBadRequestError("team description must be at most 254 characters")
+	if u.Description != nil {
+		return validateTeamDescription(*u.Description)
 	}
 	return nil
 }
