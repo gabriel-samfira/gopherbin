@@ -59,8 +59,8 @@ func newLoginRateLimiter(now func() time.Time) *loginRateLimiter {
 }
 
 // loginAttemptKey builds the limiter key for a login request.
-func loginAttemptKey(r *http.Request, username string) loginKey {
-	return loginKey{ip: clientIP(r), username: strings.ToLower(username)}
+func loginAttemptKey(r *http.Request, username string, trustedProxies []*net.IPNet) loginKey {
+	return loginKey{ip: clientIP(r, trustedProxies), username: strings.ToLower(username)}
 }
 
 // allow reports whether an attempt may proceed, pruning expired timestamps
@@ -161,18 +161,67 @@ func (l *loginRateLimiter) evict(now time.Time) {
 	}
 }
 
-// clientIP extracts the transport-level peer address (r.RemoteAddr, minus the
-// port). Note that http.Request carries no other peer-address field.
+// clientIP returns the address a request came from.
 //
-// It deliberately does NOT consult X-Forwarded-For or any other
-// proxy-supplied header: without a configured, trusted proxy hop those
-// headers are fully attacker-controlled and would let a brute-forcer rotate
-// keys at will. As a documented consequence, when gopherbin is deployed
-// behind a reverse proxy all clients share the proxy's address and therefore
-// share one budget per username.
-func clientIP(r *http.Request) string {
-	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
-		return host
+// By default that is the transport-level peer (r.RemoteAddr, minus the
+// port): X-Forwarded-For and similar headers are fully client-controlled
+// and would let a brute-forcer rotate keys at will. Only when the peer is
+// one of the configured trusted proxies is X-Forwarded-For consulted: its
+// hops are walked from the right (the proxy appends the address it saw),
+// skipping trusted proxies, and the first other address is the client.
+// Hops further left were supplied by the client and are never used. A hop
+// that does not parse ends the walk at the last trusted address, which is
+// all that can be vouched for.
+func clientIP(r *http.Request, trustedProxies []*net.IPNet) string {
+	peer := r.RemoteAddr
+	if host, _, err := net.SplitHostPort(peer); err == nil {
+		peer = host
 	}
-	return r.RemoteAddr
+	if !ipIn(net.ParseIP(peer), trustedProxies) {
+		return peer
+	}
+	var hops []string
+	for _, header := range r.Header.Values("X-Forwarded-For") {
+		for _, hop := range strings.Split(header, ",") {
+			if hop = strings.TrimSpace(hop); hop != "" {
+				hops = append(hops, hop)
+			}
+		}
+	}
+	client := peer
+	for i := len(hops) - 1; i >= 0; i-- {
+		ip := parseHop(hops[i])
+		if ip == nil {
+			break
+		}
+		client = ip.String()
+		if !ipIn(ip, trustedProxies) {
+			break
+		}
+	}
+	return client
+}
+
+// parseHop parses one X-Forwarded-For entry: an IP address, optionally with
+// a port (IPv6 in brackets).
+func parseHop(hop string) net.IP {
+	if ip := net.ParseIP(hop); ip != nil {
+		return ip
+	}
+	if host, _, err := net.SplitHostPort(hop); err == nil {
+		return net.ParseIP(host)
+	}
+	return net.ParseIP(strings.Trim(hop, "[]"))
+}
+
+func ipIn(ip net.IP, nets []*net.IPNet) bool {
+	if ip == nil {
+		return false
+	}
+	for _, n := range nets {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }

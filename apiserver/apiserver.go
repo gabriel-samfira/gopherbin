@@ -160,7 +160,11 @@ func GetAPIServer(cfg *config.Config) (*APIServer, error) {
 		return nil, errors.Wrap(err, "getting user manager")
 	}
 
-	apiHandler := controllers.NewAPIController(paster, teamMgr, userMgr, cfg.APIServer.JWTAuth)
+	trustedProxies, err := cfg.APIServer.TrustedProxyNets()
+	if err != nil {
+		return nil, errors.Wrap(err, "parsing trusted proxies")
+	}
+	apiHandler := controllers.NewAPIController(paster, teamMgr, userMgr, cfg.APIServer.JWTAuth, trustedProxies)
 
 	jwtMiddleware, err := auth.NewjwtMiddleware(userMgr, cfg.APIServer.JWTAuth)
 	if err != nil {

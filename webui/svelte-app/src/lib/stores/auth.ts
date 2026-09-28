@@ -6,6 +6,7 @@ import type { LoginResponse, JWTPayload } from '$lib/types/api';
 interface AuthState {
 	token: string | null;
 	isAdmin: boolean;
+	isSuperUser: boolean;
 	username: string | null;
 	fullName: string | null;
 	isAuthenticated: boolean;
@@ -17,6 +18,7 @@ function createAuthStore() {
 			return {
 				token: null,
 				isAdmin: false,
+				isSuperUser: false,
 				username: null,
 				fullName: null,
 				isAuthenticated: false
@@ -38,6 +40,7 @@ function createAuthStore() {
 				return {
 					token,
 					isAdmin: payload.is_admin,
+					isSuperUser: payload.is_superuser === true,
 					username: String(payload.user),
 					fullName: payload.full_name,
 					isAuthenticated: true
@@ -54,6 +57,7 @@ function createAuthStore() {
 		return {
 			token: null,
 			isAdmin: false,
+			isSuperUser: false,
 			username: null,
 			fullName: null,
 			isAuthenticated: false
@@ -78,6 +82,7 @@ function createAuthStore() {
 			set({
 				token: data.token,
 				isAdmin: payload.is_admin,
+				isSuperUser: payload.is_superuser === true,
 				username: String(payload.user),
 				fullName: payload.full_name,
 				isAuthenticated: true
@@ -94,6 +99,7 @@ function createAuthStore() {
 			set({
 				token: null,
 				isAdmin: false,
+				isSuperUser: false,
 				username: null,
 				fullName: null,
 				isAuthenticated: false

@@ -36,6 +36,10 @@
 
 	const userId = $page.params.id ?? '';
 	$: isSelf = user !== null && String(user.id) === String($auth.username);
+	// Mirrors the server: plain admins manage regular users and themselves;
+	// other administrators are the superuser's to manage.
+	$: canManage =
+		user !== null && (isSelf || $auth.isSuperUser || !(user.is_admin || user.is_superuser));
 	$: passwordsMatch = newPassword && newPassword === confirmPassword && newPassword.length >= 8;
 
 	onMount(async () => {
@@ -64,24 +68,24 @@
 		if (!$auth.token || !userId) return;
 
 		error = '';
+		if (!user) return;
+		// Only changed fields are sent: the server rejects is_admin from
+		// anyone but the superuser, and any change to name, email or the
+		// enabled flag signs the user out of all their sessions.
+		const updates: UserUpdate = {};
+		if (fullName !== user.full_name) updates.full_name = fullName;
+		if (email !== user.email) updates.email = email;
+		if (enabled !== user.enabled) updates.enabled = enabled;
+		if (isAdmin !== user.is_admin) updates.is_admin = isAdmin;
+		if (discoverable !== user.discoverable) updates.discoverable = discoverable;
+		if (Object.keys(updates).length === 0) {
+			toast.show('Nothing to update', 'info');
+			return;
+		}
 		try {
-			const updates: UserUpdate = {
-				full_name: fullName,
-				email: email,
-				enabled: enabled,
-				is_admin: isAdmin
-			};
-			if (user && discoverable !== user.discoverable) {
-				updates.discoverable = discoverable;
-			}
 			await updateUser(userId, updates, $auth.token);
 			toast.show('User info updated successfully', 'success');
-			// Update local user object
-			if (user) {
-				user.enabled = enabled;
-				user.is_admin = isAdmin;
-				user.discoverable = discoverable;
-			}
+			user = { ...user, ...updates };
 		} catch (err) {
 			error = formatApiError(err);
 		}
@@ -141,6 +145,12 @@
 			</div>
 		{/if}
 
+		{#if !canManage}
+			<div class="p-4 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg text-sm text-gray-700 dark:text-gray-300">
+				{user.username} is an administrator. Only the superuser can modify or delete other
+				administrator accounts.
+			</div>
+		{:else}
 		<!-- Update User Info -->
 		<div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 sm:p-6">
 			<h2 class="text-lg sm:text-xl font-bold text-gray-900 dark:text-gray-100 mb-4">Update User Info</h2>
@@ -165,7 +175,9 @@
 				</div>
 				<div class="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6 pt-2">
 					<Toggle bind:checked={enabled} label="Account Enabled" disabled={isSelf} />
-					<Toggle bind:checked={isAdmin} label="Admin User" />
+					{#if $auth.isSuperUser && !user.is_superuser}
+						<Toggle bind:checked={isAdmin} label="Admin User" />
+					{/if}
 					<Toggle bind:checked={discoverable} label="Appear in team-invite search" />
 				</div>
 				<Button on:click={handleUpdateUserInfo} variant="primary" class="w-full sm:w-auto">
@@ -236,6 +248,7 @@
 				</Button>
 			</div>
 		</div>
+		{/if}
 		{/if}
 	</div>
 

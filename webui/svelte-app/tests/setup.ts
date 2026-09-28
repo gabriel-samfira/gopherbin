@@ -15,6 +15,21 @@ globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
 	return realFetch(input as RequestInfo, init);
 }) as typeof fetch;
 
+// jsdom has no matchMedia; the theme store queries it when imported.
+if (typeof window.matchMedia !== 'function') {
+	window.matchMedia = (query: string) =>
+		({
+			matches: false,
+			media: query,
+			onchange: null,
+			addListener: () => {},
+			removeListener: () => {},
+			addEventListener: () => {},
+			removeEventListener: () => {},
+			dispatchEvent: () => false
+		}) as MediaQueryList;
+}
+
 beforeEach(() => {
 	localStorage.clear();
 	auth.logout();

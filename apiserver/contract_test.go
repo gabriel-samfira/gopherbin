@@ -509,7 +509,7 @@ func newContract(t *testing.T) *contract {
 	}
 	jwtCfg := config.JWTAuth{Secret: contractSecret}
 
-	handler := controllers.NewAPIController(paster, teamMgr, userMgr, jwtCfg)
+	handler := controllers.NewAPIController(paster, teamMgr, userMgr, jwtCfg, nil)
 	jwtMiddleware, err := auth.NewjwtMiddleware(userMgr, jwtCfg)
 	if err != nil {
 		t.Fatal(err)

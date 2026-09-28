@@ -76,8 +76,3 @@ func Config(t testing.TB) config.Database {
 		},
 	}
 }
-
-// IsMySQL reports whether tests run against MySQL.
-func IsMySQL() bool {
-	return os.Getenv(MySQLEnv) != ""
-}

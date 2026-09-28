@@ -22,6 +22,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -287,6 +288,38 @@ type APIServer struct {
 	// served by the API endpoints. Zero (unset) means
 	// DefaultMaxBodySize.
 	MaxBodySize int64 `toml:"max_body_size" json:"max-body-size"`
+	// TrustedProxies lists the reverse proxies (IP addresses or CIDR
+	// ranges) in front of the server. For requests arriving from one of
+	// them, the client address is taken from X-Forwarded-For; for any
+	// other peer the header is ignored, as clients can set it at will.
+	TrustedProxies []string `toml:"trusted_proxies" json:"trusted-proxies"`
+}
+
+// TrustedProxyNets parses TrustedProxies. A bare IP address stands for
+// itself (a /32 or /128 network).
+func (a *APIServer) TrustedProxyNets() ([]*net.IPNet, error) {
+	nets := make([]*net.IPNet, 0, len(a.TrustedProxies))
+	for _, entry := range a.TrustedProxies {
+		entry = strings.TrimSpace(entry)
+		if strings.Contains(entry, "/") {
+			_, ipNet, err := net.ParseCIDR(entry)
+			if err != nil {
+				return nil, fmt.Errorf("invalid trusted proxy %q: %w", entry, err)
+			}
+			nets = append(nets, ipNet)
+			continue
+		}
+		ip := net.ParseIP(entry)
+		if ip == nil {
+			return nil, fmt.Errorf("invalid trusted proxy %q: not an IP address or CIDR range", entry)
+		}
+		bits := 8 * net.IPv6len
+		if v4 := ip.To4(); v4 != nil {
+			ip, bits = v4, 8*net.IPv4len
+		}
+		nets = append(nets, &net.IPNet{IP: ip, Mask: net.CIDRMask(bits, bits)})
+	}
+	return nets, nil
 }
 
 // Validate validates the API server config
@@ -308,6 +341,9 @@ func (a *APIServer) Validate() error {
 
 	if err := a.JWTAuth.Validate(); err != nil {
 		return errors.Wrap(err, "validating jwt config")
+	}
+	if _, err := a.TrustedProxyNets(); err != nil {
+		return err
 	}
 	ip := net.ParseIP(a.Bind)
 	if ip == nil {

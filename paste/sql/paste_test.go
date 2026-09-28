@@ -315,11 +315,6 @@ func TestSearch_FTSExpressionInjectionIsNeutralized(t *testing.T) {
 		}
 	}
 
-	if testdb.IsMySQL() {
-		// MySQL searches with FULLTEXT or a substring LIKE, not with FTS5
-		// query semantics; only the isolation checks above apply there.
-		return
-	}
 	// The plain-text meaning of a hostile-looking query survives:
 	// `hello "world` becomes the implicit-AND phrase query and still
 	// matches Alice's paste, and Bob's never shows up.
@@ -332,10 +327,30 @@ func TestSearch_FTSExpressionInjectionIsNeutralized(t *testing.T) {
 	}
 }
 
-func TestSearch_MultiWordImplicitANDStillWorks(t *testing.T) {
-	if testdb.IsMySQL() {
-		t.Skip("FTS5 implicit-AND semantics; MySQL searches with FULLTEXT or LIKE")
+// Punctuation inside a search term separates words, as the tokenizer does
+// for the stored content, so "my-file" finds "my-file.txt". Matching is
+// case-insensitive on every backend.
+func TestSearch_PunctuatedAndMixedCaseTerms(t *testing.T) {
+	paster, aliceCtx, _ := newSearchFixture(t)
+	hit, err := paster.Create(aliceCtx, []byte("see My-File.txt for details"), "notes.txt", "text", "", nil, false, "", nil, nil, nil)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
 	}
+	if _, err := paster.Create(aliceCtx, []byte("unrelated content"), "other.txt", "text", "", nil, false, "", nil, nil, nil); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	for _, q := range []string{"my-file", "my-file.txt", "file.txt", "MY-FILE", "details my-file"} {
+		res, err := paster.Search(aliceCtx, q, 1, 50, pasteCommon.ScopeAll, nil, "")
+		if err != nil {
+			t.Fatalf("Search(%q): %v", q, err)
+		}
+		if len(res.Pastes) != 1 || res.Pastes[0].PasteID != hit.PasteID {
+			t.Errorf("Search(%q): want only notes.txt, got %d results", q, len(res.Pastes))
+		}
+	}
+}
+
+func TestSearch_MultiWordImplicitANDStillWorks(t *testing.T) {
 	paster, aliceCtx, _ := newSearchFixture(t)
 
 	both, err := paster.Create(aliceCtx, []byte("quantum flux capacitor"), "both.txt", "text", "", nil, false, "", nil, nil, nil)

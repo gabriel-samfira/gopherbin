@@ -371,10 +371,12 @@ func (u *userManager) Update(ctx context.Context, userID uint, update params.Upd
 		return params.Users{}, gErrors.ErrUnauthorized
 	}
 
-	// Superuser accounts may only be modified by a superuser (or by
-	// themselves), otherwise a plain admin could reset their password.
-	if tmpUser.IsSuperUser && userID != user && !isSuper {
-		return params.Users{}, gErrors.NewUnauthorizedError("only a superuser may modify the superuser account")
+	// Administrator accounts (the superuser included) may only be modified
+	// by the superuser or by themselves: a plain admin could otherwise take
+	// over a peer by resetting their password or email, or lock them out,
+	// while deleting one already requires the superuser.
+	if (tmpUser.IsAdmin || tmpUser.IsSuperUser) && userID != user && !isSuper {
+		return params.Users{}, errOnlySuperUserManagesAdmins
 	}
 
 	// Only superusers may create administrators
@@ -570,7 +572,7 @@ func (u *userManager) Enable(ctx context.Context, userID uint) error {
 	if !auth.IsAdmin(ctx) {
 		return gErrors.ErrUnauthorized
 	}
-	if err := u.ensureNotSuperUser(userID, auth.IsSuperUser(ctx)); err != nil {
+	if err := u.ensureMayManage(userID, auth.IsSuperUser(ctx)); err != nil {
 		return err
 	}
 	return u.setEnabledFlag(userID, true)
@@ -580,15 +582,19 @@ func (u *userManager) Disable(ctx context.Context, userID uint) error {
 	if !auth.IsAdmin(ctx) {
 		return gErrors.ErrUnauthorized
 	}
-	if err := u.ensureNotSuperUser(userID, auth.IsSuperUser(ctx)); err != nil {
+	if err := u.ensureMayManage(userID, auth.IsSuperUser(ctx)); err != nil {
 		return err
 	}
 	return u.setEnabledFlag(userID, false)
 }
 
-// ensureNotSuperUser rejects changes to a superuser account unless the actor
-// is a superuser.
-func (u *userManager) ensureNotSuperUser(userID uint, actorIsSuper bool) error {
+// errOnlySuperUserManagesAdmins is returned when a plain admin tries to
+// modify another administrator account.
+var errOnlySuperUserManagesAdmins = gErrors.NewUnauthorizedError("only the superuser may modify another administrator")
+
+// ensureMayManage rejects changes to an administrator account (the
+// superuser included) unless the actor is the superuser.
+func (u *userManager) ensureMayManage(userID uint, actorIsSuper bool) error {
 	if actorIsSuper {
 		return nil
 	}
@@ -596,8 +602,8 @@ func (u *userManager) ensureNotSuperUser(userID uint, actorIsSuper bool) error {
 	if err != nil {
 		return errors.Wrap(err, "fetching user from db")
 	}
-	if usr.IsSuperUser {
-		return gErrors.NewUnauthorizedError("only a superuser may modify the superuser account")
+	if usr.IsAdmin || usr.IsSuperUser {
+		return errOnlySuperUserManagesAdmins
 	}
 	return nil
 }

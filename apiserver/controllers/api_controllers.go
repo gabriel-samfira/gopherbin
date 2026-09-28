@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -26,8 +27,10 @@ import (
 	"github.com/pkg/errors"
 )
 
-// NewAPIController returns a new APIController
-func NewAPIController(paster common.Paster, teamManager common.TeamManager, mgr adminCommon.UserManager, cfg config.JWTAuth) *APIController {
+// NewAPIController returns a new APIController. trustedProxies are the
+// reverse proxies whose X-Forwarded-For header is believed when throttling
+// logins (see clientIP); nil trusts none.
+func NewAPIController(paster common.Paster, teamManager common.TeamManager, mgr adminCommon.UserManager, cfg config.JWTAuth, trustedProxies []*net.IPNet) *APIController {
 	if _, ok := paster.(accessBudgetPeeker); !ok {
 		// Loud rather than silent: without the peek capability the
 		// X-Consume-Access drive-by gate cannot tell budget pastes from
@@ -36,11 +39,12 @@ func NewAPIController(paster common.Paster, teamManager common.TeamManager, mgr 
 			"the X-Consume-Access gate for limited-access pastes is INACTIVE")
 	}
 	return &APIController{
-		paster:       paster,
-		manager:      mgr,
-		teamManager:  teamManager,
-		cfg:          cfg,
-		loginLimiter: newLoginRateLimiter(nil),
+		paster:         paster,
+		manager:        mgr,
+		teamManager:    teamManager,
+		cfg:            cfg,
+		loginLimiter:   newLoginRateLimiter(nil),
+		trustedProxies: trustedProxies,
 	}
 }
 
@@ -53,6 +57,9 @@ type APIController struct {
 	// loginLimiter throttles failed login attempts per (clientIP, username)
 	// to blunt password brute-forcing. See ratelimit.go.
 	loginLimiter *loginRateLimiter
+	// trustedProxies are the reverse proxies whose X-Forwarded-For header
+	// identifies the client for loginLimiter.
+	trustedProxies []*net.IPNet
 }
 
 // decodeJSONError maps a JSON body decode failure to the client-facing error.
@@ -304,7 +311,7 @@ func (p *APIController) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	// bad credentials, without calling it. The attempt is counted before
 	// authenticating (reserve) so parallel requests cannot overrun the
 	// budget; a success clears the bucket. See ratelimit.go.
-	attemptKey := loginAttemptKey(r, loginInfo.Username)
+	attemptKey := loginAttemptKey(r, loginInfo.Username, p.trustedProxies)
 	if !p.loginLimiter.reserve(attemptKey) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Retry-After", strconv.Itoa(p.loginLimiter.retryAfter(attemptKey)))

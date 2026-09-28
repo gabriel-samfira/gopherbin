@@ -110,7 +110,8 @@ func (p *paste) migrateDB() error {
 		return err
 	}
 
-	// Setup full-text search based on database backend
+	// SQLite searches through an FTS5 index. MySQL searches with LIKE: it
+	// cannot index the longblob data column for FULLTEXT (see Search).
 	switch p.dbBackend {
 	case config.SQLiteBackend:
 		// Create FTS5 virtual table for SQLite full-text search
@@ -181,33 +182,6 @@ func (p *paste) migrateDB() error {
 				`).Error; err != nil {
 					return errors.Wrap(err, "populating FTS5 table with existing data")
 				}
-			}
-		}
-
-	case config.MySQLBackend:
-		// Create FULLTEXT indexes for MySQL
-		// Check if indexes already exist
-		var indexCount int64
-		if err := p.conn.Raw(`
-			SELECT COUNT(*)
-			FROM information_schema.STATISTICS
-			WHERE table_schema = DATABASE()
-			AND table_name = 'pastes'
-			AND index_name = 'idx_pastes_fulltext'
-		`).Scan(&indexCount).Error; err != nil {
-			return errors.Wrap(err, "checking for MySQL FULLTEXT index existence")
-		}
-
-		if indexCount == 0 {
-			// Create FULLTEXT index on name and data columns
-			// Note: This may take time on large tables
-			if err := p.conn.Exec(`
-				ALTER TABLE pastes
-				ADD FULLTEXT INDEX idx_pastes_fulltext (name, data)
-			`).Error; err != nil {
-				// Log warning but don't fail - LIKE search will still work
-				// FULLTEXT requires InnoDB in MySQL 5.6+ or MyISAM
-				fmt.Printf("Warning: Failed to create FULLTEXT index (will use LIKE search): %v\n", err)
 			}
 		}
 	}
@@ -767,40 +741,53 @@ func mergeConds(parts ...string) string {
 	return strings.Join(kept, " AND ")
 }
 
-// sanitizeFTSQuery turns free-text search input into a safe SQLite FTS5
-// query expression. The value bound to `pastes_fts MATCH ?` is parsed by
-// the FTS5 query parser, where characters such as `"`, `*`, `(`, `)`, `:`,
-// `^`, `-`, `{`, `}` carry syntax meaning (phrases, prefixes, column
-// filters, negation, grouping) and unbalanced input aborts the statement
-// with a parse error that surfaces as an HTTP 500. Each whitespace-
-// separated token is stripped of those characters; the surviving tokens are
-// wrapped as double-quoted string phrases (any internal quote doubled,
-// defensively, though stripping leaves none) and joined with spaces, which
-// FTS5 treats as an implicit AND. Tokens emptied by the stripping are
-// dropped, so pure-syntax input yields the empty query rather than a
-// parser error, and column/wildcard/boolean injection is impossible.
-func sanitizeFTSQuery(query string) string {
-	syntax := strings.NewReplacer(`"`, ``, `*`, ``, `(`, ``, `)`, ``, `:`, ``, `^`, ``, `-`, ``, `{`, ``, `}`, ``)
-	var phrases []string
-	for _, token := range strings.Fields(query) {
-		token = syntax.Replace(token)
-		if token == "" {
-			continue
-		}
-		phrases = append(phrases, `"`+strings.ReplaceAll(token, `"`, `""`)+`"`)
+// searchSyntax maps the characters that carry query syntax in SQLite FTS5
+// (phrases, prefixes, column filters, negation, grouping) to separators.
+var searchSyntax = strings.NewReplacer(
+	`"`, ` `, `*`, ` `, `(`, ` `, `)`, ` `, `:`, ` `, `^`, ` `, `-`, ` `, `{`, ` `, `}`, ` `, `+`, ` `)
+
+// searchTerms splits free-text search input into the terms every result
+// must contain. Query-syntax characters separate terms rather than being
+// dropped from them, so "my-file" searches for "my" and "file", which is
+// also how the FTS5 tokenizer splits a stored "my-file"; input made of
+// syntax alone yields no terms.
+func searchTerms(query string) []string {
+	return strings.Fields(searchSyntax.Replace(query))
+}
+
+// sanitizeFTSQuery turns search terms into a safe SQLite FTS5 query
+// expression. The value bound to `pastes_fts MATCH ?` is parsed by the FTS5
+// query parser, where unbalanced syntax aborts the statement (an HTTP 500)
+// and column filters, prefixes or NEAR change its meaning. Each term is
+// wrapped as a double-quoted string phrase, inside which nothing is syntax
+// (searchTerms leaves no quotes; doubling them is defensive), and the
+// phrases are joined with spaces, which FTS5 treats as an implicit AND.
+func sanitizeFTSQuery(terms []string) string {
+	phrases := make([]string, len(terms))
+	for i, term := range terms {
+		phrases[i] = `"` + strings.ReplaceAll(term, `"`, `""`) + `"`
 	}
 	return strings.Join(phrases, " ")
 }
 
-// stripMySQLBooleanOperators removes the operators that MySQL's
-// MATCH ... AGAINST(... IN BOOLEAN MODE) reserves as search syntax: +
-// (required), - (excluded), * (prefix wildcard), " (phrase) and grouping
-// parens. Raw user text bound into boolean mode would otherwise let these
-// characters silently change the result set or trigger a parse error;
-// stripping them degrades the input to plain terms, which is what the
-// search box intends.
-func stripMySQLBooleanOperators(query string) string {
-	return strings.NewReplacer(`+`, ` `, `-`, ` `, `*`, ` `, `"`, ` `, `(`, ` `, `)`, ` `).Replace(query)
+// likeTermsCond requires every term as a substring of the name or, when
+// contentExpr is set, of the content. User text is never bound raw into a
+// LIKE pattern: %, _ and the escape character are escaped (see
+// util.EscapeLike), so input such as "%%" cannot match every row.
+func likeTermsCond(terms []string, contentExpr string) (string, []interface{}) {
+	conds := make([]string, 0, len(terms))
+	args := make([]interface{}, 0, 2*len(terms))
+	for _, term := range terms {
+		pattern := "%" + util.EscapeLike(term) + "%"
+		if contentExpr == "" {
+			conds = append(conds, "name LIKE ? "+util.LikeEscape)
+			args = append(args, pattern)
+			continue
+		}
+		conds = append(conds, "(name LIKE ? "+util.LikeEscape+" OR "+contentExpr+" LIKE ? "+util.LikeEscape+")")
+		args = append(args, pattern, pattern)
+	}
+	return strings.Join(conds, " AND "), args
 }
 
 func (p *paste) Search(ctx context.Context, query string, page int64, results int64, scope string, labels []string, team string) (params.PasteListResult, error) {
@@ -821,78 +808,50 @@ func (p *paste) Search(ctx context.Context, query string, page int64, results in
 
 	scopeCond, scopeArgs := p.scopeClause(user, scope)
 
-	// Build full-text search query based on database backend
-	var q *gorm.DB
-	// User text is never bound raw into a LIKE pattern: %, _ and \ are LIKE
-	// syntax and would let input such as "%%" match every row. Escaping
-	// happens once here; every LIKE below declares the escape character.
-	searchPattern := "%" + util.EscapeLike(query) + "%"
+	terms := searchTerms(query)
+	if len(terms) == 0 {
+		// Input consisted solely of query syntax: no term can match it.
+		return params.PasteListResult{Pastes: []params.Paste{}, TotalPages: 1, Page: 1}, nil
+	}
 
+	var q *gorm.DB
 	switch p.dbBackend {
 	case config.MySQLBackend:
-		// MySQL: Try to use FULLTEXT search if index exists, fallback to LIKE
-		// Check if FULLTEXT index exists
-		var indexCount int64
-		p.conn.Raw(`
-			SELECT COUNT(*)
-			FROM information_schema.STATISTICS
-			WHERE table_schema = DATABASE()
-			AND table_name = 'pastes'
-			AND index_name = 'idx_pastes_fulltext'
-		`).Scan(&indexCount)
-
-		if indexCount > 0 {
-			// Use FULLTEXT search with MATCH...AGAINST
-			// IN BOOLEAN MODE allows for more flexible searching. The
-			// bound query is parsed as boolean-mode *syntax* (+required,
-			// -excluded, *prefix, "phrase", grouping parens), so raw user
-			// text could change result semantics or hit a parse error;
-			// bind the operator-stripped form so it searches as plain terms.
-			q = p.conn.Select(
-				"id, paste_id, language, name, description, metadata, owner_id, team_id, created_at, expires, public, max_accesses, access_count, substr(`data`, 1, 512) as data",
-			).Where(
-				scopeCond+" AND MATCH(name, `data`) AGAINST(? IN BOOLEAN MODE) AND (expires IS NULL OR expires >= ?)",
-				append(scopeArgs, stripMySQLBooleanOperators(query), now)...,
-			).Order("id desc")
-		} else {
-			// Fallback to LIKE search
-			q = p.conn.Select(
-				"id, paste_id, language, name, description, metadata, owner_id, team_id, created_at, expires, public, max_accesses, access_count, substr(`data`, 1, 512) as data",
-			).Where(
-				scopeCond+" AND (name LIKE ? "+util.LikeEscape+" OR `data` LIKE ? "+util.LikeEscape+") AND (expires IS NULL OR expires >= ?)",
-				append(scopeArgs, searchPattern, searchPattern, now)...,
-			).Order("id desc")
-		}
+		// MySQL cannot put the longblob data column in a FULLTEXT index, so
+		// every term is matched as a substring of the name or the content
+		// (ANDed, like the FTS5 phrases below). The content is converted to
+		// text so that, like the name, it matches regardless of case.
+		termCond, termArgs := likeTermsCond(terms, "CONVERT(`data` USING utf8mb4)")
+		q = p.conn.Select(
+			"id, paste_id, language, name, description, metadata, owner_id, team_id, created_at, expires, public, max_accesses, access_count, substr(`data`, 1, 512) as data",
+		).Where(
+			scopeCond+" AND "+termCond+" AND (expires IS NULL OR expires >= ?)",
+			append(append(append([]interface{}{}, scopeArgs...), termArgs...), now)...,
+		).Order("id desc")
 
 	case config.SQLiteBackend:
 		// SQLite: Use FTS5 for full-text search.
 		// Join with FTS table and use MATCH for efficient full-text search.
-		// The bound value is an FTS5 *query expression*, so raw user input
-		// must be sanitized first (see sanitizeFTSQuery); the scope clause
-		// still ANDs visibility on top of the text match.
-		ftsQuery := sanitizeFTSQuery(query)
-		if ftsQuery == "" {
-			// Input consisted solely of FTS5 syntax characters; no token
-			// can match it. Answer with an empty page instead of handing
-			// the FTS5 parser an empty expression.
-			if page > 1 {
-				page = 1
-			}
-			return params.PasteListResult{Pastes: []params.Paste{}, TotalPages: 1, Page: page}, nil
-		}
+		// The bound value is an FTS5 *query expression*, built from the
+		// sanitized terms (see sanitizeFTSQuery); the scope clause still
+		// ANDs visibility on top of the text match.
 		q = p.conn.Table("pastes").
 			Select(
 				"pastes.id, pastes.paste_id, pastes.language, pastes.name, pastes.description, pastes.metadata, pastes.owner_id, pastes.team_id, pastes.created_at, pastes.expires, pastes.public, pastes.max_accesses, pastes.access_count, substr(pastes.`data`, 1, 512) as data",
 			).
 			Joins("INNER JOIN pastes_fts ON pastes.id = pastes_fts.rowid").
-			Where("pastes_fts MATCH ? AND "+scopeCond+" AND (pastes.expires IS NULL OR pastes.expires >= ?)", append([]interface{}{ftsQuery}, append(scopeArgs, now)...)...).
+			Where("pastes_fts MATCH ? AND "+scopeCond+" AND (pastes.expires IS NULL OR pastes.expires >= ?)", append([]interface{}{sanitizeFTSQuery(terms)}, append(scopeArgs, now)...)...).
 			Order("pastes.id desc")
 
 	default:
 		// Default fallback: search only in name
+		termCond, termArgs := likeTermsCond(terms, "")
 		q = p.conn.Select(
 			"id, paste_id, language, name, description, metadata, owner_id, team_id, created_at, expires, public, max_accesses, access_count, substr(`data`, 1, 512) as data",
-		).Where(scopeCond+" and name LIKE ? "+util.LikeEscape+" and (expires is NULL or expires >= ?)", append(scopeArgs, searchPattern, now)...).Order("id desc")
+		).Where(
+			scopeCond+" AND "+termCond+" AND (expires IS NULL OR expires >= ?)",
+			append(append(append([]interface{}{}, scopeArgs...), termArgs...), now)...,
+		).Order("id desc")
 	}
 
 	cleanLabels, err := dedupeLabels(labels)

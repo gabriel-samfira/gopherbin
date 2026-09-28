@@ -549,7 +549,67 @@ func TestAdminCannotTakeOverSuperUser(t *testing.T) {
 	}
 }
 
+// A plain admin manages regular users, but not other administrators: that
+// is the superuser's call, as for deletion. Admins still manage themselves.
+func TestAdminCannotModifyOtherAdmins(t *testing.T) {
+	mgr, ctxSuper := newAdminFixture(t)
+
+	mkUser := func(name string, admin bool) params.Users {
+		t.Helper()
+		u, err := mgr.Create(ctxSuper, params.NewUserParams{
+			Email: name + "@example.com", Username: name, FullName: "User " + name,
+			Password: testPassword, IsAdmin: admin, Enabled: true,
+		})
+		if err != nil {
+			t.Fatalf("Create %s: %v", name, err)
+		}
+		return u
+	}
+	first := mkUser("firstadmin", true)
+	second := mkUser("secondadmin", true)
+	regular := mkUser("regular", false)
+	ctxFirst := auth.PopulateContext(context.Background(), first)
+
+	newPassword := "Another-Correct-Horse-Staple-G0pherbin-2026!"
+	for name, update := range map[string]params.UpdateUserPayload{
+		"password":  {Password: &newPassword},
+		"email":     {Email: ptr("taken-over@example.com")},
+		"full name": {FullName: ptr("Renamed")},
+		"enabled":   {Enabled: boolPtr(false)},
+	} {
+		if _, err := mgr.Update(ctxFirst, second.ID, update); !isUnauthorized(err) {
+			t.Errorf("admin changing another admin's %s: want Unauthorized, got %v", name, err)
+		}
+	}
+	if err := mgr.Disable(ctxFirst, second.ID); !isUnauthorized(err) {
+		t.Errorf("admin disabling another admin: want Unauthorized, got %v", err)
+	}
+	if err := mgr.Enable(ctxFirst, second.ID); !isUnauthorized(err) {
+		t.Errorf("admin enabling another admin: want Unauthorized, got %v", err)
+	}
+
+	// Regular users and their own account remain theirs to manage.
+	if _, err := mgr.Update(ctxFirst, regular.ID, params.UpdateUserPayload{Password: &newPassword}); err != nil {
+		t.Errorf("admin resetting a regular user's password: %v", err)
+	}
+	if err := mgr.Disable(ctxFirst, regular.ID); err != nil {
+		t.Errorf("admin disabling a regular user: %v", err)
+	}
+	if _, err := mgr.Update(ctxFirst, first.ID, params.UpdateUserPayload{FullName: ptr("Me Renamed")}); err != nil {
+		t.Errorf("admin updating own account: %v", err)
+	}
+	// The superuser manages every administrator.
+	if _, err := mgr.Update(ctxSuper, second.ID, params.UpdateUserPayload{Password: &newPassword}); err != nil {
+		t.Errorf("superuser resetting an admin's password: %v", err)
+	}
+	if err := mgr.Disable(ctxSuper, second.ID); err != nil {
+		t.Errorf("superuser disabling an admin: %v", err)
+	}
+}
+
 func ptr(s string) *string { return &s }
+
+func boolPtr(b bool) *bool { return &b }
 
 // ── Self password change ─────────────────────────────────────────────────────
 

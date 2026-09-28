@@ -272,7 +272,7 @@ func TestConsumeAccessGate(t *testing.T) {
 
 	t.Run("public budget paste without header gets 403 and consumes nothing", func(t *testing.T) {
 		fp := &budgetPaster{unlimitedPaster: unlimitedPaster{paste: budgetPaste}, maxAccesses: &three}
-		ctrl := NewAPIController(fp, nil, nil, config.JWTAuth{})
+		ctrl := NewAPIController(fp, nil, nil, config.JWTAuth{}, nil)
 		w := get(t, ctrl.PublicPasteViewHandler, "")
 
 		if w.Code != http.StatusForbidden {
@@ -295,7 +295,7 @@ func TestConsumeAccessGate(t *testing.T) {
 
 	t.Run("budget paste with header proceeds and consumes one access", func(t *testing.T) {
 		fp := &budgetPaster{unlimitedPaster: unlimitedPaster{paste: budgetPaste}, maxAccesses: &three}
-		ctrl := NewAPIController(fp, nil, nil, config.JWTAuth{})
+		ctrl := NewAPIController(fp, nil, nil, config.JWTAuth{}, nil)
 		w := get(t, ctrl.PublicPasteViewHandler, "1")
 
 		if w.Code != http.StatusOK {
@@ -311,7 +311,7 @@ func TestConsumeAccessGate(t *testing.T) {
 
 	t.Run("any non-empty header value confirms the view", func(t *testing.T) {
 		fp := &budgetPaster{unlimitedPaster: unlimitedPaster{paste: budgetPaste}, maxAccesses: &three}
-		ctrl := NewAPIController(fp, nil, nil, config.JWTAuth{})
+		ctrl := NewAPIController(fp, nil, nil, config.JWTAuth{}, nil)
 		w := get(t, ctrl.PublicPasteViewHandler, "sure-why-not")
 		if w.Code != http.StatusOK || fp.publicGets != 1 {
 			t.Fatalf("status = %d, publicGets = %d, want 200/1", w.Code, fp.publicGets)
@@ -320,7 +320,7 @@ func TestConsumeAccessGate(t *testing.T) {
 
 	t.Run("paste without budget proceeds without header", func(t *testing.T) {
 		fp := &budgetPaster{unlimitedPaster: unlimitedPaster{paste: freePaste}, maxAccesses: nil}
-		ctrl := NewAPIController(fp, nil, nil, config.JWTAuth{})
+		ctrl := NewAPIController(fp, nil, nil, config.JWTAuth{}, nil)
 		w := get(t, ctrl.PublicPasteViewHandler, "")
 
 		if w.Code != http.StatusOK {
@@ -333,7 +333,7 @@ func TestConsumeAccessGate(t *testing.T) {
 
 	t.Run("authenticated view of budget paste without header gets 403", func(t *testing.T) {
 		fp := &budgetPaster{unlimitedPaster: unlimitedPaster{paste: budgetPaste}, maxAccesses: &three}
-		ctrl := NewAPIController(fp, nil, nil, config.JWTAuth{})
+		ctrl := NewAPIController(fp, nil, nil, config.JWTAuth{}, nil)
 		w := get(t, ctrl.PasteViewHandler, "")
 		if w.Code != http.StatusForbidden {
 			t.Fatalf("status = %d, want 403", w.Code)
@@ -345,7 +345,7 @@ func TestConsumeAccessGate(t *testing.T) {
 
 	t.Run("download of budget paste without header gets 403", func(t *testing.T) {
 		fp := &budgetPaster{unlimitedPaster: unlimitedPaster{paste: budgetPaste}, maxAccesses: &three}
-		ctrl := NewAPIController(fp, nil, nil, config.JWTAuth{})
+		ctrl := NewAPIController(fp, nil, nil, config.JWTAuth{}, nil)
 		w := get(t, ctrl.PasteDownloadHandler, "")
 		if w.Code != http.StatusForbidden {
 			t.Fatalf("status = %d, want 403", w.Code)
@@ -357,7 +357,7 @@ func TestConsumeAccessGate(t *testing.T) {
 
 	t.Run("download with header serves the bytes", func(t *testing.T) {
 		fp := &budgetPaster{unlimitedPaster: unlimitedPaster{paste: budgetPaste}, maxAccesses: &three}
-		ctrl := NewAPIController(fp, nil, nil, config.JWTAuth{})
+		ctrl := NewAPIController(fp, nil, nil, config.JWTAuth{}, nil)
 		w := get(t, ctrl.PasteDownloadHandler, "1")
 		if w.Code != http.StatusOK || fp.gets != 1 {
 			t.Fatalf("status = %d, gets = %d, want 200/1", w.Code, fp.gets)
@@ -373,7 +373,7 @@ func TestConsumeAccessGate(t *testing.T) {
 			maxAccesses:     &three,
 			peekErr:         errors.New("db went away"),
 		}
-		ctrl := NewAPIController(fp, nil, nil, config.JWTAuth{})
+		ctrl := NewAPIController(fp, nil, nil, config.JWTAuth{}, nil)
 		w := get(t, ctrl.PublicPasteViewHandler, "")
 		if w.Code != http.StatusOK || fp.publicGets != 1 {
 			t.Fatalf("status = %d, publicGets = %d, want 200/1 (getter reproduces not-found/errors)", w.Code, fp.publicGets)
@@ -385,7 +385,7 @@ func TestConsumeAccessGate(t *testing.T) {
 		// read the gate cannot distinguish, so nothing changes (and
 		// NewAPIController logs a startup warning).
 		fp := &unlimitedPaster{paste: budgetPaste}
-		ctrl := NewAPIController(fp, nil, nil, config.JWTAuth{})
+		ctrl := NewAPIController(fp, nil, nil, config.JWTAuth{}, nil)
 		w := get(t, ctrl.PublicPasteViewHandler, "")
 		if w.Code != http.StatusOK || fp.publicGets != 1 {
 			t.Fatalf("status = %d, publicGets = %d, want 200/1", w.Code, fp.publicGets)

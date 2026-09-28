@@ -30,68 +30,66 @@
 				</a>
 			</div>
 
-			<!-- Desktop Navigation -->
-			<nav class="hidden md:flex items-center gap-4">
-				{#if $auth.isAuthenticated}
-					<a
-						href="/"
-						class="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-500"
-					>
-						New Paste
-					</a>
-					<a
-						href="/p"
-						class="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-500"
-					>
-						My Pastes
-					</a>
-					<a
-						href="/teams"
-						class="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-500"
-					>
-						Teams
-					</a>
-					<a
-						href="/settings"
-						class="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-500"
-					>
-						Settings
-					</a>
-					{#if $auth.isAdmin}
+			<!-- Right side: desktop navigation, then the controls shared by every
+			     layout (rendered once, so the invite bell polls once) and the
+			     mobile menu button. -->
+			<div class="flex items-center gap-2 md:gap-4">
+				<nav class="hidden md:flex items-center gap-4">
+					{#if $auth.isAuthenticated}
 						<a
-							href="/admin/users"
+							href="/"
 							class="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-500"
 						>
-							Admin
+							New Paste
+						</a>
+						<a
+							href="/p"
+							class="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-500"
+						>
+							My Pastes
+						</a>
+						<a
+							href="/teams"
+							class="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-500"
+						>
+							Teams
+						</a>
+						<a
+							href="/settings"
+							class="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-500"
+						>
+							Settings
+						</a>
+						{#if $auth.isAdmin}
+							<a
+								href="/admin/users"
+								class="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-500"
+							>
+								Admin
+							</a>
+						{/if}
+						<button
+							type="button"
+							on:click={handleLogout}
+							class="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-500"
+						>
+							Logout
+						</button>
+					{:else}
+						<a
+							href="/login"
+							class="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-500"
+						>
+							Login
 						</a>
 					{/if}
-					<button
-						type="button"
-						on:click={handleLogout}
-						class="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-500"
-					>
-						Logout
-					</button>
-				{:else}
-					<a
-						href="/login"
-						class="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-500"
-					>
-						Login
-					</a>
-				{/if}
-				<InviteBell />
-				<ThemeToggle />
-			</nav>
-
-			<!-- Mobile menu button & theme toggle -->
-			<div class="flex md:hidden items-center gap-2">
+				</nav>
 				<InviteBell />
 				<ThemeToggle />
 				<button
 					type="button"
 					on:click={() => (mobileMenuOpen = !mobileMenuOpen)}
-					class="p-2 rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+					class="md:hidden p-2 rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
 					aria-label="Toggle menu"
 				>
 					{#if mobileMenuOpen}

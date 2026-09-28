@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -458,4 +459,36 @@ func containsAt(s, sub string) bool {
 		}
 	}
 	return false
+}
+
+// ── APIServer.TrustedProxies ─────────────────────────────────────────────────
+
+func TestAPIServer_TrustedProxyNets(t *testing.T) {
+	a := config.APIServer{TrustedProxies: []string{"10.0.0.0/8", " 192.0.2.1 ", "2001:db8::1"}}
+	nets, err := a.TrustedProxyNets()
+	if err != nil {
+		t.Fatalf("TrustedProxyNets: %v", err)
+	}
+	if len(nets) != 3 {
+		t.Fatalf("want 3 networks, got %d", len(nets))
+	}
+	for _, tc := range []struct {
+		net  int
+		ip   string
+		want bool
+	}{
+		{0, "10.200.1.1", true}, {0, "11.0.0.1", false},
+		{1, "192.0.2.1", true}, {1, "192.0.2.2", false},
+		{2, "2001:db8::1", true}, {2, "2001:db8::2", false},
+	} {
+		if got := nets[tc.net].Contains(net.ParseIP(tc.ip)); got != tc.want {
+			t.Errorf("%s in %s: got %v, want %v", tc.ip, nets[tc.net], got, tc.want)
+		}
+	}
+	for _, bad := range []string{"proxy.example.com", "10.0.0.0/33", ""} {
+		a := config.APIServer{TrustedProxies: []string{bad}}
+		if _, err := a.TrustedProxyNets(); err == nil {
+			t.Errorf("TrustedProxyNets(%q): want an error", bad)
+		}
+	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -105,7 +106,7 @@ func TestLoginRateLimiterKeyIsolation(t *testing.T) {
 func TestLoginAttemptKeyLowercasesAndSplitsIP(t *testing.T) {
 	r := httptest.NewRequest(http.MethodPost, "/auth/login", nil)
 	r.RemoteAddr = "203.0.113.7:55555"
-	got := loginAttemptKey(r, "MiXeDcAsE")
+	got := loginAttemptKey(r, "MiXeDcAsE", nil)
 	want := loginKey{ip: "203.0.113.7", username: "mixedcase"}
 	if got != want {
 		t.Fatalf("loginAttemptKey = %+v, want %+v", got, want)
@@ -113,7 +114,7 @@ func TestLoginAttemptKeyLowercasesAndSplitsIP(t *testing.T) {
 	// Same username in different case must map to the same bucket.
 	r2 := httptest.NewRequest(http.MethodPost, "/auth/login", nil)
 	r2.RemoteAddr = "203.0.113.7:40000"
-	if loginAttemptKey(r2, "mixedcase") != loginAttemptKey(r, "MIXEDCASE") {
+	if loginAttemptKey(r2, "mixedcase", nil) != loginAttemptKey(r, "MIXEDCASE", nil) {
 		t.Fatal("case-insensitive key expected")
 	}
 }
@@ -123,13 +124,84 @@ func TestClientIPIgnoresProxyHeaders(t *testing.T) {
 	r.RemoteAddr = "198.51.100.4:1234"
 	r.Header.Set("X-Forwarded-For", "203.0.113.9")
 	r.Header.Set("X-Real-IP", "203.0.113.9")
-	if got := clientIP(r); got != "198.51.100.4" {
+	if got := clientIP(r, nil); got != "198.51.100.4" {
 		t.Fatalf("clientIP = %q, want the peer address 198.51.100.4", got)
+	}
+	// A peer that is not a configured proxy cannot speak for others.
+	if got := clientIP(r, mustNets(t, "10.0.0.0/8")); got != "198.51.100.4" {
+		t.Fatalf("clientIP from untrusted peer = %q, want 198.51.100.4", got)
 	}
 	// No port (or bare IPv6 fallback): returned unchanged.
 	r2 := &http.Request{RemoteAddr: "barehost"}
-	if got := clientIP(r2); got != "barehost" {
+	if got := clientIP(r2, nil); got != "barehost" {
 		t.Fatalf("clientIP = %q, want barehost", got)
+	}
+}
+
+func mustNets(t *testing.T, entries ...string) []*net.IPNet {
+	t.Helper()
+	cfg := config.APIServer{TrustedProxies: entries}
+	nets, err := cfg.TrustedProxyNets()
+	if err != nil {
+		t.Fatalf("TrustedProxyNets(%v): %v", entries, err)
+	}
+	return nets
+}
+
+// Behind trusted proxies the client is the rightmost X-Forwarded-For hop
+// that is not itself a trusted proxy; anything a client prepends is never
+// reached.
+func TestClientIPBehindTrustedProxies(t *testing.T) {
+	trusted := mustNets(t, "10.0.0.0/8", "192.0.2.1", "2001:db8::1")
+	for _, tc := range []struct {
+		name   string
+		remote string
+		xff    []string
+		want   string
+	}{
+		{"single proxy", "10.0.0.5:443", []string{"203.0.113.9"}, "203.0.113.9"},
+		{"client-forged hops are skipped", "10.0.0.5:443", []string{"1.2.3.4, 203.0.113.9"}, "203.0.113.9"},
+		{"proxy chain", "10.0.0.5:443", []string{"203.0.113.9, 192.0.2.1"}, "203.0.113.9"},
+		{"repeated headers", "10.0.0.5:443", []string{"1.2.3.4", "203.0.113.9"}, "203.0.113.9"},
+		{"hop with port", "10.0.0.5:443", []string{"203.0.113.9:5555"}, "203.0.113.9"},
+		{"ipv6 hop", "[2001:db8::1]:443", []string{"[2001:db8::42]:1234"}, "2001:db8::42"},
+		{"no header", "10.0.0.5:443", nil, "10.0.0.5"},
+		{"garbage stops at last trusted", "10.0.0.5:443", []string{"203.0.113.9, not-an-ip"}, "10.0.0.5"},
+		{"all hops trusted", "10.0.0.5:443", []string{"10.1.1.1, 192.0.2.1"}, "10.1.1.1"},
+	} {
+		r := httptest.NewRequest(http.MethodPost, "/auth/login", nil)
+		r.RemoteAddr = tc.remote
+		for _, h := range tc.xff {
+			r.Header.Add("X-Forwarded-For", h)
+		}
+		if got := clientIP(r, trusted); got != tc.want {
+			t.Errorf("%s: clientIP = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+// Two clients behind the same trusted proxy keep separate budgets: one
+// cannot lock the other out of an account.
+func TestLoginRateLimitPerClientBehindProxy(t *testing.T) {
+	clock := &fakeClock{t: time.Unix(1700000000, 0)}
+	mgr := &stubUserManager{fail: true}
+	c := newLoginTestController(mgr, clock)
+	c.trustedProxies = mustNets(t, "10.0.0.0/8")
+
+	login := func(client string) {
+		r := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login",
+			strings.NewReader(`{"username":"victim","password":"wrong"}`))
+		r.RemoteAddr = "10.0.0.5:44444"
+		r.Header.Set("X-Forwarded-For", client)
+		c.LoginHandler(httptest.NewRecorder(), r)
+	}
+	for i := 0; i < loginMaxFailures+5; i++ {
+		login("203.0.113.66") // the attacker exhausts their own budget
+	}
+	before := mgr.authCalls
+	login("198.51.100.20") // the victim, through the same proxy
+	if mgr.authCalls != before+1 {
+		t.Fatal("a client behind the proxy was throttled by another client's failures")
 	}
 }
 
@@ -230,7 +302,7 @@ func (s *stubUserManager) BlacklistToken(string, int64) error { return gErrors.E
 func (s *stubUserManager) CleanTokens() error                 { return gErrors.ErrBadRequest }
 
 func newLoginTestController(mgr *stubUserManager, clock *fakeClock) *APIController {
-	c := NewAPIController(nil, nil, mgr, config.JWTAuth{Secret: "unit-test-secret", TimeToLive: "1h"})
+	c := NewAPIController(nil, nil, mgr, config.JWTAuth{Secret: "unit-test-secret", TimeToLive: "1h"}, nil)
 	c.loginLimiter = newLoginRateLimiter(clock.now)
 	return c
 }

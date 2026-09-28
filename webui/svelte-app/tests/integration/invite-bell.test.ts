@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import InviteBell from '$lib/components/layout/InviteBell.svelte';
+import Header from '$lib/components/layout/Header.svelte';
 import { acceptTeamInvite, addTeamMember, createTeam, declineTeamInvite, getTeam, listTeamMembers } from '$lib/api/teams';
 import { login } from '$lib/api/auth';
 import { auth } from '$lib/stores/auth';
@@ -23,6 +24,29 @@ async function bellButton(name: string) {
 }
 
 describe('notice bell against the real server', () => {
+	it('is rendered once by the header, so it polls once', async () => {
+		const h = harness();
+		const team = teamName();
+		await createTeam(team, h.admin.token);
+		const invitee = await makeUser();
+		await addTeamMember(team, invitee.username, h.admin.token);
+		await asUser(invitee.username, invitee.password);
+
+		// Each bell instance fetches the invites as soon as it mounts; the
+		// desktop and mobile layouts must share a single instance.
+		const fetchSpy = vi.spyOn(globalThis, 'fetch');
+		try {
+			render(Header);
+			await bellButton('1');
+			const inviteFetches = fetchSpy.mock.calls.filter(([input]) =>
+				String(input).includes('/teams/invites')
+			);
+			expect(inviteFetches).toHaveLength(1);
+		} finally {
+			fetchSpy.mockRestore();
+		}
+	});
+
 	it('shows a pending invite and Accept joins the team for real', async () => {
 		const h = harness();
 		const team = teamName();

@@ -50,6 +50,13 @@
 		loadUsers();
 	}
 
+	// Mirrors the server: nobody deletes themselves or the superuser, and
+	// only the superuser deletes administrators.
+	function canDelete(user: User): boolean {
+		if (user.id === Number($auth.username) || user.is_superuser) return false;
+		return $auth.isSuperUser || !user.is_admin;
+	}
+
 	function initDelete(user: User) {
 		deletingUser = user;
 		deleteConfirmation = '';
@@ -183,7 +190,7 @@
 										on:keydown={(e) => e.stopPropagation()}
 										role="none"
 									>
-										{#if user.id !== Number($auth.username)}
+										{#if canDelete(user)}
 											<Button on:click={() => initDelete(user)} variant="danger">Delete</Button>
 										{/if}
 									</div>
@@ -233,7 +240,7 @@
 								on:keydown={(e) => e.stopPropagation()}
 								role="none"
 							>
-								{#if user.id !== Number($auth.username)}
+								{#if canDelete(user)}
 									<IconButton title="Delete user" variant="danger" on:click={() => initDelete(user)}>
 										<Trash2 class="w-4 h-4" />
 									</IconButton>

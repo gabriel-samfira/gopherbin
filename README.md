@@ -74,6 +74,11 @@ The config is a simple toml.
 bind = "0.0.0.0"
 port = 9997
 use_tls = false
+# Reverse proxies in front of Gopherbin (IP addresses or CIDR ranges). For
+# requests arriving from one of them, the client address used to throttle
+# failed logins is taken from X-Forwarded-For. Leave empty when clients
+# connect directly: the header is ignored for any other peer.
+# trusted_proxies = ["127.0.0.1", "10.0.0.0/8"]
 
     [apiserver.jwt_auth]
     # secret used to sign jwt tokens
